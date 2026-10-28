@@ -11,4 +11,4 @@ dest=/Library/OFX/Plugins
 sudo mkdir -p "$dest"
 sudo rm -rf "$dest/MillSaph.ofx.bundle"
 sudo cp -R "$bundle" "$dest/"
-echo "installed $dest/MillSaph.ofx.bundle - restart your DCC first."
+echo "installed $dest/MillSaph.ofx.bundle - restart your DCC."
