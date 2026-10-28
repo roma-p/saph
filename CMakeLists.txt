@@ -24,6 +24,7 @@ include(cmake/embed.cmake)
 add_library(MillSaph MODULE
   src/millsaph.c
   src/gpu.c
+  src/image.c
 )
 target_include_directories(MillSaph PRIVATE ${third_party}/openfx/include ${third_party}/khronos)
 
