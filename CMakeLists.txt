@@ -19,19 +19,28 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 
 include(cmake/deps.cmake)
+include(cmake/embed.cmake)
 
-add_library(MillSaph MODULE src/millsaph.c)
+add_library(MillSaph MODULE
+  src/millsaph.c
+  src/gpu.c
+)
 target_include_directories(MillSaph PRIVATE ${third_party}/openfx/include ${third_party}/khronos)
+
+find_package(Threads REQUIRED)
+target_link_libraries(MillSaph PRIVATE Threads::Threads)
 
 if(APPLE)
   set(platform MacOS)
+  target_sources(MillSaph PRIVATE src/gpu_mac.c)
   target_link_libraries(MillSaph PRIVATE "-framework OpenGL")
   target_compile_definitions(MillSaph PRIVATE GL_SILENCE_DEPRECATION)
 elseif(WIN32)
   set(platform Win64)
-  target_link_libraries(MillSaph PRIVATE opengl32)
+  message(FATAL_ERROR "Windows: the GPU part (src/gpu_windows.c) is not written yet")
 else()
   set(platform Linux-x86-64)
+  target_sources(MillSaph PRIVATE src/gpu_linux.c)
   target_link_libraries(MillSaph PRIVATE ${CMAKE_DL_LIBS})
 endif()
 
