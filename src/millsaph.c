@@ -9,6 +9,10 @@ const OfxMessageSuiteV1* ms_message;
 
 static int loaded_count;
 
+static OfxPlugin* plugins[] = {
+    &ms_test_plugin,
+};
+
 void ms_set_host(OfxHost* host) { ms_host = host; }
 
 OfxStatus ms_load(void) {
@@ -27,10 +31,9 @@ OfxStatus ms_unload(void) {
     return kOfxStatOK;
 }
 
-// No effects yet.
-MS_EXPORT int OfxGetNumberOfPlugins(void) { return 0; }
+MS_EXPORT int OfxGetNumberOfPlugins(void) { return (int)(sizeof plugins / sizeof plugins[0]); }
 
 MS_EXPORT OfxPlugin* OfxGetPlugin(int nth) {
-    (void)nth;
-    return 0;
+    if (nth < 0 || nth >= OfxGetNumberOfPlugins()) return 0;
+    return plugins[nth];
 }

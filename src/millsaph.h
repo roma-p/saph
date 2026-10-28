@@ -53,3 +53,6 @@ extern const OfxMessageSuiteV1* ms_message;
 void ms_set_host(OfxHost* host);
 OfxStatus ms_load(void);
 OfxStatus ms_unload(void);
+
+// The plugins.
+extern OfxPlugin ms_test_plugin;

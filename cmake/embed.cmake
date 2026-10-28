@@ -1,7 +1,7 @@
 # Builds shader files into the plugin: each .glsl becomes a C header holding its
 # text, regenerated whenever the shader changes.
 #
-#   embed_shader(MillSaph src/ms_test.glsl)   ->  #include "ms_test_glsl.h"  (ms_test_glsl[])
+#   embed_shader(MillSaph src/glsl/ms_test.glsl)  ->  #include "ms_test_glsl.h"  (ms_test_glsl[])
 
 if(CMAKE_SCRIPT_MODE_FILE)
   # Run at build time: write the bytes of INPUT as a C array named NAME into OUTPUT.
@@ -12,14 +12,15 @@ if(CMAKE_SCRIPT_MODE_FILE)
 endif()
 
 function(embed_shader target shader)
+  get_filename_component(shader ${shader} ABSOLUTE)
   get_filename_component(stem ${shader} NAME_WE)
   set(name ${stem}_glsl)
   set(header ${CMAKE_BINARY_DIR}/generated/${name}.h)
   add_custom_command(
     OUTPUT ${header}
-    COMMAND ${CMAKE_COMMAND} -DINPUT=${CMAKE_SOURCE_DIR}/${shader} -DOUTPUT=${header} -DNAME=${name}
+    COMMAND ${CMAKE_COMMAND} -DINPUT=${shader} -DOUTPUT=${header} -DNAME=${name}
             -P ${CMAKE_SOURCE_DIR}/cmake/embed.cmake
-    DEPENDS ${shader} cmake/embed.cmake)
+    DEPENDS ${shader} ${CMAKE_SOURCE_DIR}/cmake/embed.cmake)
   target_sources(${target} PRIVATE ${header})
   target_include_directories(${target} PRIVATE ${CMAKE_BINARY_DIR}/generated)
 endfunction()

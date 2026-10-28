@@ -21,11 +21,14 @@ endif()
 include(cmake/deps.cmake)
 include(cmake/embed.cmake)
 
-add_library(MillSaph MODULE
-  src/millsaph.c
-  src/gpu.c
-  src/image.c
-)
+file(GLOB sources CONFIGURE_DEPENDS src/*.c)
+list(FILTER sources EXCLUDE REGEX "/gpu_(mac|linux)\\.c$")
+add_library(MillSaph MODULE ${sources})
+
+file(GLOB shaders CONFIGURE_DEPENDS src/glsl/*.glsl)
+foreach(shader ${shaders})
+  embed_shader(MillSaph ${shader})
+endforeach()
 target_include_directories(MillSaph PRIVATE ${third_party}/openfx/include ${third_party}/khronos)
 
 find_package(Threads REQUIRED)
