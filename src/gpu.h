@@ -25,9 +25,14 @@ int ms_gpu_run(const char* shader, const float* input, int width, int height,
 // or why it could not be started.
 const char* ms_gpu_info(void);
 
+// Stops the GPU thread and releases the OpenGL context. Must be called before the
+// plugin is unloaded (the thread runs plugin code). The GPU restarts on next use.
+void ms_gpu_shutdown(void);
+
 // Implemented per platform (gpu_mac.c, gpu_linux.c): create an offscreen
-// OpenGL 4.1 core context, current on the calling thread, and look up functions.
+// OpenGL 4.1 core context, current on the calling thread, destroy it, and look up functions.
 int ms_gl_create_context(char* err, size_t err_size);
+void ms_gl_destroy_context(void);
 void* ms_gl_proc(const char* name);
 extern const char* ms_gl_api;
 

@@ -39,6 +39,9 @@
     X(PFNGLCREATEPROGRAMPROC, CreateProgram)                                     \
     X(PFNGLATTACHSHADERPROC, AttachShader)                                       \
     X(PFNGLLINKPROGRAMPROC, LinkProgram)                                         \
+    X(PFNGLDELETEPROGRAMPROC, DeleteProgram)                                     \
+    X(PFNGLDELETEVERTEXARRAYSPROC, DeleteVertexArrays)                           \
+    X(PFNGLDELETEFRAMEBUFFERSPROC, DeleteFramebuffers)                           \
     X(PFNGLGETPROGRAMIVPROC, GetProgramiv)                                       \
     X(PFNGLGETPROGRAMINFOLOGPROC, GetProgramInfoLog)                             \
     X(PFNGLUSEPROGRAMPROC, UseProgram)                                           \
@@ -75,14 +78,16 @@ static void start(void);  // sets up the context, first thing on the GPU thread
 
 static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t changed = PTHREAD_COND_INITIALIZER;
+static pthread_t thread;
+static int thread_running;
+static int quit;  // set by the last task before the thread exits
 static Task* pending;
-static int thread_started;
 
 static void* gpu_thread(void* unused) {
     (void)unused;
     start();
     pthread_mutex_lock(&lock);
-    for (;;) {
+    while (!quit) {
         while (!pending || pending->done) pthread_cond_wait(&changed, &lock);
         Task* task = pending;
         pthread_mutex_unlock(&lock);
@@ -91,17 +96,22 @@ static void* gpu_thread(void* unused) {
         task->done = 1;
         pthread_cond_broadcast(&changed);
     }
+    pthread_mutex_unlock(&lock);
     return NULL;
 }
 
-static void run_on_gpu_thread(void (*run)(void*), void* arg) {
+// Runs `run(arg)` on the GPU thread (starting it if needed) and waits for it.
+// Returns 0 if the thread cannot be started.
+static int run_on_gpu_thread(void (*run)(void*), void* arg) {
     Task task = {run, arg, 0};
     pthread_mutex_lock(&lock);
-    if (!thread_started) {
-        pthread_t thread;
-        pthread_create(&thread, NULL, gpu_thread, NULL);
-        pthread_detach(thread);
-        thread_started = 1;
+    if (!thread_running) {
+        quit = 0;
+        if (pthread_create(&thread, NULL, gpu_thread, NULL) != 0) {
+            pthread_mutex_unlock(&lock);
+            return 0;
+        }
+        thread_running = 1;
     }
     while (pending && !pending->done) pthread_cond_wait(&changed, &lock);  // one task at a time
     pending = &task;
@@ -110,6 +120,7 @@ static void run_on_gpu_thread(void (*run)(void*), void* arg) {
     pending = NULL;
     pthread_cond_broadcast(&changed);
     pthread_mutex_unlock(&lock);
+    return 1;
 }
 
 // ---------------------------------------------------------------- state (GPU thread only)
@@ -167,6 +178,7 @@ static GLuint get_program(const char* source, char* err, size_t err_size) {
         char log[1024] = "";
         glGetProgramInfoLog(program, sizeof log, NULL, log);
         snprintf(err, err_size, "shader does not link: %s", log);
+        glDeleteProgram(program);
         return 0;
     }
     programs[program_count].source = source;
@@ -206,8 +218,37 @@ static void start(void) {
 static void nothing(void* unused) { (void)unused; }
 
 const char* ms_gpu_info(void) {
-    run_on_gpu_thread(nothing, NULL);  // starts the GPU thread on first use
+    if (!run_on_gpu_thread(nothing, NULL))  // starts the GPU thread on first use
+        return "cannot start the GPU thread";
     return info;
+}
+
+// Last task of the GPU thread: release everything, then let the thread exit.
+static void stop(void* unused) {
+    (void)unused;
+    if (ready) {
+        for (int i = 0; i < program_count; ++i) glDeleteProgram(programs[i].program);
+        glDeleteShader(vertex_shader);
+        glDeleteVertexArrays(1, &vertex_array);
+        glDeleteFramebuffers(1, &framebuffer);
+    }
+    ms_gl_destroy_context();
+    program_count = 0;
+    ready = 0;
+    snprintf(info, sizeof info, "GPU not started yet");
+    quit = 1;  // read by the thread under the lock, right after this task
+}
+
+void ms_gpu_shutdown(void) {
+    pthread_mutex_lock(&lock);
+    int running = thread_running;
+    pthread_mutex_unlock(&lock);
+    if (!running) return;
+    run_on_gpu_thread(stop, NULL);
+    pthread_join(thread, NULL);
+    pthread_mutex_lock(&lock);
+    thread_running = 0;
+    pthread_mutex_unlock(&lock);
 }
 
 // ---------------------------------------------------------------- one pass
@@ -279,6 +320,9 @@ int ms_gpu_run(const char* shader, const float* input, int width, int height,
                const MsUniform* uniforms, int uniform_count, float* output,
                char* err, size_t err_size) {
     Pass pass = {shader, input, width, height, uniforms, uniform_count, output, err, err_size, 0};
-    run_on_gpu_thread(run_pass, &pass);
+    if (!run_on_gpu_thread(run_pass, &pass)) {
+        snprintf(err, err_size, "cannot start the GPU thread");
+        return 0;
+    }
     return pass.ok;
 }

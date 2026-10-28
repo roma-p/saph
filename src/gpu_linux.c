@@ -13,6 +13,9 @@ const char* ms_gl_api = "EGL";
 static void* egl_lib;
 static void* gl_lib;
 static PFNEGLGETPROCADDRESSPROC egl_get_proc;
+static EGLDisplay display = EGL_NO_DISPLAY;
+static EGLContext context = EGL_NO_CONTEXT;
+static EGLSurface surface = EGL_NO_SURFACE;
 
 static void* egl_sym(const char* name) {
     void* p = egl_get_proc ? (void*)egl_get_proc(name) : NULL;
@@ -45,7 +48,7 @@ int ms_gl_create_context(char* err, size_t err_size) {
     }
 
     // Prefer a GPU device directly (no X server needed), then the default display.
-    EGLDisplay display = EGL_NO_DISPLAY;
+    display = EGL_NO_DISPLAY;
     EGLint major, minor;
     if (query_devices && platform_display) {
         EGLDeviceEXT devices[8];
@@ -64,7 +67,7 @@ int ms_gl_create_context(char* err, size_t err_size) {
     const char* failed = NULL;
     EGLConfig config;
     EGLint config_count = 0;
-    EGLContext context = EGL_NO_CONTEXT;
+    context = EGL_NO_CONTEXT;
     const EGLint config_attrs[] = {EGL_SURFACE_TYPE, EGL_PBUFFER_BIT, EGL_RENDERABLE_TYPE, EGL_OPENGL_BIT,
                                    EGL_RED_SIZE, 8, EGL_GREEN_SIZE, 8, EGL_BLUE_SIZE, 8, EGL_NONE};
     const EGLint context_attrs[] = {EGL_CONTEXT_MAJOR_VERSION, 4, EGL_CONTEXT_MINOR_VERSION, 1,
@@ -79,7 +82,7 @@ int ms_gl_create_context(char* err, size_t err_size) {
     else if (!make_current(display, EGL_NO_SURFACE, EGL_NO_SURFACE, context)) {
         // Drivers without surfaceless contexts need a (tiny, unused) surface.
         const EGLint pbuffer_attrs[] = {EGL_WIDTH, 1, EGL_HEIGHT, 1, EGL_NONE};
-        EGLSurface surface = create_pbuffer ? create_pbuffer(display, config, pbuffer_attrs) : EGL_NO_SURFACE;
+        surface = create_pbuffer ? create_pbuffer(display, config, pbuffer_attrs) : EGL_NO_SURFACE;
         if (surface == EGL_NO_SURFACE || !make_current(display, surface, surface, context))
             failed = "eglMakeCurrent failed";
     }
@@ -88,6 +91,19 @@ int ms_gl_create_context(char* err, size_t err_size) {
         return 0;
     }
     return 1;
+}
+
+void ms_gl_destroy_context(void) {
+    if (context == EGL_NO_CONTEXT) return;
+    PFNEGLMAKECURRENTPROC make_current = egl_sym("eglMakeCurrent");
+    PFNEGLDESTROYCONTEXTPROC destroy_context = egl_sym("eglDestroyContext");
+    PFNEGLDESTROYSURFACEPROC destroy_surface = egl_sym("eglDestroySurface");
+    if (make_current) make_current(display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+    if (surface != EGL_NO_SURFACE && destroy_surface) destroy_surface(display, surface);
+    if (destroy_context) destroy_context(display, context);
+    // The display is left initialised: other code in the host process may share it.
+    context = EGL_NO_CONTEXT;
+    surface = EGL_NO_SURFACE;
 }
 
 void* ms_gl_proc(const char* name) {

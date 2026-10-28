@@ -9,6 +9,8 @@
 
 const char* ms_gl_api = "CGL";
 
+static CGLContextObj context;
+
 int ms_gl_create_context(char* err, size_t err_size) {
     CGLPixelFormatAttribute attrs[] = {
         kCGLPFAOpenGLProfile, (CGLPixelFormatAttribute)kCGLOGLPVersion_3_2_Core,
@@ -22,14 +24,21 @@ int ms_gl_create_context(char* err, size_t err_size) {
         snprintf(err, err_size, "no OpenGL 4.1 pixel format");
         return 0;
     }
-    CGLContextObj context;
     CGLError e = CGLCreateContext(format, NULL, &context);
     CGLDestroyPixelFormat(format);
     if (e != kCGLNoError || CGLSetCurrentContext(context) != kCGLNoError) {
         snprintf(err, err_size, "cannot create an OpenGL context (CGL error %d)", (int)e);
+        ms_gl_destroy_context();
         return 0;
     }
     return 1;
+}
+
+void ms_gl_destroy_context(void) {
+    if (!context) return;
+    CGLSetCurrentContext(NULL);
+    CGLDestroyContext(context);
+    context = NULL;
 }
 
 void* ms_gl_proc(const char* name) { return dlsym(RTLD_DEFAULT, name); }
