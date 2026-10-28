@@ -4,13 +4,13 @@ cmake_minimum_required(VERSION 3.18)
 set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64" CACHE STRING "")
 set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "")
 
-project(MillSaph VERSION 0.1.0 LANGUAGES C)
-
-foreach(var MILLSAPH_THIRD_PARTY_DIR MILLSAPH_OFX_VERSION)
+foreach(var MILLSAPH_VERSION MILLSAPH_THIRD_PARTY_DIR MILLSAPH_OFX_VERSION)
   if("$ENV{${var}}" STREQUAL "")
     message(FATAL_ERROR "${var} is not set. Build with build.sh / build.bat, or from the rez environment.")
   endif()
 endforeach()
+project(MillSaph VERSION $ENV{MILLSAPH_VERSION} LANGUAGES C)
+
 file(TO_CMAKE_PATH "$ENV{MILLSAPH_THIRD_PARTY_DIR}" third_party)  # also turns Windows \ into /
 
 set(CMAKE_C_STANDARD 11)
