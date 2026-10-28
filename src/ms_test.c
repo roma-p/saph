@@ -85,7 +85,8 @@ static OfxStatus render(OfxImageEffectHandle effect, OfxPropertySetHandle in_arg
         return kOfxStatFailed;
 
     const MsUniform uniforms[] = {{"gain", (float)gain}};
-    return ms_render_shader(effect, in_args, ms_test_glsl, uniforms, 1);
+    static const char* const passes[] = {ms_test_glsl};
+    return ms_render(effect, in_args, passes, 1, uniforms, 1);
 }
 
 static OfxStatus main_entry(const char* action, const void* handle, OfxPropertySetHandle in_args,

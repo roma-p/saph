@@ -21,7 +21,7 @@ int main(void) {
     char err[2048];
 
     printf("GPU: %s\n", ms_gpu_info());
-    int ok = ms_gpu_run(shader, input, 2, 2, &gain, 1, output, err, sizeof err);
+    int ok = ms_gpu_run(&shader, 1, input, 2, 2, &gain, 1, output, err, sizeof err);
     if (ok)
         for (int i = 0; i < 16; ++i) ok = ok && output[i] == 2.0f * input[i];
     printf("%s\n", ok ? "OK: shader ran and the result is correct" : err);

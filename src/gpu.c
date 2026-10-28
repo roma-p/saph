@@ -128,10 +128,11 @@ static int run_on_gpu_thread(void (*run)(void*), void* arg) {
 static int ready;
 static char info[2048] = "GPU not started yet";
 static GLuint vertex_array, framebuffer, vertex_shader;
-static GLint max_size;
+static GLint max_size, max_units;
 
 // Compiled programs, by shader source address (shaders are static strings).
-static struct { const char* source; GLuint program; } programs[32];
+// 256 covers every pass of every effect.
+static struct { const char* source; GLuint program; } programs[256];
 static int program_count;
 
 // Draws one triangle covering the whole viewport.
@@ -206,6 +207,7 @@ static void start(void) {
         return;
     }
     glGetIntegerv(GL_MAX_TEXTURE_SIZE, &max_size);
+    glGetIntegerv(GL_MAX_TEXTURE_IMAGE_UNITS, &max_units);
     glGenVertexArrays(1, &vertex_array);
     glGenFramebuffers(1, &framebuffer);
     glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
@@ -251,10 +253,11 @@ void ms_gpu_shutdown(void) {
     pthread_mutex_unlock(&lock);
 }
 
-// ---------------------------------------------------------------- one pass
+// ---------------------------------------------------------------- passes
 
 typedef struct {
-    const char* shader;
+    const char* const* shaders;
+    int pass_count;
     const float* input;
     int width, height;
     const MsUniform* uniforms;
@@ -263,66 +266,106 @@ typedef struct {
     char* err;
     size_t err_size;
     int ok;
-} Pass;
+} Job;
 
+#define MAX_TEXTURES 32  // the input + pass results in one job
+
+// Linear filtering (for blurs; texelFetch is not affected), edges clamped.
 static GLuint make_texture(int width, int height, const float* pixels) {
     GLuint texture;
     glGenTextures(1, &texture);
     glBindTexture(GL_TEXTURE_2D, texture);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, width, height, 0, GL_RGBA, GL_FLOAT, pixels);
     return texture;
 }
 
-static void run_pass(void* arg) {
-    Pass* p = arg;
-    if (!ready) {
-        snprintf(p->err, p->err_size, "%s", info);
-        return;
-    }
-    if (p->width > max_size || p->height > max_size) {
-        snprintf(p->err, p->err_size, "image larger than the GPU limit (%d pixels)", max_size);
-        return;
-    }
-    GLuint program = get_program(p->shader, p->err, p->err_size);
-    if (!program) return;
-
-    glActiveTexture(GL_TEXTURE0);
-    GLuint input = make_texture(p->width, p->height, p->input);
-    GLuint output = make_texture(p->width, p->height, NULL);
-    glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, output, 0);
+// Draws one pass into `target`: binds every texture so far (inputs, then earlier
+// pass results) to its own unit and points the matching sampler at it.
+static int draw_pass(Job* job, int pass, GLuint program, const GLuint* textures, const char* const* names,
+                     int texture_count, GLuint target) {
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, target, 0);
     if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
-        snprintf(p->err, p->err_size, "cannot render into a float image");
-    } else {
-        glViewport(0, 0, p->width, p->height);
-        glUseProgram(program);
-        glBindTexture(GL_TEXTURE_2D, input);
-        glUniform1i(glGetUniformLocation(program, "source"), 0);
-        for (int i = 0; i < p->uniform_count; ++i)
-            glUniform1f(glGetUniformLocation(program, p->uniforms[i].name), p->uniforms[i].value);
-        glBindVertexArray(vertex_array);
-        glDrawArrays(GL_TRIANGLES, 0, 3);
-        glReadPixels(0, 0, p->width, p->height, GL_RGBA, GL_FLOAT, p->output);
-        GLenum e = glGetError();
-        if (e != GL_NO_ERROR) snprintf(p->err, p->err_size, "OpenGL error 0x%04X", e);
-        else p->ok = 1;
+        snprintf(job->err, job->err_size, "pass %d: cannot render into a float image", pass + 1);
+        return 0;
     }
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    GLuint textures[2] = {input, output};
-    glDeleteTextures(2, textures);
+    glUseProgram(program);
+    for (int i = 0; i < texture_count; ++i) {
+        glActiveTexture(GL_TEXTURE0 + i);
+        glBindTexture(GL_TEXTURE_2D, textures[i]);
+        glUniform1i(glGetUniformLocation(program, names[i]), i);  // -1 (unused) is ignored
+    }
+    for (int i = 0; i < job->uniform_count; ++i)
+        glUniform1f(glGetUniformLocation(program, job->uniforms[i].name), job->uniforms[i].value);
+    glDrawArrays(GL_TRIANGLES, 0, 3);
+    return 1;
 }
 
-int ms_gpu_run(const char* shader, const float* input, int width, int height,
-               const MsUniform* uniforms, int uniform_count, float* output,
-               char* err, size_t err_size) {
-    Pass pass = {shader, input, width, height, uniforms, uniform_count, output, err, err_size, 0};
-    if (!run_on_gpu_thread(run_pass, &pass)) {
+static void run_job(void* arg) {
+    Job* job = arg;
+    if (!ready) {
+        snprintf(job->err, job->err_size, "%s", info);
+        return;
+    }
+    if (job->width > max_size || job->height > max_size) {
+        snprintf(job->err, job->err_size, "image larger than the GPU limit (%d pixels)", max_size);
+        return;
+    }
+    const int input_count = 1;                                // source
+    const int texture_count = input_count + job->pass_count;  // the input, then one result per pass
+    if (job->pass_count < 1 || texture_count > MAX_TEXTURES || texture_count - 1 > max_units) {
+        snprintf(job->err, job->err_size, "%d passes: too many for the GPU", job->pass_count);
+        return;
+    }
+    GLuint programs_used[MAX_TEXTURES];
+    for (int p = 0; p < job->pass_count; ++p) {
+        programs_used[p] = get_program(job->shaders[p], job->err, job->err_size);
+        if (!programs_used[p]) return;
+    }
+
+    // textures[i] is read in the shaders as names[i].
+    glActiveTexture(GL_TEXTURE0);
+    GLuint textures[MAX_TEXTURES];
+    const char* names[MAX_TEXTURES];
+    char pass_names[MAX_TEXTURES][16];
+    textures[0] = make_texture(job->width, job->height, job->input);
+    names[0] = "source";
+    for (int p = 0; p < job->pass_count; ++p) {
+        const int i = input_count + p;
+        textures[i] = make_texture(job->width, job->height, NULL);
+        snprintf(pass_names[p], sizeof pass_names[p], "pass%d", p + 1);
+        names[i] = pass_names[p];
+    }
+
+    glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+    glViewport(0, 0, job->width, job->height);
+    glBindVertexArray(vertex_array);
+    int ok = 1;
+    for (int p = 0; p < job->pass_count && ok; ++p) {
+        // Pass p reads the inputs and the results of passes 1..p, and writes its own.
+        const int target = input_count + p;
+        ok = draw_pass(job, p, programs_used[p], textures, names, target, textures[target]);
+    }
+    if (ok) {
+        glReadPixels(0, 0, job->width, job->height, GL_RGBA, GL_FLOAT, job->output);
+        GLenum e = glGetError();
+        if (e != GL_NO_ERROR) snprintf(job->err, job->err_size, "OpenGL error 0x%04X", e);
+        else job->ok = 1;
+    }
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glDeleteTextures(texture_count, textures);
+}
+
+int ms_gpu_run(const char* const* shaders, int pass_count, const float* input,
+               int width, int height, const MsUniform* uniforms, int uniform_count,
+               float* output, char* err, size_t err_size) {
+    Job job = {shaders, pass_count, input, width, height, uniforms, uniform_count, output, err, err_size, 0};
+    if (!run_on_gpu_thread(run_job, &job)) {
         snprintf(err, err_size, "cannot start the GPU thread");
         return 0;
     }
-    return pass.ok;
+    return job.ok;
 }

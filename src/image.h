@@ -35,6 +35,8 @@ void ms_pack_image(const MsImage* img, OfxRectI area, float* buffer);
 void ms_unpack_image(const float* buffer, OfxRectI area, MsImage* img, OfxRectI window);
 
 // Render the effect on the GPU.
-// get host image, pack it, send it to the gpu and run shaders, then unpack it and return it to host.
-OfxStatus ms_render_shader(OfxImageEffectHandle effect, OfxPropertySetHandle in_args, const char* shader,
-                           const MsUniform* uniforms, int uniform_count);
+// Gets the Source image, packs it, runs the shaders on the GPU, then unpacks the
+// result into the host's Output. The shaders read the Source as `source`, and earlier
+// results as `pass1`, `pass2`...
+OfxStatus ms_render(OfxImageEffectHandle effect, OfxPropertySetHandle in_args, const char* const* shaders,
+                    int pass_count, const MsUniform* uniforms, int uniform_count);

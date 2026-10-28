@@ -72,9 +72,8 @@ void ms_unpack_image(const float* buffer, OfxRectI area, MsImage* img, OfxRectI 
     }
 }
 
-OfxStatus ms_render_shader(
-        OfxImageEffectHandle effect, OfxPropertySetHandle in_args, const char* shader,
-        const MsUniform* uniforms, int uniform_count) {
+OfxStatus ms_render(OfxImageEffectHandle effect, OfxPropertySetHandle in_args, const char* const* shaders,
+                    int pass_count, const MsUniform* uniforms, int uniform_count) {
     
     // 1. read request
     OfxTime time;
@@ -113,7 +112,8 @@ OfxStatus ms_render_shader(
     //  otherwise document error.
     char err[2048];
     OfxStatus status = kOfxStatOK;
-    if (ms_gpu_run(shader, buffer, width, height, uniforms, uniform_count, buffer, err, sizeof err)) {
+    if (ms_gpu_run(shaders, pass_count, buffer, width, height, uniforms, uniform_count, buffer, err,
+                   sizeof err)) {
         ms_unpack_image(buffer, area, &dst, window);
     } else {
         OfxPropertySetHandle props;
