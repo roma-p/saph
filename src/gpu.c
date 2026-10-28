@@ -126,7 +126,7 @@ static int run_on_gpu_thread(void (*run)(void*), void* arg) {
 // ---------------------------------------------------------------- state (GPU thread only)
 
 static int ready;
-static char info[256] = "GPU not started yet";
+static char info[2048] = "GPU not started yet";
 static GLuint vertex_array, framebuffer, vertex_shader;
 static GLint max_size;
 
@@ -188,7 +188,7 @@ static GLuint get_program(const char* source, char* err, size_t err_size) {
 }
 
 static void start(void) {
-    char err[512];
+    char err[2048];
     if (!ms_gl_create_context(err, sizeof err) || !load_functions(err, sizeof err)) {
         snprintf(info, sizeof info, "OpenGL setup failed: %s", err);
         return;

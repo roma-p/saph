@@ -111,7 +111,7 @@ OfxStatus ms_render_shader(
     // 4. process the shader on the buffer.
     //  if sux, unpack image to dst
     //  otherwise document error.
-    char err[1024];
+    char err[2048];
     OfxStatus status = kOfxStatOK;
     if (ms_gpu_run(shader, buffer, width, height, uniforms, uniform_count, buffer, err, sizeof err)) {
         ms_unpack_image(buffer, area, &dst, window);
