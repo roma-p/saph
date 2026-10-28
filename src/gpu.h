@@ -3,8 +3,7 @@
 // All OpenGL work happens on one private thread that owns the context, so the
 // host's own OpenGL state is never touched. Calls are serialised.
 
-#ifndef MILLSAPH_GPU_H
-#define MILLSAPH_GPU_H
+#pragma once
 
 #include <stddef.h>
 
@@ -35,5 +34,3 @@ int ms_gl_create_context(char* err, size_t err_size);
 void ms_gl_destroy_context(void);
 void* ms_gl_proc(const char* name);
 extern const char* ms_gl_api;
-
-#endif
