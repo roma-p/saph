@@ -5,17 +5,16 @@
 #include <dlfcn.h>
 #include <stdio.h>
 
-#include "gpu.h"
+#include "gpu/gl.h"
 
-const char* ms_gl_api = "CGL";
+const char *ms_gl_api = "CGL";
 
 static CGLContextObj context;
 
-int ms_gl_create_context(char* err, size_t err_size) {
+int ms_gl_create_context(char *err, size_t err_size) {
     CGLPixelFormatAttribute attrs[] = {
-        kCGLPFAOpenGLProfile, (CGLPixelFormatAttribute)kCGLOGLPVersion_3_2_Core,
-        kCGLPFAAccelerated,
-        kCGLPFAAllowOfflineRenderers,
+        kCGLPFAOpenGLProfile,       (CGLPixelFormatAttribute)kCGLOGLPVersion_3_2_Core,
+        kCGLPFAAccelerated,         kCGLPFAAllowOfflineRenderers,
         (CGLPixelFormatAttribute)0,
     };
     CGLPixelFormatObj format;
@@ -35,10 +34,11 @@ int ms_gl_create_context(char* err, size_t err_size) {
 }
 
 void ms_gl_destroy_context(void) {
-    if (!context) return;
+    if (!context)
+        return;
     CGLSetCurrentContext(NULL);
     CGLDestroyContext(context);
     context = NULL;
 }
 
-void* ms_gl_proc(const char* name) { return dlsym(RTLD_DEFAULT, name); }
+void *ms_gl_proc(const char *name) { return dlsym(RTLD_DEFAULT, name); }

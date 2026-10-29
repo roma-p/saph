@@ -11,10 +11,10 @@ mkdir -p build
 case "$(uname)" in
 Darwin)
     cc -std=c11 -DGL_SILENCE_DEPRECATION -Isrc -Ithird_party/khronos \
-        tools/gpu_check.c src/gpu.c src/gpu_mac.c -framework OpenGL -o build/gpu_check ;;
+        tools/gpu_check.c src/gpu/gpu.c src/gpu/gl.c src/gpu/gl_mac.c -framework OpenGL -o build/gpu_check ;;
 *)
     cc -std=c11 -Isrc -Ithird_party/khronos \
-        tools/gpu_check.c src/gpu.c src/gpu_linux.c -ldl -lpthread -o build/gpu_check ;;
+        tools/gpu_check.c src/gpu/gpu.c src/gpu/gl.c src/gpu/gl_linux.c -ldl -lpthread -o build/gpu_check ;;
 esac
 
 echo "host: $(hostname)  DISPLAY=${DISPLAY:-none}"

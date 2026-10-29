@@ -5,9 +5,9 @@
 
 #include <stdio.h>
 
-#include "gpu.h"
+#include "gpu/gpu.h"
 
-static const char* shader =
+static const char *shader =
     "#version 410 core\n"
     "uniform sampler2D source;\n"
     "uniform float gain;\n"
@@ -22,9 +22,11 @@ int main(void) {
 
     printf("GPU: %s\n", ms_gpu_info());
     const MsInput source = {"source", input};
-    int ok = ms_gpu_run(&shader, 1, &source, 1, 2, 2, &gain, 1, output, err, sizeof err);
+    const MsPass pass = {shader, NULL, NULL, 0, 0, 0};
+    int ok = ms_gpu_run(&pass, 1, &source, 1, 2, 2, &gain, 1, output, err, sizeof err);
     if (ok)
-        for (int i = 0; i < 16; ++i) ok = ok && output[i] == 2.0f * input[i];
+        for (int i = 0; i < 16; ++i)
+            ok = ok && output[i] == 2.0f * input[i];
     printf("%s\n", ok ? "OK: shader ran and the result is correct" : err);
     ms_gpu_shutdown();
     return ok ? 0 : 1;
