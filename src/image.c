@@ -39,20 +39,24 @@ static int overlap(const MsImage* img, OfxRectI area, int y, int* a, int* b) {
     return *a < *b;
 }
 
-void ms_pack_image(const MsImage* img, OfxRectI area, float* buffer) {
+static void fill(float* out, size_t count, float value) {
+    for (size_t i = 0; i < count; ++i) out[i] = value;
+}
+
+void ms_pack_image(const MsImage* img, OfxRectI area, float outside, float* buffer) {
     const int width = area.x2 - area.x1, height = area.y2 - area.y1;
     for (int row = 0; row < height; ++row) {
         const int y = area.y1 + row;
         float* out = buffer + (size_t)row * width * 4;
         int a, b;
         if (!overlap(img, area, y, &a, &b)) {
-            memset(out, 0, (size_t)width * 4 * sizeof(float));
+            fill(out, (size_t)width * 4, outside);
             continue;
         }
-        // black | copied pixels | black
-        memset(out, 0, (size_t)(a - area.x1) * 4 * sizeof(float));
+        // outside | copied pixels | outside
+        fill(out, (size_t)(a - area.x1) * 4, outside);
         memcpy(out + (size_t)(a - area.x1) * 4, ms_pixel(img, a, y), (size_t)(b - a) * 4 * sizeof(float));
-        memset(out + (size_t)(b - area.x1) * 4, 0, (size_t)(area.x2 - b) * 4 * sizeof(float));
+        fill(out + (size_t)(b - area.x1) * 4, (size_t)(area.x2 - b) * 4, outside);
     }
 }
 
@@ -72,9 +76,36 @@ void ms_unpack_image(const float* buffer, OfxRectI area, MsImage* img, OfxRectI 
     }
 }
 
-OfxStatus ms_render(OfxImageEffectHandle effect, OfxPropertySetHandle in_args, const char* const* shaders,
-                    int pass_count, const MsUniform* uniforms, int uniform_count) {
-    
+static void define_clip(OfxImageEffectHandle effect, const char* clip, const char* label, int optional,
+                        int mask) {
+    OfxPropertySetHandle props;
+    if (ms_effect->clipDefine(effect, clip, &props) != kOfxStatOK) return;
+    if (label) ms_prop->propSetString(props, kOfxPropLabel, 0, label);
+    ms_prop->propSetString(props, kOfxImageEffectPropSupportedComponents, 0, kOfxImageComponentRGBA);
+    ms_prop->propSetInt(props, kOfxImageEffectPropSupportsTiles, 0, 0);
+    ms_prop->propSetInt(props, kOfxImageClipPropOptional, 0, optional);
+    ms_prop->propSetInt(props, kOfxImageClipPropIsMask, 0, mask);
+}
+
+OfxStatus ms_define_clips(OfxImageEffectHandle effect, OfxPropertySetHandle in_args, const MsClip* clips,
+                          int clip_count) {
+    char* context = "";
+    ms_prop->propGetString(in_args, kOfxImageEffectPropContext, 0, &context);
+    const int filter = strcmp(context, kOfxImageEffectContextFilter) == 0;
+    for (int c = 0; c < clip_count; ++c) {
+        const int source = strcmp(clips[c].clip, kOfxImageEffectSimpleSourceClipName) == 0;
+        if (filter && !source) continue;  // a filter has only Source and Output
+        define_clip(effect, clips[c].clip, clips[c].label, clips[c].optional, clips[c].mask);
+    }
+    define_clip(effect, kOfxImageEffectOutputClipName, NULL, 0, 0);
+    return kOfxStatOK;
+}
+
+OfxStatus ms_render(OfxImageEffectHandle effect, OfxPropertySetHandle in_args, const MsClip* clips,
+                    int clip_count, const char* const* shaders, int pass_count, const MsShaderValue* values,
+                    int value_count) {
+    if (clip_count > MS_MAX_CLIPS) return kOfxStatFailed;
+
     // 1. read request
     OfxTime time;
     OfxRectI window;
@@ -82,50 +113,61 @@ OfxStatus ms_render(OfxImageEffectHandle effect, OfxPropertySetHandle in_args, c
         ms_prop->propGetIntN(in_args, kOfxImageEffectPropRenderWindow, 4, &window.x1) != kOfxStatOK)
         return kOfxStatFailed;
 
-    //2. fetch both src and dst images
-    MsImage src, dst;
+    // 2. fetch the output image: everything is computed at its size
+    MsImage dst;
     if (!ms_fetch_image(effect, kOfxImageEffectOutputClipName, time, &dst)) {
         ms_release_image(&dst);
         return kOfxStatFailed;
     }
-    ms_fetch_image(effect, kOfxImageEffectSimpleSourceClipName, time, &src);  // not connected: black
-
-    // 3. crop image to its actual payload, and pack it to a buffer
     const OfxRectI area = dst.bounds;
     const int width = area.x2 - area.x1, height = area.y2 - area.y1;
     if (width <= 0 || height <= 0) {
-        ms_release_image(&src);
         ms_release_image(&dst);
         return kOfxStatOK;
     }
-    float* buffer = malloc((size_t)width * height * 4 * sizeof(float));
-    if (!buffer) {
-        ms_release_image(&src);
-        ms_release_image(&dst);
-        return kOfxStatErrMemory;
-    }
-    ms_pack_image(&src, area, buffer);
-    ms_release_image(&src);
 
-    // 4. process the shader on the buffer.
-    //  if sux, unpack image to dst
-    //  otherwise document error.
-    char err[2048];
-    OfxStatus status = kOfxStatOK;
-    if (ms_gpu_run(shaders, pass_count, buffer, width, height, uniforms, uniform_count, buffer, err,
-                   sizeof err)) {
-        ms_unpack_image(buffer, area, &dst, window);
-    } else {
-        OfxPropertySetHandle props;
-        char* name = "MillSaph";
-        ms_effect->getPropertySet(effect, &props);
-        ms_prop->propGetString(props, kOfxPropLabel, 0, &name);
-        if (ms_message) ms_message->message(effect, kOfxMessageError, NULL, "%s: %s", name, err);
-        status = kOfxStatFailed;
+    // 3. one packed buffer per input, plus one for the result. An input with no image
+    //    (not connected, or not defined in this context) is filled with its `outside` value.
+    const size_t bytes = (size_t)width * height * 4 * sizeof(float);
+    float* buffers[MS_MAX_CLIPS] = {NULL};
+    MsInput inputs[MS_MAX_CLIPS];
+    float* output = malloc(bytes);
+    OfxStatus status = output ? kOfxStatOK : kOfxStatErrMemory;
+    for (int c = 0; c < clip_count && status == kOfxStatOK; ++c) {
+        buffers[c] = malloc(bytes);
+        if (!buffers[c]) {
+            status = kOfxStatErrMemory;
+            break;
+        }
+        MsImage img;
+        ms_fetch_image(effect, clips[c].clip, time, &img);
+        ms_pack_image(&img, area, clips[c].outside, buffers[c]);
+        ms_release_image(&img);
+        inputs[c].name = clips[c].name;
+        inputs[c].pixels = buffers[c];
+    }
+
+    // 4. run the passes on the GPU.
+    //  if success, unpack the result to dst
+    //  otherwise show the error in the host.
+    if (status == kOfxStatOK) {
+        char err[2048];
+        if (ms_gpu_run(shaders, pass_count, inputs, clip_count, width, height, values, value_count, output,
+                       err, sizeof err)) {
+            ms_unpack_image(output, area, &dst, window);
+        } else {
+            OfxPropertySetHandle props;
+            char* name = "MillSaph";
+            ms_effect->getPropertySet(effect, &props);
+            ms_prop->propGetString(props, kOfxPropLabel, 0, &name);
+            if (ms_message) ms_message->message(effect, kOfxMessageError, NULL, "%s: %s", name, err);
+            status = kOfxStatFailed;
+        }
     }
 
     // 5. release resources.
-    free(buffer);
+    for (int c = 0; c < clip_count; ++c) free(buffers[c]);
+    free(output);
     ms_release_image(&dst);
     return status;
 }

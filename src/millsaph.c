@@ -1,3 +1,4 @@
+#include "common/defines.h"
 #include "gpu.h"
 #include "millsaph.h"
 
@@ -31,7 +32,7 @@ OfxStatus ms_unload(void) {
     return kOfxStatOK;
 }
 
-MS_EXPORT int OfxGetNumberOfPlugins(void) { return (int)(sizeof plugins / sizeof plugins[0]); }
+MS_EXPORT int OfxGetNumberOfPlugins(void) { return ARRAY_SIZE(plugins); }
 
 MS_EXPORT OfxPlugin* OfxGetPlugin(int nth) {
     if (nth < 0 || nth >= OfxGetNumberOfPlugins()) return 0;

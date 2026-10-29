@@ -258,17 +258,18 @@ void ms_gpu_shutdown(void) {
 typedef struct {
     const char* const* shaders;
     int pass_count;
-    const float* input;
+    const MsInput* inputs;
+    int input_count;
     int width, height;
-    const MsUniform* uniforms;
-    int uniform_count;
+    const MsShaderValue* values;
+    int value_count;
     float* output;
     char* err;
     size_t err_size;
     int ok;
 } Job;
 
-#define MAX_TEXTURES 32  // the input + pass results in one job
+#define MAX_TEXTURES 32  // inputs + pass results in one job
 
 // Linear filtering (for blurs; texelFetch is not affected), edges clamped.
 static GLuint make_texture(int width, int height, const float* pixels) {
@@ -298,8 +299,8 @@ static int draw_pass(Job* job, int pass, GLuint program, const GLuint* textures,
         glBindTexture(GL_TEXTURE_2D, textures[i]);
         glUniform1i(glGetUniformLocation(program, names[i]), i);  // -1 (unused) is ignored
     }
-    for (int i = 0; i < job->uniform_count; ++i)
-        glUniform1f(glGetUniformLocation(program, job->uniforms[i].name), job->uniforms[i].value);
+    for (int i = 0; i < job->value_count; ++i)
+        glUniform1f(glGetUniformLocation(program, job->values[i].name), job->values[i].value);
     glDrawArrays(GL_TRIANGLES, 0, 3);
     return 1;
 }
@@ -314,10 +315,10 @@ static void run_job(void* arg) {
         snprintf(job->err, job->err_size, "image larger than the GPU limit (%d pixels)", max_size);
         return;
     }
-    const int input_count = 1;                                // source
-    const int texture_count = input_count + job->pass_count;  // the input, then one result per pass
+    const int texture_count = job->input_count + job->pass_count;  // inputs, then one result per pass
     if (job->pass_count < 1 || texture_count > MAX_TEXTURES || texture_count - 1 > max_units) {
-        snprintf(job->err, job->err_size, "%d passes: too many for the GPU", job->pass_count);
+        snprintf(job->err, job->err_size, "%d inputs and %d passes: too many for the GPU", job->input_count,
+                 job->pass_count);
         return;
     }
     GLuint programs_used[MAX_TEXTURES];
@@ -331,10 +332,12 @@ static void run_job(void* arg) {
     GLuint textures[MAX_TEXTURES];
     const char* names[MAX_TEXTURES];
     char pass_names[MAX_TEXTURES][16];
-    textures[0] = make_texture(job->width, job->height, job->input);
-    names[0] = "source";
+    for (int i = 0; i < job->input_count; ++i) {
+        textures[i] = make_texture(job->width, job->height, job->inputs[i].pixels);
+        names[i] = job->inputs[i].name;
+    }
     for (int p = 0; p < job->pass_count; ++p) {
-        const int i = input_count + p;
+        const int i = job->input_count + p;
         textures[i] = make_texture(job->width, job->height, NULL);
         snprintf(pass_names[p], sizeof pass_names[p], "pass%d", p + 1);
         names[i] = pass_names[p];
@@ -346,7 +349,7 @@ static void run_job(void* arg) {
     int ok = 1;
     for (int p = 0; p < job->pass_count && ok; ++p) {
         // Pass p reads the inputs and the results of passes 1..p, and writes its own.
-        const int target = input_count + p;
+        const int target = job->input_count + p;
         ok = draw_pass(job, p, programs_used[p], textures, names, target, textures[target]);
     }
     if (ok) {
@@ -359,10 +362,11 @@ static void run_job(void* arg) {
     glDeleteTextures(texture_count, textures);
 }
 
-int ms_gpu_run(const char* const* shaders, int pass_count, const float* input,
-               int width, int height, const MsUniform* uniforms, int uniform_count,
+int ms_gpu_run(const char* const* shaders, int pass_count, const MsInput* inputs, int input_count,
+               int width, int height, const MsShaderValue* values, int value_count,
                float* output, char* err, size_t err_size) {
-    Job job = {shaders, pass_count, input, width, height, uniforms, uniform_count, output, err, err_size, 0};
+    Job job = {shaders, pass_count, inputs, input_count, width, height, values, value_count,
+               output, err, err_size, 0};
     if (!run_on_gpu_thread(run_job, &job)) {
         snprintf(err, err_size, "cannot start the GPU thread");
         return 0;

@@ -17,11 +17,12 @@ static const char* shader =
 int main(void) {
     float input[4 * 4] = {0.1f, 0.2f, 0.3f, 0.4f, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
     float output[4 * 4] = {0};
-    const MsUniform gain = {"gain", 2.0f};
+    const MsShaderValue gain = {"gain", 2.0f};
     char err[2048];
 
     printf("GPU: %s\n", ms_gpu_info());
-    int ok = ms_gpu_run(&shader, 1, input, 2, 2, &gain, 1, output, err, sizeof err);
+    const MsInput source = {"source", input};
+    int ok = ms_gpu_run(&shader, 1, &source, 1, 2, 2, &gain, 1, output, err, sizeof err);
     if (ok)
         for (int i = 0; i < 16; ++i) ok = ok && output[i] == 2.0f * input[i];
     printf("%s\n", ok ? "OK: shader ran and the result is correct" : err);
