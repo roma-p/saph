@@ -1,0 +1,5 @@
+# clangd (editor): reads build/compile_commands.json, written by ./build.sh.
+CompileFlags:
+  CompilationDatabase: build
+  # The macOS build compiles for two processors: check for this one only.
+  Remove: [-arch]

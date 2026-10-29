@@ -1,0 +1,5 @@
+# Code style: LLVM, with 4-space indents and 100-column lines.
+# Editors format with it on save (clangd); tools/format.sh formats every file.
+BasedOnStyle: LLVM
+IndentWidth: 4
+ColumnLimit: 100

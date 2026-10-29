@@ -1,0 +1,7 @@
+build/
+build-sanitize/
+third_party/
+
+.DS_Store
+.vscode/
+.idea/
