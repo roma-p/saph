@@ -151,7 +151,7 @@ def timed(n, grade, frames_only=False, log=False):
         if log and rep and os.path.exists(PLUGIN_LOG):
             with open(PLUGIN_LOG) as f:
                 f.seek(start)
-                own += [float(m) for m in re.findall(r" effect ([0-9.]+),", f.read())]
+                own += [float(m) for m in re.findall(r" effect ([0-9.]+)", f.read())]
     nuke.delete(w); created.remove(w)
     if frames_only:
         ms, how = min(frames), ""

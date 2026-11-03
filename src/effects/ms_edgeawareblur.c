@@ -283,24 +283,31 @@ static int process(const MsRender *r, const Settings *s) {
     const MsDtSettings *dt = &s->dt;
     const int soft = dt->type == MS_DT_SOFT;
     const int smooth_radius = (int)floor(s->edge_smooth + 0.5); // as the blur rounds it
-    float *dx = malloc(pixels * sizeof(float));
-    float *dy = malloc(pixels * sizeof(float));
-    float *smooth = smooth_radius > 0 ? malloc(pixels * 4 * sizeof(float)) : NULL;
-    float *scratch = dt->passes > 1 ? malloc(pixels * 4 * sizeof(float)) : NULL;
-    // Soft: the weights a^d, the same for every pass.
-    float *wx = soft ? malloc(pixels * sizeof(float)) : NULL;
-    float *wy = soft ? malloc(pixels * sizeof(float)) : NULL;
-    if (!dx || !dy || (smooth_radius > 0 && !smooth) || (dt->passes > 1 && !scratch) ||
-        (soft && (!wx || !wy))) {
-        free(dx);
-        free(dy);
-        free(smooth);
-        free(scratch);
-        free(wx);
-        free(wy);
+    // The images between the kernels, in one allocation (each part on 64 bytes): the
+    // distances dx, dy; Edge Smooth's image; a scratch image between passes; Soft's weights
+    // a^d, the same for every pass.
+    const size_t floats[6] = {pixels,
+                              pixels,
+                              smooth_radius > 0 ? pixels * 4 : 0,
+                              dt->passes > 1 ? pixels * 4 : 0,
+                              soft ? pixels : 0,
+                              soft ? pixels : 0};
+    size_t total = 0;
+    for (int i = 0; i < 6; ++i)
+        total += (floats[i] + 15) / 16 * 16;
+    float *block = malloc(total * sizeof(float));
+    if (!block) {
         snprintf(r->err, r->err_size, "not enough memory");
         return 0;
     }
+    float *part[6];
+    size_t at = 0;
+    for (int i = 0; i < 6; ++i) {
+        part[i] = floats[i] ? block + at : NULL;
+        at += (floats[i] + 15) / 16 * 16;
+    }
+    float *dx = part[0], *dy = part[1], *smooth = part[2], *scratch = part[3], *wx = part[4],
+          *wy = part[5];
     const MsInput *source_in = &r->inputs[SOURCE];
     MsImage source, edge, mask, output, ismooth, iscratch, idx, idy, iwx, iwy, ilargest;
     MsImage dy_turned, turned;
@@ -382,14 +389,9 @@ static int process(const MsRender *r, const Settings *s) {
         const int span = p.span_x > p.span_y ? p.span_x : p.span_y;
         const int reach = p.reach_x > p.reach_y ? p.reach_x : p.reach_y;
         p.margin = dt->type == MS_DT_SHARP ? span + p.span_wide + 2 : reach + 3;
-        // Uploaded: the Source, the Edge Source and the Mask when connected (and other images).
-        MsImage *const inputs[] = {&source, edges == &edge ? &edge : NULL,
-                                   masks == &mask ? &mask : NULL};
-        MsImage *uploaded[3];
-        int count = 0;
-        for (size_t i = 0; i < ARRAY_SIZE(inputs); ++i)
-            if (inputs[i])
-                uploaded[count++] = inputs[i];
+        // Uploaded: the Source, the Edge Source and the Mask when connected (ms_run uploads an
+        // image standing in for another once).
+        MsImage *const inputs[] = {&source, edges, masks};
         // Between the kernels: those of the preparation, of the passes, and of the GPU's
         // directions (Sharp, Softer) or Soft's weights.
         MsImage *between[8] = {&idx, &idy, &iscratch};
@@ -398,33 +400,39 @@ static int process(const MsRender *r, const Settings *s) {
             between[between_count++] = &ismooth;
         between[between_count++] = soft ? &iwx : &dy_turned;
         between[between_count++] = soft ? &iwy : &turned;
-        ok = ms_run(run_passes, &p, uploaded, count, between, between_count, &output, r->info,
-                    r->err, r->err_size);
+        ok = ms_run(run_passes, &p, inputs, ARRAY_SIZE(inputs), between, between_count, &output,
+                    r->info, r->err, r->err_size);
     }
-    free(dx);
-    free(dy);
-    free(smooth);
-    free(scratch);
-    free(wx);
-    free(wy);
+    free(block);
     return ok;
 }
 
 // ---------------------------------------------------------------- render
 
+// The blur type of the Blur Type menu.
+static MsDtType blur_type(const double *v) {
+    const int type = (int)v[BLUR_TYPE];
+    return type == 1 ? MS_DT_SOFT : (type == 2 ? MS_DT_SOFTER : MS_DT_SHARP);
+}
+
+// The blur width in pixels per direction (Sharp without Subpixel: whole pixels).
+static void blur_widths(const double *v, double *x, double *y) {
+    *x = v[BLUR_AMOUNT] * v[REL_X];
+    *y = v[BLUR_AMOUNT] * v[REL_Y];
+    if (blur_type(v) == MS_DT_SHARP && !v[SUBPIXEL]) {
+        *x = floor(*x + 0.5);
+        *y = floor(*y + 0.5);
+    }
+}
+
 static int render(const MsRender *r) {
     const double *v = r->values;
     Settings s;
-    const double blur = v[BLUR_AMOUNT], threshold = v[EDGE_THRESHOLD];
-    const int type = (int)v[BLUR_TYPE], filter = (int)v[FILTER];
-    s.dt.type = type == 1 ? MS_DT_SOFT : (type == 2 ? MS_DT_SOFTER : MS_DT_SHARP);
+    const double threshold = v[EDGE_THRESHOLD];
+    const int filter = (int)v[FILTER];
+    s.dt.type = blur_type(v);
     s.dt.passes = filter_passes[filter >= 0 && filter < 4 ? filter : 2];
-    s.dt.blur_x = blur * v[REL_X];
-    s.dt.blur_y = blur * v[REL_Y];
-    if (s.dt.type == MS_DT_SHARP && !v[SUBPIXEL]) { // whole pixels
-        s.dt.blur_x = floor(s.dt.blur_x + 0.5);
-        s.dt.blur_y = floor(s.dt.blur_y + 0.5);
-    }
+    blur_widths(v, &s.dt.blur_x, &s.dt.blur_y);
     s.scale_x = threshold > 0 ? s.dt.blur_x / (3.0 * threshold) : 1e12;
     s.scale_y = threshold > 0 ? s.dt.blur_y / (3.0 * threshold) : 1e12;
     s.use_alpha = (int)v[USE_ALPHA];
@@ -440,12 +448,8 @@ static int render(const MsRender *r) {
 // pixels, which their blur leaves as they are): the Source as it is.
 static int identity(const double *v, const int *connected) {
     (void)connected;
-    double blur_x = v[BLUR_AMOUNT] * v[REL_X], blur_y = v[BLUR_AMOUNT] * v[REL_Y];
-    const int type = (int)v[BLUR_TYPE];
-    if (type != 1 && type != 2 && !v[SUBPIXEL]) { // Sharp, whole pixels: as render()
-        blur_x = floor(blur_x + 0.5);
-        blur_y = floor(blur_y + 0.5);
-    }
+    double blur_x, blur_y;
+    blur_widths(v, &blur_x, &blur_y);
     return (blur_x <= 0 && blur_y <= 0) || v[EDGE_THRESHOLD] <= 0;
 }
 

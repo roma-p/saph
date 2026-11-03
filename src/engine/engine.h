@@ -106,7 +106,8 @@ typedef int (*MsRun)(MsApi api, void *user);
 #define MS_RUN_DECLINE (-10002)
 
 // Runs `run` on the first API that works. Before a GPU attempt the `inputs` are marked as
-// new in host memory (Halide uploads them); after it the `output` is copied back and the
+// new in host memory (Halide uploads them; NULL ones are skipped, one given twice is
+// uploaded once); after it the `output` is copied back and the
 // GPU memory of all the images is kept for the next renders (where images of the same size
 // get it: a new allocation is slow to write the first time), up to 1/16 of the machine's
 // memory (at most 2 GB). `between`: the images `run` uses between its kernels; they stay on

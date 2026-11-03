@@ -17,7 +17,7 @@ case "$(uname)" in
 Darwin) plugin=build-sanitize/MillSaph.ofx.bundle/Contents/MacOS/MillSaph.ofx; libs= ;;
 *)      plugin=build-sanitize/MillSaph.ofx.bundle/Contents/Linux-x86-64/MillSaph.ofx; libs=-ldl ;;
 esac
-cc $flags tools/test_host.c $libs -o build-sanitize/test_host
+cc $flags -Isrc tools/test_host.c src/common/half.c $libs -o build-sanitize/test_host
 
 # effect, then parameters (name=value) and unconnected inputs (!Clip)
 failed=0
@@ -49,5 +49,10 @@ Distort !Lens !Mask amount=3 enable_gpu=0
 EdgeAwareBlur !Mask edge_smooth=3
 Distort blur_lens=3 blur_mask=3 enable_gpu=0
 BandPass blur_amount1=3 blur_amount2=4 blur_mask=3
+BandPass --half
+EdgeAwareBlur --half --pad 3
+EdgeAwareBlur blur_type=1 --half
+Distort blur_mask=0.05 --half
+Distort enable_gpu=0 --half --pad 2
 CASES
 [ $failed = 0 ] && echo "all clean" || exit 1

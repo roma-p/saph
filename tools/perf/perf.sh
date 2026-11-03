@@ -20,7 +20,8 @@ if [ ! -f "$plugin" ]; then
     echo "no $plugin: run ./build.sh first"
     exit 1
 fi
-cc -std=c11 -O2 -I"$third_party/openfx/include" tools/test_host.c $libs -o build/test_host
+cc -std=c11 -O2 -I"$third_party/openfx/include" -Isrc tools/test_host.c src/common/half.c $libs \
+    -o build/test_host
 
 echo "machine: $(uname -sm), $(nproc 2>/dev/null || sysctl -n hw.ncpu) CPU threads"
 command -v nvidia-smi > /dev/null && nvidia-smi --query-gpu=name,driver_version,memory.total --format=csv,noheader | sed 's/^/GPU: /'

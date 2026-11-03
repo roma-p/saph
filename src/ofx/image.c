@@ -1,40 +1,20 @@
 // Host image helpers. See image.h.
 
-// clock_gettime: hidden by glibc in strict C11 without it.
-#define _POSIX_C_SOURCE 200809L
-
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#ifdef _WIN32
-#define WIN32_LEAN_AND_MEAN
-#include <windows.h>
-#else
-#include <time.h>
-#endif
 
+#include "common/clock.h"
 #include "common/half.h"
 #include "common/log.h"
 #include "common/mutex.h"
 #include "engine/engine.h"
 #include "ofx/image.h"
 
-// Renders of a session that print where their time goes (see ms_render_with).
+// Renders of a session that print where their time goes, their settings and API (see
+// ms_render_with).
 #define REPORTED_RENDERS 5000
-
-static double now_ms(void) {
-#ifdef _WIN32
-    LARGE_INTEGER count, frequency;
-    QueryPerformanceCounter(&count);
-    QueryPerformanceFrequency(&frequency);
-    return (double)count.QuadPart * 1e3 / (double)frequency.QuadPart;
-#else
-    struct timespec t;
-    clock_gettime(CLOCK_MONOTONIC, &t);
-    return (double)t.tv_sec * 1e3 + (double)t.tv_nsec / 1e6;
-#endif
-}
 
 // data struct wrapping ofx image handle: RGBA, in floats or 16-bit floats (the depths the
 // plugin declares; the host converts others).
@@ -209,8 +189,9 @@ static void *view(const Image *img, OfxRectI area, ptrdiff_t *row) {
 }
 
 OfxStatus ms_render_with(OfxImageEffectHandle effect, OfxPropertySetHandle in_args,
-                         const MsClip *clips, const int *connected, int clip_count,
-                         MsProcess process, void *user) {
+                         const MsEffect *e, MsRender *r) {
+    const MsClip *clips = e->clips;
+    const int *connected = r->connected, clip_count = e->clip_count;
     if (clip_count > MS_MAX_CLIPS)
         return kOfxStatFailed;
 
@@ -224,7 +205,7 @@ OfxStatus ms_render_with(OfxImageEffectHandle effect, OfxPropertySetHandle in_ar
     // Where the time goes, printed for the first renders of the session: fetching the
     // images, copying them in, the effect, copying the result out, releasing the images.
     double t[6];
-    t[0] = now_ms();
+    t[0] = ms_clock();
 
     // 2. fetch the output image: everything is computed at its size
     Image dst;
@@ -258,7 +239,7 @@ OfxStatus ms_render_with(OfxImageEffectHandle effect, OfxPropertySetHandle in_ar
         if (images[c].data && images[c].element != element)
             status = kOfxStatErrImageFormat;
     }
-    t[1] = now_ms();
+    t[1] = ms_clock();
     char how[MS_MAX_CLIPS][32]; // per input: "in place", "copied", "none"; host depth
     for (int c = 0; c < clip_count; ++c) {
         snprintf(how[c], sizeof how[c], "none");
@@ -303,20 +284,27 @@ OfxStatus ms_render_with(OfxImageEffectHandle effect, OfxPropertySetHandle in_ar
             status = kOfxStatErrMemory;
     }
 
-    // 5. process; on failure, show the error in the host.
-    t[2] = now_ms();
+    // 5. render; on failure, show the error in the host.
+    t[2] = ms_clock();
     t[3] = t[4] = t[2];
     MsRunInfo info = {MS_API_COUNT, 0, 0, 0};
     if (status == kOfxStatOK) {
         char err[2048] = "";
-        const int ok =
-            process(inputs, clip_count, half, width, height, output, output_row, &info, err,
-                    sizeof err, user);
-        t[3] = t[4] = now_ms();
+        r->inputs = inputs;
+        r->width = width;
+        r->height = height;
+        r->output = output;
+        r->output_row = output_row;
+        r->err = err;
+        r->err_size = sizeof err;
+        r->half = half;
+        r->info = &info;
+        const int ok = e->render(r);
+        t[3] = t[4] = ms_clock();
         if (ok) {
             if (result)
                 unpack_image(result, area, &dst, window);
-            t[4] = now_ms();
+            t[4] = ms_clock();
         } else {
             OfxPropertySetHandle props;
             char *name = "MillSaph";
@@ -335,7 +323,7 @@ OfxStatus ms_render_with(OfxImageEffectHandle effect, OfxPropertySetHandle in_ar
     }
     free(result);
     release_image(&dst);
-    t[5] = now_ms();
+    t[5] = ms_clock();
 
     static int reported;
     static MsMutex lock = MS_MUTEX_INIT;
@@ -347,18 +335,24 @@ OfxStatus ms_render_with(OfxImageEffectHandle effect, OfxPropertySetHandle in_ar
         char *name = "?";
         if (ms_effect->getPropertySet(effect, &props) == kOfxStatOK)
             ms_prop->propGetString(props, kOfxPropLabel, 0, &name);
-        char inputs_line[512] = "";
+        char inputs_line[512] = "", settings[1024] = "";
         size_t used = 0;
         for (int c = 0; c < clip_count && used < sizeof inputs_line; ++c)
             used += (size_t)snprintf(inputs_line + used, sizeof inputs_line - used, "%s%s %s",
                                      c ? ", " : "", clips[c].clip, how[c]);
-        ms_log("render %d %s %dx%d: fetch %.1f ms, copy in %.1f, effect %.1f (kernels with "
-               "uploads %.1f, download %.1f), copy out %.1f, release %.1f (inputs: %s; output %s, "
-               "host %s; window %d %d %d %d, image %d %d %d %d)",
-               number, name, width, height, t[1] - t[0], t[2] - t[1], t[3] - t[2],
-               info.kernels_ms, info.download_ms, t[4] - t[3], t[5] - t[4], inputs_line, result ? "copied" : "in place",
-               dst.depth, window.x1, window.y1,
-               window.x2, window.y2, area.x1, area.y1, area.x2, area.y2);
+        // The settings (WIDTH and HEIGHT in pixels): what a slow render was asked to do.
+        used = 0;
+        for (int i = 0; i < e->param_count && used < sizeof settings; ++i)
+            if (e->params[i].type != MS_PARAM_TEXT)
+                used += (size_t)snprintf(settings + used, sizeof settings - used, " %s=%g",
+                                         e->params[i].name, r->values[i]);
+        ms_log("render %d %s %dx%d on %s: fetch %.1f ms, copy in %.1f, effect %.1f (kernels "
+               "with uploads %.1f, download %.1f), copy out %.1f, release %.1f (inputs: %s; "
+               "output %s, host %s; window %d %d %d %d, image %d %d %d %d); settings:%s",
+               number, name, width, height, ms_api_name(info.api), t[1] - t[0], t[2] - t[1],
+               t[3] - t[2], info.kernels_ms, info.download_ms, t[4] - t[3], t[5] - t[4],
+               inputs_line, result ? "copied" : "in place", dst.depth, window.x1, window.y1,
+               window.x2, window.y2, area.x1, area.y1, area.x2, area.y2, settings);
     }
     return status;
 }

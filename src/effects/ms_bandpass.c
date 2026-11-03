@@ -161,9 +161,9 @@ static int render(const MsRender *r) {
     else
         ms_image_constant(&value, &no_mask, w, h);
     ms_image_rgba(&output, r->output, r->output_row, r->half, w, h);
-    // Total blur radii, rounded as the blur does (src/halide/blur.h).
     // A Mask that is the Source's image in the host: the Source stands in (uploaded once).
     const int mask_is_source = has_mask && ms_same_input(&r->inputs[MASK], &r->inputs[SOURCE]);
+    // Total blur radii, rounded as the blur does (src/halide/blur.h).
     Job j = {&source,
              mask_is_source ? &source : &mask,
              &value,
@@ -180,10 +180,10 @@ static int render(const MsRender *r) {
              (int)v[INVERT_MASK],
              has_mask};
     // Inputs uploaded to the GPU: the Source, and the Mask or the one mask value.
-    MsImage *const inputs[] = {&source, has_mask ? &mask : &value};
+    MsImage *const inputs[] = {&source, has_mask ? j.mask : &value};
     MsImage *const between[] = {&value}; // made on the GPU from the Mask
-    const int ok = ms_run(run, &j, inputs, mask_is_source ? 1 : 2, between, has_mask, &output,
-                          r->info, r->err, r->err_size);
+    const int ok = ms_run(run, &j, inputs, 2, between, has_mask, &output, r->info, r->err,
+                          r->err_size);
     free(mask_value);
     return ok;
 }

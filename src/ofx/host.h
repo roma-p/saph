@@ -16,28 +16,12 @@
 #define MS_EXPORT __attribute__((visibility("default")))
 #endif
 
-/*
-*******************************************************************************
-
-MEMO ON OFX Plugin API:
-- describe:
-    Called once, when the host scans plugins.
-    It declares name / menu / use tiles etc...
-
-- describe_in_context:
-    declare input / output of the effects
-
-- create_instance:
-    start gpu code
-
-- render:
-    compute one frame.
-
-- main_entry:
-    the single entry to holds everything.
-
-*******************************************************************************
-*/
+// The OFX actions the plugin answers (ofx/plugin.c, main_entry):
+// - describe: once, when the host scans plugins: name, menu, depths, no tiles...
+// - describe in context: the inputs and the Output of the effect.
+// - create instance: fills the text parameters (MS_Test's "Runs on", which starts the GPU).
+// - is identity: settings that leave the Source as it is (the host skips the render).
+// - render: one frame.
 
 // Host suites, fetched once when the plugin is loaded (see ofx/host.c).
 extern const OfxPropertySuiteV1 *ms_prop;

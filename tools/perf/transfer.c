@@ -11,8 +11,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <time.h>
 
+#include "common/clock.h"
 #include "transfer.h"
 
 #ifdef _WIN32
@@ -38,12 +38,6 @@ typedef int (*CuRegister)(void *, size_t, unsigned);
 typedef int (*CuUnregister)(void *);
 typedef int (*CuHostAlloc)(void **, size_t, unsigned);
 typedef int (*CuHostFree)(void *);
-
-static double now_ms(void) {
-    struct timespec t;
-    clock_gettime(CLOCK_MONOTONIC, &t);
-    return (double)t.tv_sec * 1e3 + (double)t.tv_nsec / 1e6;
-}
 
 #define TRIES 10
 
@@ -97,26 +91,26 @@ int ms_transfer_bench(int width, int height) {
     double up[3] = {1e30, 1e30, 1e30}, down[3] = {1e30, 1e30, 1e30};
     double reg = 1e30, unreg = 1e30, copy_in = 1e30, copy_out = 1e30;
     for (int t = 0; t <= TRIES; ++t) {
-        double a = now_ms();
+        double a = ms_clock();
         htod(gpu, host, bytes);
-        double b = now_ms();
+        double b = ms_clock();
         dtoh(host, gpu, bytes);
-        double c = now_ms();
+        double c = ms_clock();
         if (t > 0) {
             up[0] = b - a < up[0] ? b - a : up[0];
             down[0] = c - b < down[0] ? c - b : down[0];
         }
 
-        a = now_ms();
+        a = ms_clock();
         const int registered = host_register(host, bytes, 0) == 0;
-        b = now_ms();
+        b = ms_clock();
         htod(gpu, host, bytes);
-        c = now_ms();
+        c = ms_clock();
         dtoh(host, gpu, bytes);
-        double d = now_ms();
+        double d = ms_clock();
         if (registered)
             host_unregister(host);
-        double e = now_ms();
+        double e = ms_clock();
         if (t > 0 && registered) {
             reg = b - a < reg ? b - a : reg;
             up[1] = c - b < up[1] ? c - b : up[1];
@@ -124,15 +118,15 @@ int ms_transfer_bench(int width, int height) {
             unreg = e - d < unreg ? e - d : unreg;
         }
 
-        a = now_ms();
+        a = ms_clock();
         memcpy(pinned, host, bytes);
-        b = now_ms();
+        b = ms_clock();
         htod(gpu, pinned, bytes);
-        c = now_ms();
+        c = ms_clock();
         dtoh(pinned, gpu, bytes);
-        d = now_ms();
+        d = ms_clock();
         memcpy(host, pinned, bytes);
-        e = now_ms();
+        e = ms_clock();
         if (t > 0) {
             copy_in = b - a < copy_in ? b - a : copy_in;
             up[2] = c - b < up[2] ? c - b : up[2];

@@ -28,8 +28,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <time.h>
 
+#include "common/clock.h"
 #include "common/effect.h"
 #include "common/half.h"
 #include "effects/profile.h"
@@ -47,12 +47,6 @@
 #endif
 
 static int width = 3840, height = 2160, renders = 5;
-
-static double now_ms(void) {
-    struct timespec t;
-    clock_gettime(CLOCK_MONOTONIC, &t);
-    return (double)t.tv_sec * 1e3 + (double)t.tv_nsec / 1e6;
-}
 
 static const MsEffect *find_effect(const char *name) {
     for (int i = 0; i < ms_effect_count; ++i)
@@ -82,10 +76,6 @@ static void rows(MsProfile *p) { p->rows_margin = 0; }
 static void blocks(MsProfile *p) { p->rows_margin = 100000; }
 static void soft_gpu(MsProfile *p) { p->soft_gpu = 1; }
 static void soft_cpu(MsProfile *p) { p->soft_gpu = 0; }
-static void pageable(MsProfile *p) {
-    (void)p;
-    ms_pin_host(0); // set back for the next case by run_case
-}
 
 static MsProfile defaults[MS_API_COUNT]; // the effects' own profiles
 
@@ -121,6 +111,26 @@ static int has_word(const char *settings, const char *word) {
     return 0;
 }
 
+// Renders `r` `renders` times on the API set (ms_api_only). Returns the best time after the
+// first (ms; the first's with one render), -2 when the effect does not run on that API (it
+// declines it, e.g. Soft on the GPU), or -1 on failure (the reason in r->err); `first`: the
+// first render's time.
+static double time_renders(const MsEffect *e, const MsRender *r, double *first) {
+    double best = -1;
+    *first = -1;
+    for (int i = 0; i < renders; ++i) {
+        const double t = ms_clock();
+        if (!e->render(r))
+            return r->info->declined ? -2 : -1;
+        const double ms = ms_clock() - t;
+        if (i == 0)
+            *first = ms;
+        else if (best < 0 || ms < best)
+            best = ms;
+    }
+    return renders > 1 ? best : *first;
+}
+
 // Renders the case on `api` `renders` times. Returns the best time after the first (ms), -2
 // when the effect does not run on `api` (it declines it, e.g. Soft on the GPU), or -1 on
 // failure; `first`: the first render's time. With `half`, the images are given in 16-bit
@@ -128,13 +138,18 @@ static int has_word(const char *settings, const char *word) {
 static double run_case(const Case *c, MsApi api, const float *source, float **blank, float *output,
                        double *first, int half) {
     const MsEffect *e = find_effect(c->effect);
-    double values[64];
-    int connected[8] = {0};
-    MsInput inputs[8];
+    if (!e) {
+        printf("    no effect %s\n", c->effect);
+        return -1;
+    }
+    double values[MS_MAX_PARAMS];
+    int connected[MS_MAX_CLIPS] = {0};
+    MsInput inputs[MS_MAX_CLIPS];
     set_values(e, c->settings, values);
     // "same": every input connected to the Source's image itself, as a host plugging the
     // Source in everywhere (the effects upload it once).
     // "lens": the Lens connected (to an image of its own).
+    // "pageable": CUDA copies from the images as they are, not page-locked (engine.h).
     const int same = has_word(c->settings, "same"), lens = has_word(c->settings, "lens");
     const size_t floats = (size_t)width * height * 4;
     uint16_t *halves = half ? malloc(floats * sizeof(uint16_t)) : NULL;
@@ -157,31 +172,19 @@ static double run_case(const Case *c, MsApi api, const float *source, float **bl
                   width,  height,    half ? (void *)result : (void *)output,
                   (ptrdiff_t)width * 4, err, sizeof err, half, &info};
     MsProfile profile = defaults[api];
-    ms_pin_host(1);
     if (c->tweak)
         c->tweak(&profile);
     ms_profile_set(api, &profile);
+    ms_pin_host(!has_word(c->settings, "pageable"));
     ms_api_only(api);
-    double best = -1, failed = 0;
-    for (int i = 0; i < renders && !failed; ++i) {
-        const double t = now_ms();
-        if (!e->render(&r)) {
-            if (!info.declined)
-                printf("    render failed: %s\n", err);
-            failed = info.declined ? -2 : -1;
-            break;
-        }
-        const double ms = now_ms() - t;
-        if (i == 0)
-            *first = ms;
-        else if (best < 0 || ms < best)
-            best = ms;
-    }
-    for (size_t i = 0; half && !failed && i < floats; ++i)
+    const double best = time_renders(e, &r, first);
+    if (best == -1)
+        printf("    render failed: %s\n", err);
+    for (size_t i = 0; half && best >= 0 && i < floats; ++i)
         output[i] = ms_float_from_half(result[i]);
     free(halves);
     free(result);
-    return failed ? failed : renders > 1 ? best : *first;
+    return best;
 }
 
 // ---------------------------------------------------------------- sweep
@@ -247,20 +250,9 @@ static double timed(const MsEffect *e, const double *values, const int *connecte
     MsRender r = {values, connected, inputs,   width, height, width, height, output,
                   (ptrdiff_t)width * 4, err, err_size, 0, &info};
     ms_api_only(api);
-    double best = -1;
-    *first = -1;
-    for (int i = 0; i < renders; ++i) {
-        const double t = now_ms();
-        if (!e->render(&r))
-            return -1;
-        const double ms = now_ms() - t;
-        if (i == 0)
-            *first = ms;
-        else if (best < 0 || ms < best)
-            best = ms;
-    }
+    const double best = time_renders(e, &r, first);
     *used = info.api;
-    return renders > 1 ? best : *first;
+    return best < 0 ? -1 : best;
 }
 
 typedef struct {
@@ -268,7 +260,7 @@ typedef struct {
     const float *source;
     float *cpu, *gpu;
     FILE *csv;
-    const float *images[8]; // per input, an image other than the Source (NULL: the Source)
+    const float *images[MS_MAX_CLIPS]; // per input, an image other than the Source (NULL: the Source)
 } Sweep;
 
 // One setting: `values` (pixels), the inputs in `connected`; printed with `mode`, `what` and
@@ -277,8 +269,8 @@ typedef struct {
 // each optional input connected, index: its place among the effect's inputs).
 static void sweep_one(const Sweep *s, const double *values, const int *connected, const char *mode,
                       const char *what, const char *value, const char *setting) {
-    MsInput inputs[8];
-    for (int k = 0; k < s->e->clip_count && k < 8; ++k) { // connected: its image, or the Source
+    MsInput inputs[MS_MAX_CLIPS];
+    for (int k = 0; k < s->e->clip_count && k < MS_MAX_CLIPS; ++k) { // connected: its image, or the Source
         const float *image = s->images[k] ? s->images[k] : s->source;
         inputs[k] = (MsInput){connected[k] ? image : NULL, (ptrdiff_t)width * 4};
     }
@@ -305,31 +297,45 @@ static void sweep_one(const Sweep *s, const double *values, const int *connected
     fflush(s->csv); // kept if the sweep stops before the end
 }
 
-static void sweep_effect(Sweep *s) {
-    const MsEffect *e = s->e;
-    if (e->param_count > 64 || e->clip_count > 8)
-        return;
-    int mode_param = -1;
+// The modes of `e` (modes[]): their number (1 without), and mode m's values (the others at
+// their defaults), name ("-" without) and setting ("blur_type=1", "" without).
+static int mode_param(const MsEffect *e) {
     for (size_t m = 0; m < sizeof modes / sizeof modes[0]; ++m)
         for (int i = 0; i < e->param_count; ++i)
             if (strcmp(modes[m].effect, e->label) == 0 &&
                 strcmp(modes[m].param, e->params[i].name) == 0)
-                mode_param = i;
-    const int mode_count = mode_param >= 0 ? e->params[mode_param].entry_count : 1;
-    for (int m = 0; m < mode_count; ++m) {
-        char mode[64] = "-", mode_setting[64] = "";
-        double base[64];
-        set_values(e, "", base);
-        if (mode_param >= 0) {
-            base[mode_param] = m;
-            snprintf(mode, sizeof mode, "%s", e->params[mode_param].entries[m]);
-            snprintf(mode_setting, sizeof mode_setting, "%s=%d", e->params[mode_param].name, m);
-        }
-        int connected[8] = {1};
+                return i;
+    return -1;
+}
+static int mode_count(const MsEffect *e) {
+    const int p = mode_param(e);
+    return p >= 0 ? e->params[p].entry_count : 1;
+}
+static void mode_values(const MsEffect *e, int m, double *base, char mode[64], char setting[64]) {
+    const int p = mode_param(e);
+    set_values(e, "", base);
+    snprintf(mode, 64, "-");
+    setting[0] = '\0';
+    if (p >= 0) {
+        base[p] = m;
+        snprintf(mode, 64, "%s", e->params[p].entries[m]);
+        snprintf(setting, 64, "%s=%d", e->params[p].name, m);
+    }
+}
+
+static void sweep_effect(Sweep *s) {
+    const MsEffect *e = s->e;
+    if (e->param_count > MS_MAX_PARAMS || e->clip_count > MS_MAX_CLIPS)
+        return;
+    for (int m = 0; m < mode_count(e); ++m) {
+        char mode[64], mode_setting[64];
+        double base[MS_MAX_PARAMS];
+        mode_values(e, m, base, mode, mode_setting);
+        int connected[MS_MAX_CLIPS] = {1};
         sweep_one(s, base, connected, mode, "defaults", "", mode_setting);
         // Each optional input connected (the Source image stands in).
         for (int k = 1; k < e->clip_count; ++k) {
-            int with[8] = {1};
+            int with[MS_MAX_CLIPS] = {1};
             with[k] = 1;
             char what[64], setting[160];
             snprintf(what, sizeof what, "input %s", e->clips[k].clip);
@@ -338,9 +344,9 @@ static void sweep_effect(Sweep *s) {
         }
         for (int i = 0; i < e->param_count; ++i) {
             const MsParam *p = &e->params[i];
-            if (i == mode_param)
+            if (i == mode_param(e))
                 continue;
-            int masked[8] = {1}; // mask settings: with the Mask connected
+            int masked[MS_MAX_CLIPS] = {1}; // mask settings: with the Mask connected
             char inputs[64] = "";
             for (int k = 1; k < e->clip_count; ++k) {
                 masked[k] = strstr(p->name, "mask") && e->clips[k].mask;
@@ -350,7 +356,7 @@ static void sweep_effect(Sweep *s) {
             double v[8];
             const int n = series(p, v);
             for (int j = 0; j < n; ++j) {
-                double values[64];
+                double values[MS_MAX_PARAMS];
                 memcpy(values, base, sizeof values);
                 values[i] = in_pixels(p, v[j]);
                 char value[48];
@@ -451,30 +457,18 @@ static void sweep_images(Sweep *s, const char *only, float *source, float *other
         for (int f = 0; f < ms_effect_count; ++f) {
             const MsEffect *e = ms_effects[f];
             if (strcmp(e->label, "MS_Test") == 0 || (only && strcmp(e->label, only) != 0) ||
-                e->param_count > 64 || e->clip_count > 8)
+                e->param_count > MS_MAX_PARAMS || e->clip_count > MS_MAX_CLIPS)
                 continue;
             s->e = e;
-            int mode_param = -1;
-            for (size_t m = 0; m < sizeof modes / sizeof modes[0]; ++m)
-                for (int k = 0; k < e->param_count; ++k)
-                    if (strcmp(modes[m].effect, e->label) == 0 &&
-                        strcmp(modes[m].param, e->params[k].name) == 0)
-                        mode_param = k;
-            const int mode_count = mode_param >= 0 ? e->params[mode_param].entry_count : 1;
-            for (int m = 0; m < mode_count; ++m) {
-                char mode[64] = "-", mode_setting[64] = "";
-                double base[64];
-                set_values(e, "", base);
-                if (mode_param >= 0) {
-                    base[mode_param] = m;
-                    snprintf(mode, sizeof mode, "%s", e->params[mode_param].entries[m]);
-                    snprintf(mode_setting, sizeof mode_setting, "%s=%d ",
-                             e->params[mode_param].name, m);
-                }
+            for (int m = 0; m < mode_count(e); ++m) {
+                char mode[64], mode_setting[64];
+                double base[MS_MAX_PARAMS];
+                mode_values(e, m, base, mode, mode_setting);
+                const char *space = mode_setting[0] ? " " : "";
                 char setting[256], what[64];
                 if (i >= 0) {
-                    int connected[8] = {1};
-                    snprintf(setting, sizeof setting, "%simage=%s", mode_setting, name);
+                    int connected[MS_MAX_CLIPS] = {1};
+                    snprintf(setting, sizeof setting, "%s%simage=%s", mode_setting, space, name);
                     sweep_one(s, base, connected, mode, "image", name, setting);
                     continue;
                 }
@@ -487,12 +481,12 @@ static void sweep_images(Sweep *s, const char *only, float *source, float *other
                             continue;
                         if (!load_image(t->name, t, other))
                             continue;
-                        int connected[8] = {1};
+                        int connected[MS_MAX_CLIPS] = {1};
                         connected[k] = 1;
                         s->images[k] = other;
                         snprintf(what, sizeof what, "%s image", e->clips[k].clip);
-                        snprintf(setting, sizeof setting, "%simage=plate input=%s/%d/%s",
-                                 mode_setting, e->clips[k].clip, k, t->name);
+                        snprintf(setting, sizeof setting, "%s%simage=plate input=%s/%d/%s",
+                                 mode_setting, space, e->clips[k].clip, k, t->name);
                         sweep_one(s, base, connected, mode, what, t->name, setting);
                         s->images[k] = NULL;
                     }
@@ -600,8 +594,8 @@ int main(int argc, char **argv) {
     float *source = malloc(floats * sizeof(float));
     float *cpu = malloc(floats * sizeof(float));
     float *gpu = malloc(floats * sizeof(float));
-    float *blank[8];
-    for (int k = 0; k < 8; ++k)
+    float *blank[MS_MAX_CLIPS];
+    for (int k = 0; k < MS_MAX_CLIPS; ++k)
         blank[k] = calloc(floats, sizeof(float));
     if (!source || !cpu || !gpu) {
         printf("not enough memory\n");
@@ -662,8 +656,8 @@ int main(int argc, char **argv) {
         {"Distort", "MS_Distort", "", NULL},
         {"Distort same", "MS_Distort", "same", NULL},
         {"Distort lens", "MS_Distort", "lens", NULL},
-        {"Distort lens pageable", "MS_Distort", "lens", pageable},
-        {"EAB Sharp pageable", "MS_EdgeAwareBlur", "blur_type=0", pageable},
+        {"Distort lens pageable", "MS_Distort", "lens pageable", NULL},
+        {"EAB Sharp pageable", "MS_EdgeAwareBlur", "blur_type=0 pageable", NULL},
         {"Distort enable_gpu=0", "MS_Distort", "enable_gpu=0", NULL},
     };
 
@@ -717,7 +711,7 @@ int main(int argc, char **argv) {
     }
     ms_api_only(MS_API_COUNT);
     ms_engine_shutdown();
-    for (int k = 0; k < 8; ++k)
+    for (int k = 0; k < MS_MAX_CLIPS; ++k)
         free(blank[k]);
     free(source);
     free(cpu);

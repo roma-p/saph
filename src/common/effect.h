@@ -49,6 +49,10 @@ typedef struct {
     const char *(*text)(void); // TEXT: the line to show
 } MsParam;
 
+// The most inputs and parameters of an effect (the hosts' code sizes arrays by them).
+#define MS_MAX_CLIPS 8
+#define MS_MAX_PARAMS 64
+
 // An input image: RGBA (channels next to each other), bottom row first, in floats or
 // 16-bit floats (MsRender.half), `row` of these from the start of one row to the next (4 x
 // width when packed, more when the host's rows are longer).

@@ -346,17 +346,11 @@ static int process(const MsRender *r, const Settings *s) {
                    .levels = &blevels,
                    .width = width,
                    .height = height};
-        MsImage *in[3] = {&bsource};
-        int in_count = 1;
-        if (s->has_lens && !lens_is_source)
-            in[in_count++] = &blens;
-        if (s->has_mask && !mask_is_source)
-            in[in_count++] = &bmask;
-        // Without a mask, its one value is an input (uploaded); with one, it is made there.
-        if (!s->has_mask)
-            in[in_count++] = &bmask_value;
+        // Uploaded: the Source, the Lens and Mask standing in (ms_run uploads an image given
+        // twice once); without a mask, its one value (with one, it is made there).
+        MsImage *const in[] = {&bsource, job.lens, s->has_mask ? job.mask : &bmask_value};
         MsImage *const between[] = {&bshift, &bmask_value, &blargest, &blevels};
-        ok = ms_run(run, &job, in, in_count, between, ARRAY_SIZE(between), &boutput, r->info,
+        ok = ms_run(run, &job, in, ARRAY_SIZE(in), between, ARRAY_SIZE(between), &boutput, r->info,
                     r->err, r->err_size);
     } else {
         snprintf(r->err, r->err_size, "not enough memory");

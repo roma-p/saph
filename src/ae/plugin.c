@@ -41,14 +41,12 @@
     (PF_OutFlag2_SUPPORTS_SMART_RENDER | PF_OutFlag2_FLOAT_COLOR_AWARE |                           \
      PF_OutFlag2_SUPPORTS_THREADED_RENDERING) // 0x08001400
 
-#define MAX_PARAMS 64
-#define MAX_CLIPS 8
 #define PROBE_ID 100      // checkout id of the first look at the Source (see pre_render)
 #define SLIDER_LIMIT 1e6f // After Effects sliders need finite limits
 
 typedef struct {
     const MsEffect *effect;
-    char popups[MAX_PARAMS][256]; // CHOICE entries as After Effects wants them: "A|B|C"
+    char popups[MS_MAX_PARAMS][256]; // CHOICE entries as After Effects wants them: "A|B|C"
 } AeEffect;
 
 static AeEffect effects[] = {
@@ -86,7 +84,7 @@ static PF_Err add_param(PF_InData *in_data, PF_ParamDef *def) {
 
 static PF_Err params_setup(AeEffect *ae, PF_InData *in_data, PF_OutData *out_data) {
     const MsEffect *e = ae->effect;
-    if (e->param_count > MAX_PARAMS || e->clip_count > MAX_CLIPS)
+    if (e->param_count > MS_MAX_PARAMS || e->clip_count > MS_MAX_CLIPS)
         return PF_Err_INTERNAL_STRUCT_DAMAGED;
     PF_Err err = PF_Err_NONE;
     for (int i = 0; i < e->param_count && !err; ++i) {
@@ -310,10 +308,10 @@ static PF_Err render(const MsEffect *e, PF_InData *in_data, PF_OutData *out_data
         in_data->height * (double)in_data->downsample_y.num / in_data->downsample_y.den;
     const size_t bytes = (size_t)area.width * area.height * 4 * sizeof(float);
 
-    double values[MAX_PARAMS];
-    int connected[MAX_CLIPS];
-    MsInput inputs[MAX_CLIPS];
-    float *buffers[MAX_CLIPS] = {NULL};
+    double values[MS_MAX_PARAMS];
+    int connected[MS_MAX_CLIPS];
+    MsInput inputs[MS_MAX_CLIPS];
+    float *buffers[MS_MAX_CLIPS] = {NULL};
     float *result = malloc(bytes);
     char message[256] = "";
     PF_Err err = PF_Err_NONE;
@@ -354,7 +352,7 @@ static PF_Err render(const MsEffect *e, PF_InData *in_data, PF_OutData *out_data
 
 static PF_Err smart_render(const MsEffect *e, PF_InData *in_data, PF_OutData *out_data,
                            PF_SmartRenderExtra *extra) {
-    PF_EffectWorld *worlds[MAX_CLIPS] = {NULL};
+    PF_EffectWorld *worlds[MS_MAX_CLIPS] = {NULL};
     PF_EffectWorld *output = NULL;
     PF_Err err = extra->cb->checkout_layer_pixels(in_data->effect_ref, 0, &worlds[0]);
     for (int c = 1; c < e->clip_count && !err; ++c)

@@ -13,6 +13,8 @@
 //   --save file  writes the Output (raw RGBA floats, bottom row first), to compare renders
 //   --pad N      images N pixels larger than the render window on each side (rows longer
 //                than the window, as hosts can give)
+//   --half       images in 16-bit floats, as hosts working in half give them (--save
+//                still writes floats)
 //
 // Prints what the effect declares and the result of each action; exits with 1 if an
 // action fails. Only the host functions MillSaph uses are implemented.
@@ -28,6 +30,7 @@
 #include <string.h>
 #include <time.h>
 
+#include "common/half.h" // built with src/common/half.c
 #include "ofxImageEffect.h"
 #include "ofxMessage.h"
 #include "ofxParam.h"
@@ -36,6 +39,7 @@
 // Odd sizes by default, to catch mistakes with odd rows and columns.
 static int width = 97, height = 61, photo = 0;
 static int pad = 0; // --pad: images cover the render window and `pad` more pixels per side
+static int half = 0; // --half: images in 16-bit floats
 
 // ---------------------------------------------------------------- property sets
 
@@ -238,7 +242,8 @@ typedef struct {
     char name[64];
     PropSet props;
     PropSet image; // the image the host gives for this clip
-    float *pixels; // width x height RGBA
+    float *pixels;    // width x height RGBA
+    uint16_t *halves; // --half: the same in 16-bit floats, what the plugin reads and writes
 } Clip;
 
 static Clip clips[MAX_CLIPS];
@@ -381,8 +386,15 @@ static void make_images(int argc, char **argv) {
 
         OfxPropertySetHandle image = (OfxPropertySetHandle)&clip->image;
         clip->image = (PropSet){.owner = "image"};
-        set_pointer(image, kOfxImagePropData, 0, clip->pixels);
-        set_int(image, kOfxImagePropRowBytes, 0, w * 4 * (int)sizeof(float));
+        if (half) {
+            clip->halves = malloc((size_t)w * h * 4 * sizeof(uint16_t));
+            for (size_t i = 0; clip->halves && i < (size_t)w * h * 4; ++i)
+                clip->halves[i] = ms_half_from_float(clip->pixels[i]);
+        }
+        set_pointer(image, kOfxImagePropData, 0, half ? (void *)clip->halves : clip->pixels);
+        set_int(image, kOfxImagePropRowBytes, 0, w * 4 * (half ? 2 : 4));
+        set_string(image, kOfxImageEffectPropPixelDepth, 0,
+                   half ? kOfxBitDepthHalf : kOfxBitDepthFloat);
         const int bounds[4] = {-pad, -pad, width + pad, height + pad};
         for (int i = 0; i < 4; ++i)
             set_int(image, kOfxImagePropBounds, i, bounds[i]);
@@ -426,12 +438,14 @@ int main(int argc, char **argv) {
     if (argc < 3) {
         fprintf(stderr,
                 "usage: %s <plugin.ofx> <effect id> [name=value ...] [!Clip ...] [--size WxH] "
-                "[--frames N] [--save file]\n",
+                "[--frames N] [--save file] [--pad N] [--half]\n",
                 argv[0]);
         return 2;
     }
     int frames = 1;
     const char *save = NULL;
+    for (int a = 3; a < argc; ++a)
+        half |= strcmp(argv[a], "--half") == 0;
     for (int a = 3; a + 1 < argc; ++a) {
         if (strcmp(argv[a], "--size") == 0 && sscanf(argv[a + 1], "%dx%d", &width, &height) == 2 &&
             width > 0 && height > 0)
@@ -504,6 +518,8 @@ int main(int argc, char **argv) {
             continue;
         FILE *f = fopen(save, "wb");
         const size_t floats = (size_t)(width + 2 * pad) * (height + 2 * pad) * 4;
+        for (size_t i = 0; half && clips[c].halves && i < floats; ++i)
+            clips[c].pixels[i] = ms_float_from_half(clips[c].halves[i]);
         ok = f && fwrite(clips[c].pixels, sizeof(float), floats, f) == floats;
         if (f)
             fclose(f);
@@ -511,8 +527,10 @@ int main(int argc, char **argv) {
             printf("cannot write %s\n", save);
     }
 
-    for (int c = 0; c < clip_count; ++c)
+    for (int c = 0; c < clip_count; ++c) {
         free(clips[c].pixels);
+        free(clips[c].halves);
+    }
     dlclose(library);
     return ok ? 0 : 1;
 }

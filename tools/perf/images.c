@@ -12,6 +12,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "common/half.h"
+
 // ---------------------------------------------------------------- noise
 
 // A value in [0, 1) for each lattice point and seed.
@@ -257,50 +259,6 @@ const int ms_test_image_count = (int)(sizeof ms_test_images / sizeof ms_test_ima
 
 // ---------------------------------------------------------------- EXR
 
-// Half floats (IEEE 754 binary16), rounded to the nearest.
-static uint16_t to_half(float f) {
-    uint32_t u;
-    memcpy(&u, &f, 4);
-    const uint16_t sign = (uint16_t)((u >> 16) & 0x8000u);
-    const uint32_t a = u & 0x7fffffffu;
-    if (a >= 0x7f800000u) // infinity, NaN
-        return (uint16_t)(sign | 0x7c00u | (a > 0x7f800000u ? 0x200u : 0));
-    if (a >= 0x477ff000u) // too large: infinity
-        return (uint16_t)(sign | 0x7c00u);
-    if (a < 0x33000000u) // too small: 0
-        return sign;
-    if (a < 0x38800000u) { // a half denormal
-        const uint32_t mant = (a & 0x7fffffu) | 0x800000u;
-        const int shift = 126 - (int)(a >> 23);
-        const uint32_t h = mant >> (shift + 1);
-        const uint32_t rest = mant & ((1u << (shift + 1)) - 1), halfway = 1u << shift;
-        return (uint16_t)(sign | (h + (rest > halfway || (rest == halfway && (h & 1)))));
-    }
-    const uint32_t h = ((a - 0x38000000u) >> 13), rest = a & 0x1fffu;
-    return (uint16_t)(sign | (h + (rest > 0x1000u || (rest == 0x1000u && (h & 1)))));
-}
-
-static float from_half(uint16_t h) {
-    const uint32_t sign = (uint32_t)(h & 0x8000u) << 16;
-    uint32_t e = (h >> 10) & 0x1fu, m = h & 0x3ffu, u;
-    if (e == 0 && m == 0)
-        u = sign;
-    else if (e == 0) { // denormal
-        e = 113;
-        while (!(m & 0x400u)) {
-            m <<= 1;
-            --e;
-        }
-        u = sign | (e << 23) | ((m & 0x3ffu) << 13);
-    } else if (e == 31)
-        u = sign | 0x7f800000u | (m << 13);
-    else
-        u = sign | ((e + 112) << 23) | (m << 13);
-    float f;
-    memcpy(&f, &u, 4);
-    return f;
-}
-
 static void put32(FILE *f, uint32_t v) {
     const unsigned char b[4] = {(unsigned char)v, (unsigned char)(v >> 8), (unsigned char)(v >> 16),
                                 (unsigned char)(v >> 24)};
@@ -373,7 +331,7 @@ int ms_exr_write(const char *path, const float *pixels, int width, int height, i
                 if (full_float) {
                     memcpy(to, &v, 4);
                 } else {
-                    const uint16_t h = to_half(v);
+                    const uint16_t h = ms_half_from_float(v);
                     memcpy(to, &h, 2);
                 }
             }
@@ -503,7 +461,7 @@ int ms_exr_read(const char *path, float *pixels, int width, int height, char *er
                 if (types[c] == 1) {
                     uint16_t h;
                     memcpy(&h, at + (size_t)x * 2, 2);
-                    v = from_half(h);
+                    v = ms_float_from_half(h);
                 } else if (types[c] == 2) {
                     memcpy(&v, at + (size_t)x * 4, 4);
                 } else {

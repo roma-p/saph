@@ -7,15 +7,12 @@
 
 #include "common/defines.h"
 #include "common/effect.h"
-#include "common/log.h"
-#include "common/mutex.h"
 #include "engine/engine.h"
 #include "ofx/host.h"
 #include "ofx/image.h"
 #include "ofxOld.h" // kOfxParamDoubleTypeNormalisedX/Y: deprecated, but hosts show them in pixels
 
 #define MAX_EFFECTS 16 // number of entry points below
-#define MAX_PARAMS 64
 
 static OfxStatus describe(const MsEffect *e, OfxImageEffectHandle effect) {
     OfxPropertySetHandle props;
@@ -163,54 +160,12 @@ static int clip_connected(OfxImageEffectHandle effect, const char *name) {
     return connected;
 }
 
-typedef struct {
-    const MsEffect *effect;
-    const double *values;
-    const int *connected;
-    double frame_width, frame_height;
-} Job;
-
-// The settings of the first renders of a session (WIDTH and HEIGHT in pixels) and the API
-// the effect last ran on, in the log: what a slow render was asked to do.
-#define REPORTED_SETTINGS 5000
-
-static void log_settings(const MsEffect *e, const double *values, MsApi api) {
-    static int reported;
-    static MsMutex lock = MS_MUTEX_INIT;
-    ms_mutex_lock(&lock);
-    const int number = ++reported;
-    ms_mutex_unlock(&lock);
-    if (number > REPORTED_SETTINGS)
-        return;
-    char line[1024] = "";
-    size_t used = 0;
-    for (int i = 0; i < e->param_count && used < sizeof line; ++i) {
-        const MsParam *p = &e->params[i];
-        if (p->type != MS_PARAM_TEXT)
-            used += (size_t)snprintf(line + used, sizeof line - used, " %s=%g", p->name, values[i]);
-    }
-    ms_log("settings %s:%s; ran on %s", e->label, line, ms_api_name(api));
-}
-
-static int run(const MsInput *inputs, int input_count, int half, int width, int height,
-               void *output, ptrdiff_t output_row, MsRunInfo *info, char *err, size_t err_size,
-               void *user) {
-    (void)input_count;
-    const Job *job = user;
-    const MsRender r = {job->values,      job->connected,    inputs, width,      height,
-                        job->frame_width, job->frame_height, output, output_row, err,
-                        err_size,         half,              info};
-    const int ok = job->effect->render(&r);
-    log_settings(job->effect, job->values, info->api);
-    return ok;
-}
-
 // The parameter values at the time of `in_args` (WIDTH and HEIGHT in pixels of the frame
 // `px` x `py`) and which inputs are connected. Returns 0 when the host does not give them.
 static int read_values(const MsEffect *e, OfxImageEffectHandle effect, OfxPropertySetHandle in_args,
                        OfxTime *time, double *px, double *py, double *values, int *connected) {
     OfxParamSetHandle params;
-    if (e->param_count > MAX_PARAMS || e->clip_count > MS_MAX_CLIPS ||
+    if (e->param_count > MS_MAX_PARAMS || e->clip_count > MS_MAX_CLIPS ||
         ms_prop->propGetDouble(in_args, kOfxPropTime, 0, time) != kOfxStatOK ||
         ms_effect->getParamSet(effect, &params) != kOfxStatOK)
         return 0;
@@ -246,12 +201,12 @@ static OfxStatus render(const MsEffect *e, OfxImageEffectHandle effect,
                         OfxPropertySetHandle in_args) {
     OfxTime time;
     double px, py; // WIDTH and HEIGHT values are fractions of these
-    double values[MAX_PARAMS];
+    double values[MS_MAX_PARAMS];
     int connected[MS_MAX_CLIPS];
     if (!read_values(e, effect, in_args, &time, &px, &py, values, connected))
         return kOfxStatFailed;
-    Job job = {e, values, connected, px, py};
-    return ms_render_with(effect, in_args, e->clips, connected, e->clip_count, run, &job);
+    MsRender r = {.values = values, .connected = connected, .frame_width = px, .frame_height = py};
+    return ms_render_with(effect, in_args, e, &r);
 }
 
 // Settings that leave the Source as it is: the host uses the Source (at the same time)
@@ -260,7 +215,7 @@ static OfxStatus is_identity(const MsEffect *e, OfxImageEffectHandle effect,
                              OfxPropertySetHandle in_args, OfxPropertySetHandle out_args) {
     OfxTime time;
     double px, py;
-    double values[MAX_PARAMS];
+    double values[MS_MAX_PARAMS];
     int connected[MS_MAX_CLIPS];
     if (!e->identity || !read_values(e, effect, in_args, &time, &px, &py, values, connected) ||
         !e->identity(values, connected))

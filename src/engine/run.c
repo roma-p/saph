@@ -1,17 +1,9 @@
 // Running an effect's kernels on the first API that works. See engine.h.
 
-// clock_gettime: hidden by glibc in strict C11 without it.
-#define _POSIX_C_SOURCE 200809L
-
 #include <stdio.h>
 #include <stdlib.h>
-#ifdef _WIN32
-#define WIN32_LEAN_AND_MEAN
-#include <windows.h>
-#else
-#include <time.h>
-#endif
 
+#include "common/clock.h"
 #include "common/log.h"
 #include "common/mutex.h"
 #include "engine/internal.h"
@@ -50,19 +42,6 @@ static MsApi only = MS_API_COUNT; // ms_api_only
 
 #define MAX_INPUTS 4 // images an effect uploads (ms_run's inputs)
 static MsMutex lock = MS_MUTEX_INIT;
-
-static double now_ms(void) {
-#ifdef _WIN32
-    LARGE_INTEGER count, frequency;
-    QueryPerformanceCounter(&count);
-    QueryPerformanceFrequency(&frequency);
-    return (double)count.QuadPart * 1e3 / (double)frequency.QuadPart;
-#else
-    struct timespec t;
-    clock_gettime(CLOCK_MONOTONIC, &t);
-    return (double)t.tv_sec * 1e3 + (double)t.tv_nsec / 1e6;
-#endif
-}
 
 const struct halide_device_interface_t *ms_device_interface(MsApi api) {
     switch (api) {
@@ -152,33 +131,107 @@ static int upload_constant(MsImage *image, MsApi api) {
     return status;
 }
 
-// The host's images in 16-bit floats (ms_image_rgba): converted on the API of the attempt,
-// the inputs to float before the kernels, the output from float after them. `image`'s float
-// pixels: GPU memory, or on the CPU `floats` (given here, freed by the caller); `view`: the
-// 16-bit pixels themselves, page-locked for CUDA's copies with `context`.
-static int to_float(MsImage *image, MsApi api, MsImage *view, MsPinned *pin, int *pinned,
-                    void *context) {
-    const int width = image->dim[0].extent, height = image->dim[1].extent;
-    ms_image_half(view, image->half, image->half_row, width, height);
+// A host image in 16-bit floats (ms_image_rgba), converted on `api`: an input to floats
+// before the kernels, the output from floats after them. `view`: its 16-bit pixels
+// themselves, page-locked for CUDA's copies (`pins`, `pinned` of them, with `context`).
+static int convert(MsImage *image, int input, MsApi api, MsImage *view, MsPinned *pins,
+                   int *pinned, void *context) {
+    ms_image_half(view, image->half, image->half_row, image->dim[0].extent, image->dim[1].extent);
     if (api != MS_API_CPU) {
-        view->b.flags |= (uint64_t)halide_buffer_flag_host_dirty;
+        if (input)
+            view->b.flags |= (uint64_t)halide_buffer_flag_host_dirty;
         ms_pool_take(&view->b, ms_device_interface(api));
-        *pinned += ms_pin(pin, &view->b, context);
+        *pinned += ms_pin(&pins[*pinned], &view->b, context);
     }
-    return MS_KERNEL(MS_K_TO_FLOAT, api, MS_IMAGE("input", view), MS_IMAGE("output", image));
+    if (input)
+        return MS_KERNEL(MS_K_TO_FLOAT, api, MS_IMAGE("input", view), MS_IMAGE("output", image));
+    const int status =
+        MS_KERNEL(MS_K_TO_HALF, api, MS_IMAGE("input", image), MS_IMAGE("output", view));
+    return status == 0 && api != MS_API_CPU ? halide_copy_to_host(NULL, &view->b) : status;
 }
 
-static int to_half(MsImage *image, MsApi api, MsImage *view, MsPinned *pin, int *pinned,
-                   void *context) {
-    const int width = image->dim[0].extent, height = image->dim[1].extent;
-    ms_image_half(view, image->half, image->half_row, width, height);
-    if (api != MS_API_CPU) {
-        ms_pool_take(&view->b, ms_device_interface(api));
-        *pinned += ms_pin(pin, &view->b, context);
+// One attempt of ms_run on `api` (its arguments, the inputs without repeats). Returns
+// Halide's status (MS_RUN_DECLINE: `run` declined the API), and on success the times.
+static int attempt(MsRun run, void *user, MsApi api, MsImage *const *inputs, int input_count,
+                   MsImage *const *between, int between_count, MsImage *output, MsRunInfo *info) {
+    // The host's images (index input_count: the output); those in half get float pixels of
+    // their own: on the CPU in host memory, on a GPU in GPU memory (prepare below).
+    MsImage *io[MAX_INPUTS + 1];
+    float *floats[MAX_INPUTS + 1] = {NULL};
+    const int io_count = input_count + 1;
+    int status = 0;
+    for (int k = 0; k < io_count; ++k) {
+        io[k] = k < input_count ? inputs[k] : output;
+        if (api != MS_API_CPU || !io[k]->half || status != 0)
+            continue;
+        floats[k] = malloc((size_t)io[k]->dim[0].extent * io[k]->dim[1].extent * 4 * sizeof(float));
+        io[k]->b.host = (uint8_t *)floats[k];
+        if (!floats[k])
+            status = halide_error_code_out_of_memory;
     }
-    int status = MS_KERNEL(MS_K_TO_HALF, api, MS_IMAGE("input", image), MS_IMAGE("output", view));
+    // GPU: the images get GPU memory kept from earlier renders where it fits; the inputs are
+    // marked as new in host memory (Halide uploads them).
+    for (int k = 0; k < input_count && status == 0; ++k) {
+        status = prepare(inputs[k], api);
+        if (api != MS_API_CPU && !inputs[k]->half) {
+            inputs[k]->b.flags |= (uint64_t)halide_buffer_flag_host_dirty;
+            if (status == 0 && inputs[k]->dim[0].stride == 0)
+                status = upload_constant(inputs[k], api);
+        }
+    }
+    for (int k = 0; k < between_count && status == 0; ++k)
+        status = prepare(between[k], api);
+    if (status == 0)
+        status = prepare(output, api);
+    // CUDA: the host's images page-locked for the copies (pin.c), in the context of the
+    // output's GPU memory (given here rather than when Halide first needs it).
+    MsPinned pins[2 * (MAX_INPUTS + 1)];
+    int pinned = 0;
+    void *context = NULL;
+    if (status == 0 && api == MS_API_CUDA) {
+        if (!output->b.device)
+            status = halide_device_malloc(NULL, &output->b, ms_device_interface(api));
+        context = status == 0 ? ms_pin_context(&output->b) : NULL;
+        for (int k = 0; k < io_count && context; ++k)
+            pinned += ms_pin(&pins[pinned], &io[k]->b, context);
+    }
+    // Timed apart: the kernels with the uploads of the inputs (Halide uploads them when a
+    // kernel needs them; half ones: converted first), then the download of the result.
+    MsImage views[MAX_INPUTS + 1];
+    int viewed[MAX_INPUTS + 1] = {0};
+    const double start = ms_clock();
+    for (int k = 0; k < input_count && status == 0; ++k)
+        if (inputs[k]->half) {
+            viewed[k] = 1;
+            status = convert(inputs[k], 1, api, &views[k], pins, &pinned, context);
+        }
+    if (status == 0)
+        status = run(api, user);
     if (status == 0 && api != MS_API_CPU)
-        status = halide_copy_to_host(NULL, &view->b);
+        status = halide_device_sync(NULL, &output->b);
+    const double ran = ms_clock();
+    if (status == 0 && output->half) {
+        viewed[input_count] = 1;
+        status = convert(output, 0, api, &views[input_count], pins, &pinned, context);
+    } else if (status == 0) {
+        status = halide_copy_to_host(NULL, &output->b);
+    }
+    *info = (MsRunInfo){api, ran - start, ms_clock() - ran, 0};
+    for (int k = 0; k < pinned; ++k)
+        ms_unpin(&pins[k], context);
+    // The GPU memory goes back to the kept allocations (all freed after a failure).
+    const int keep = status == 0 || status == MS_RUN_DECLINE;
+    for (int k = 0; k < io_count; ++k) {
+        if (viewed[k])
+            ms_pool_park(&views[k].b, keep);
+        ms_pool_park(&io[k]->b, keep);
+        if (floats[k]) {
+            io[k]->b.host = NULL;
+            free(floats[k]);
+        }
+    }
+    for (int k = 0; k < between_count; ++k)
+        ms_pool_park(&between[k]->b, keep);
     return status;
 }
 
@@ -191,9 +244,19 @@ int ms_run(MsRun run, void *user, MsImage *const *inputs, int input_count, MsIma
     *info = none;
     // Keep Halide's GPU buffers between frames instead of allocating them each time.
     halide_reuse_device_allocations(NULL, 1);
-    if (input_count > MAX_INPUTS) {
-        snprintf(err, err_size, "internal error: %d inputs", input_count);
-        return 0;
+    // The inputs without NULL and repeats (an image given twice is uploaded once).
+    MsImage *unique[MAX_INPUTS];
+    int unique_count = 0;
+    for (int k = 0; k < input_count; ++k) {
+        int seen = inputs[k] == NULL;
+        for (int j = 0; j < unique_count && !seen; ++j)
+            seen = unique[j] == inputs[k];
+        if (!seen && unique_count == MAX_INPUTS) {
+            snprintf(err, err_size, "internal error: more than %d inputs", MAX_INPUTS);
+            return 0;
+        }
+        if (!seen)
+            unique[unique_count++] = inputs[k];
     }
     int status = -1;
     for (size_t i = 0; i < sizeof apis / sizeof apis[0]; ++i) {
@@ -205,97 +268,15 @@ int ms_run(MsRun run, void *user, MsImage *const *inputs, int input_count, MsIma
         ms_mutex_unlock(&lock);
         if (skip)
             continue;
-        // The images in half (index input_count: the output): on the CPU, float pixels of
-        // their own in host memory; on a GPU, in GPU memory (prepare below).
-        MsImage *const io[MAX_INPUTS + 1] = {
-            input_count > 0 ? inputs[0] : output, input_count > 1 ? inputs[1] : output,
-            input_count > 2 ? inputs[2] : output, input_count > 3 ? inputs[3] : output, output};
-        float *floats[MAX_INPUTS + 1] = {NULL};
-        status = 0;
-        for (int k = 0; k <= MAX_INPUTS && api == MS_API_CPU; ++k) {
-            MsImage *image = k < input_count || k == MAX_INPUTS ? io[k] : NULL;
-            if (!image || !image->half || status != 0)
-                continue;
-            floats[k] = malloc((size_t)image->dim[0].extent * image->dim[1].extent * 4 *
-                               sizeof(float));
-            image->b.host = (uint8_t *)floats[k];
-            if (!floats[k])
-                status = halide_error_code_out_of_memory;
-        }
-        // GPU: the images get GPU memory kept from earlier renders where it fits; the
-        // inputs are marked as new in host memory (Halide uploads them).
-        for (int k = 0; k < input_count && status == 0; ++k) {
-            status = prepare(inputs[k], api);
-            if (api != MS_API_CPU && !inputs[k]->half) {
-                inputs[k]->b.flags |= (uint64_t)halide_buffer_flag_host_dirty;
-                if (status == 0 && inputs[k]->dim[0].stride == 0)
-                    status = upload_constant(inputs[k], api);
-            }
-        }
-        for (int k = 0; k < between_count && status == 0; ++k)
-            status = prepare(between[k], api);
-        if (status == 0)
-            status = prepare(output, api);
-        // CUDA: the host's images page-locked for the copies (pin.c), in the context of the
-        // output's GPU memory (given here rather than when Halide first needs it).
-        MsPinned pinned[MAX_INPUTS * 2 + 2];
-        int pinned_count = 0;
-        void *context = NULL;
-        if (status == 0 && api == MS_API_CUDA) {
-            if (!output->b.device)
-                status = halide_device_malloc(NULL, &output->b, ms_device_interface(api));
-            context = status == 0 ? ms_pin_context(&output->b) : NULL;
-            for (int k = 0; k < input_count && context; ++k)
-                pinned_count += ms_pin(&pinned[pinned_count], &inputs[k]->b, context);
-            if (context)
-                pinned_count += ms_pin(&pinned[pinned_count], &output->b, context);
-        }
-        // Timed apart: the kernels with the uploads of the inputs (Halide uploads them when a
-        // kernel needs them; half ones: converted first), then the download of the result.
-        MsImage views[MAX_INPUTS + 1];
-        int viewed[MAX_INPUTS + 1] = {0};
-        const double start = now_ms();
-        for (int k = 0; k < input_count && status == 0; ++k)
-            if (inputs[k]->half) {
-                viewed[k] = 1;
-                status = to_float(inputs[k], api, &views[k], &pinned[pinned_count], &pinned_count,
-                                  context);
-            }
-        if (status == 0)
-            status = run(api, user);
-        if (status == 0 && api != MS_API_CPU)
-            status = halide_device_sync(NULL, &output->b);
-        const double ran = now_ms();
-        if (status == 0 && output->half) {
-            viewed[MAX_INPUTS] = 1;
-            status = to_half(output, api, &views[MAX_INPUTS], &pinned[pinned_count],
-                             &pinned_count, context);
-        } else if (status == 0) {
-            status = halide_copy_to_host(NULL, &output->b);
-        }
-        const double done = now_ms();
-        for (int k = 0; k < pinned_count; ++k)
-            ms_unpin(&pinned[k], context);
-        for (int k = 0; k <= MAX_INPUTS; ++k) {
-            if (viewed[k])
-                ms_pool_park(&views[k].b, status == 0 || status == MS_RUN_DECLINE);
-            if (floats[k]) {
-                io[k]->b.host = NULL;
-                free(floats[k]);
-            }
-        }
-        // The GPU memory goes back to the kept allocations (all freed after a failure).
-        for (int k = 0; k < input_count; ++k)
-            ms_pool_park(&inputs[k]->b, status == 0 || status == MS_RUN_DECLINE);
-        for (int k = 0; k < between_count; ++k)
-            ms_pool_park(&between[k]->b, status == 0 || status == MS_RUN_DECLINE);
-        ms_pool_park(&output->b, status == 0 || status == MS_RUN_DECLINE);
+        MsRunInfo times;
+        status = attempt(run, user, api, unique, unique_count, between, between_count, output,
+                         &times);
         if (status == 0) {
             ms_mutex_lock(&lock);
             const int first = !used[api];
             used[api] = 1;
             ms_mutex_unlock(&lock);
-            *info = (MsRunInfo){api, ran - start, done - ran, 0};
+            *info = times;
             if (first) // once per API and session: which one the effects really run on
                 ms_log("running on %s", names[api]);
             return 1;
