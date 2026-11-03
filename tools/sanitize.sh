@@ -17,7 +17,10 @@ case "$(uname)" in
 Darwin) plugin=build-sanitize/MillSaph.ofx.bundle/Contents/MacOS/MillSaph.ofx; libs= ;;
 *)      plugin=build-sanitize/MillSaph.ofx.bundle/Contents/Linux-x86-64/MillSaph.ofx; libs=-ldl ;;
 esac
-cc $flags -Isrc tools/test_host.c src/common/half.c $libs -o build-sanitize/test_host
+# The compiler CMake found: its sanitizer libraries (another one, e.g. the system's cc next to
+# a newer toolchain's, may not have them).
+cc=$(sed -n 's/^CMAKE_C_COMPILER:[A-Z]*=//p' build-sanitize/CMakeCache.txt)
+"${cc:-cc}" $flags -Isrc tools/test_host.c src/common/half.c $libs -o build-sanitize/test_host
 
 # effect, then parameters (name=value) and unconnected inputs (!Clip)
 failed=0

@@ -367,7 +367,7 @@ int ms_exr_read(const char *path, float *pixels, int width, int height, char *er
     int channels = 0, compression = -1;
     int32_t window[4] = {0, 0, -1, -1};
     for (;;) {
-        char name[256], type[256];
+        char name[256];
         int c, i = 0;
         while ((c = fgetc(f)) > 0 && i < 255)
             name[i++] = (char)c;
@@ -376,10 +376,8 @@ int ms_exr_read(const char *path, float *pixels, int width, int height, char *er
             return fail(err, err_size, "truncated header", f);
         if (i == 0)
             break; // end of the header
-        i = 0;
-        while ((c = fgetc(f)) > 0 && i < 255)
-            type[i++] = (char)c;
-        type[i] = 0;
+        while ((c = fgetc(f)) > 0) // the attribute's type name: known from its name
+            ;
         uint32_t size;
         unsigned char b[4];
         if (c < 0 || fread(b, 1, 4, f) != 4)
