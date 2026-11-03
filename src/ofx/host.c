@@ -1,6 +1,6 @@
 #include "ofx/host.h"
 #include "common/defines.h"
-#include "gpu/gpu.h"
+#include "engine/engine.h"
 
 static const OfxHost *ofx_host; // given by setHost
 const OfxPropertySuiteV1 *ms_prop;
@@ -29,8 +29,9 @@ OfxStatus ms_unload(void) {
     if (loaded_count == 0)
         return kOfxStatOK;
     --loaded_count;
-    if (loaded_count == 0)
-        ms_gpu_shutdown();
+    if (loaded_count == 0) {
+        ms_engine_shutdown();
+    }
     return kOfxStatOK;
 }
 

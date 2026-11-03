@@ -1,6 +1,6 @@
-// MS_Distort: warps the Source by the slopes of a Lens image. Runs on the GPU (shaders
-// distort_*.glsl), or on the CPU with Enable GPU off (same result, used as the
-// reference):
+// MS_Distort: warps the Source by the slopes of a Lens image. In Halide
+// (src/halide/distort_generator.cpp), on the GPU when possible, on the CPU with Enable GPU
+// off:
 //   - lens = luma (5/16, 8/16, 3/16) of the Lens input (the Source when it is not
 //     connected), blurred by Blur Lens (3-box blur) and then scaled by 1 + blur / 24
 //   - shift = Amount x 0.005 x W x W x slope of the lens (central difference), W the
@@ -19,24 +19,16 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "common/blur.h"
 #include "common/defines.h"
 #include "common/effect.h"
 #include "common/mask.h"
-#include "common/parallel.h"
-#include "distort_atlas_glsl.h"
-#include "distort_atlas_x_glsl.h"
-#include "distort_lens_glsl.h"
-#include "distort_shift_glsl.h"
-#include "distort_warp_glsl.h"
-#include "gpu/gpu.h"
-#include "mask_glsl.h"
+#include "engine/engine.h"
 
-// Inputs: clip, label in the host, name, value where there is no image, optional, mask.
+// Inputs: clip, label in the host, value where there is no image, optional, mask.
 static const MsClip clips[] = {
-    {"Source", "Source", "source", 0.0f, 0, 0},
-    {"Lens", "Lens", "lens", 0.0f, 1, 0},
-    {"Mask", "Mask", "mask", 0.0f, 1, 1},
+    {"Source", "Source", 0.0f, 0, 0},
+    {"Lens", "Lens", 0.0f, 1, 0},
+    {"Mask", "Mask", 0.0f, 1, 1},
 };
 enum { SOURCE, LENS, MASK };
 
@@ -96,7 +88,7 @@ static const MsParam params[] = {
                    .hint = "Blurs the Lens before computing its slopes.",
                    .def = 0.05,
                    .min = 0.0,
-                   .max = INFINITY,
+                   .max = MS_UNBOUNDED,
                    .display_max = 0.25},
     [ROTATE] = {.type = MS_PARAM_ANGLE,
                 .name = "rotate_warp_dir",
@@ -110,7 +102,7 @@ static const MsParam params[] = {
                .hint = "Relative horizontal distortion.",
                .def = 1.0,
                .min = 0.0,
-               .max = INFINITY,
+               .max = MS_UNBOUNDED,
                .display_max = 5.0},
     [REL_Y] = {.type = MS_PARAM_DOUBLE,
                .name = "amount_rel_y",
@@ -118,7 +110,7 @@ static const MsParam params[] = {
                .hint = "Relative vertical distortion.",
                .def = 1.0,
                .min = 0.0,
-               .max = INFINITY,
+               .max = MS_UNBOUNDED,
                .display_max = 5.0},
     [WRAP_X] = {.type = MS_PARAM_CHOICE,
                 .name = "wrap_x",
@@ -144,7 +136,7 @@ static const MsParam params[] = {
                    .label = "Blur Mask",
                    .hint = "Blurs the Mask.",
                    .min = 0.0,
-                   .max = INFINITY,
+                   .max = MS_UNBOUNDED,
                    .display_max = 0.25},
     [INVERT_MASK] = MS_PARAM_INVERT_MASK("Apply the effect where the Mask is black."),
     [MASK_USE] = MS_PARAM_MASK_USE,
@@ -183,7 +175,7 @@ static const MsParam params[] = {
                     .def = 1},
 };
 
-#define MAX_LEVELS 16 // per axis: enough for 2^15 pixels
+#define MAX_LEVELS 16 // reduced copies per axis, at most (distort_generator.cpp)
 
 typedef struct {
     double amount; // shift in pixels per unit of lens slope (per pixel)
@@ -197,241 +189,9 @@ typedef struct {
     int gpu;
 } Settings;
 
-// A reduced copy of the Source: each pixel is the mean of a 2^nx x 2^ny block.
-typedef struct {
-    const float *data; // RGBA, bottom row first
-    int width, height;
-} Level;
+// ---------------------------------------------------------------- Halide
 
-// ---------------------------------------------------------------- sampling
-
-// Level of detail for a footprint of d pixels: log2 with a linear step between powers
-// of two (level n at d = 2^n), 0 below 1.
-static double fast_log2(double d) {
-    if (d <= 1.0)
-        return 0.0;
-    int e;
-    const double m = frexp(d, &e); // d = m x 2^e, m in [0.5, 1)
-    return (e - 1) + (2.0 * m - 1.0);
-}
-
-// Which Source pixels an axis reads, and what happens beyond them.
-typedef struct {
-    int mode;      // WRAP_NO, WRAP_TILE or WRAP_REFLECT
-    double lo, hi; // the Source pixels left by the crop: [lo, hi)
-} Axis;
-
-// Brings coordinate s (pixel units, pixel i at i) inside the axis: Tile repeats the
-// pixels, Reflect mirrors them about lo and hi. Returns 0 if nothing can be read there
-// (Wrap No, more than a pixel outside).
-static int wrap(double *s, const Axis *a) {
-    const double size = a->hi - a->lo;
-    if (size <= 0)
-        return 0;
-    if (a->mode == WRAP_NO)
-        return *s > a->lo - 1 && *s < a->hi;
-    double v;
-    if (a->mode == WRAP_TILE) {
-        v = a->lo + fmod(*s - a->lo, size);
-        if (v < a->lo)
-            v += size;
-    } else {
-        v = fmod(*s - a->lo, 2 * size);
-        if (v < 0)
-            v += 2 * size;
-        v += a->lo;
-        if (v > a->hi)
-            v = 2 * a->hi - v;
-        if (v > a->hi - 1)
-            v = a->hi - 1;
-    }
-    *s = v;
-    return 1;
-}
-
-// Pixel read for sample index i of a level `n` pixels long, where each pixel covers
-// `scale` Source pixels; -1 for a transparent pixel (Wrap No).
-static int tap(int i, int n, int scale, const Axis *a) {
-    int lo = (int)ceil(a->lo / scale), hi = (int)floor(a->hi / scale);
-    if (hi > n)
-        hi = n;
-    if (hi <= lo)
-        hi = lo + 1;
-    if (i >= lo && i < hi)
-        return i;
-    if (a->mode == WRAP_NO)
-        return -1;
-    if (a->mode == WRAP_TILE)
-        return i < lo ? i + (hi - lo) : i - (hi - lo);
-    return i < lo ? lo : hi - 1;
-}
-
-// Adds weight x the bilinear sample of level (nx, ny) at Source position (x, y) to out.
-static void sample(const Level *lv, int nx, int ny, double x, double y, const Axis *ax,
-                   const Axis *ay, double weight, double *out) {
-    const double px = (x + 0.5) / (1 << nx) - 0.5, py = (y + 0.5) / (1 << ny) - 0.5;
-    const double fx0 = floor(px), fy0 = floor(py);
-    const double wx[2] = {1.0 - (px - fx0), px - fx0}, wy[2] = {1.0 - (py - fy0), py - fy0};
-    for (int j = 0; j < 2; ++j) {
-        const int ty = tap((int)fy0 + j, lv->height, 1 << ny, ay);
-        if (ty < 0 || wy[j] == 0)
-            continue;
-        for (int i = 0; i < 2; ++i) {
-            const int tx = tap((int)fx0 + i, lv->width, 1 << nx, ax);
-            if (tx < 0 || wx[i] == 0)
-                continue;
-            const float *p = lv->data + ((size_t)ty * lv->width + tx) * 4;
-            const double k = weight * wx[i] * wy[j];
-            for (int c = 0; c < 4; ++c)
-                out[c] += k * p[c];
-        }
-    }
-}
-
-// How fast the shift changes along one axis: the two components of its derivative
-// combined as max + min / 2.
-static double footprint(double a, double b) {
-    a = fabs(a);
-    b = fabs(b);
-    return a > b ? a + 0.5 * b : b + 0.5 * a;
-}
-
-// ---------------------------------------------------------------- warp
-
-typedef struct {
-    const Settings *s;
-    const float *source;
-    const float *mask; // NULL without a mask
-    const float *sx;
-    const float *sy;
-    const float *lod;       // level of detail per pixel, x then y; NULL without Filter
-    const Level *levels;    // [ny * MAX_LEVELS + nx]
-    int levels_x, levels_y; // levels available per axis
-    int width, height;
-    float *output;
-} Warp;
-
-static void warp_rows(int begin, int end, void *user) {
-    const Warp *w = user;
-    const Settings *s = w->s;
-    const int width = w->width, height = w->height;
-    for (int y = begin; y < end; ++y) {
-        for (int x = 0; x < width; ++x) {
-            const size_t i = (size_t)y * width + x;
-            const Axis ax = {s->wrap_x, s->crop_l, width - s->crop_r};
-            const Axis ay = {s->wrap_y, s->crop_b, height - s->crop_t};
-            double px = (double)x + w->sx[i], py = (double)y + w->sy[i];
-            double rgba[4] = {0, 0, 0, 0};
-            const int inside = wrap(&px, &ax) & wrap(&py, &ay);
-            if (inside && !w->lod) {
-                const Level full = {w->source, width, height};
-                sample(&full, 0, 0, px, py, &ax, &ay, 1.0, rgba);
-            } else if (inside) {
-                double lx = w->lod[i * 2], ly = w->lod[i * 2 + 1];
-                if (lx > w->levels_x - 1)
-                    lx = w->levels_x - 1;
-                if (ly > w->levels_y - 1)
-                    ly = w->levels_y - 1;
-                // Blend the levels below and above, by the fraction of the larger level.
-                const int nx0 = (int)floor(lx), ny0 = (int)floor(ly);
-                const int nx1 = (int)ceil(lx), ny1 = (int)ceil(ly);
-                const double f = lx >= ly ? lx - nx0 : ly - ny0;
-                sample(&w->levels[ny0 * MAX_LEVELS + nx0], nx0, ny0, px, py, &ax, &ay, 1.0 - f,
-                       rgba);
-                if (f > 0)
-                    sample(&w->levels[ny1 * MAX_LEVELS + nx1], nx1, ny1, px, py, &ax, &ay, f, rgba);
-            }
-            float *out = w->output + i * 4;
-            const float *src = w->source + i * 4;
-            double m = 1.0;
-            if (w->mask && s->pre_effect) {
-                // The mask moves with the image: read it at the shifted position.
-                const Axis mx_axis = {s->wrap_x == WRAP_NO ? WRAP_REFLECT : s->wrap_x, 0, width};
-                const Axis my_axis = {s->wrap_y == WRAP_NO ? WRAP_REFLECT : s->wrap_y, 0, height};
-                double mx = (double)x + w->sx[i], my = (double)y + w->sy[i];
-                m = 0.0;
-                if (wrap(&mx, &mx_axis) & wrap(&my, &my_axis)) {
-                    const int x0 = (int)floor(mx), y0 = (int)floor(my);
-                    const int x1 = x0 + 1 < width ? x0 + 1 : x0, y1 = y0 + 1 < height ? y0 + 1 : y0;
-                    const double fx = mx - x0, fy = my - y0;
-                    const float *k = w->mask;
-                    m = (k[(size_t)y0 * width + x0] * (1 - fx) + k[(size_t)y0 * width + x1] * fx) *
-                            (1 - fy) +
-                        (k[(size_t)y1 * width + x0] * (1 - fx) + k[(size_t)y1 * width + x1] * fx) *
-                            fy;
-                }
-            } else if (w->mask) {
-                m = w->mask[i];
-            }
-            for (int c = 0; c < 4; ++c)
-                out[c] = (float)(src[c] + (rgba[c] - src[c]) * m);
-        }
-    }
-}
-
-// ---------------------------------------------------------------- processing
-
-typedef struct {
-    const float *sx;
-    const float *sy;
-    int width, height;
-    float *lod;
-} Lod;
-
-// Level of detail of each pixel along x and y, from the derivatives of the shift
-// (central differences, one-sided at the borders).
-static void lod_rows(int begin, int end, void *user) {
-    const Lod *d = user;
-    const int width = d->width, height = d->height;
-    for (int y = begin; y < end; ++y) {
-        for (int x = 0; x < width; ++x) {
-            // Neighbours: left, right, below, above (the pixel itself at a border).
-            const int xl = x > 0 ? x - 1 : x, xr = x < width - 1 ? x + 1 : x;
-            const int yb = y > 0 ? y - 1 : y, yt = y < height - 1 ? y + 1 : y;
-            const size_t i = (size_t)y * width + x;
-            const size_t l = (size_t)y * width + xl, r = (size_t)y * width + xr;
-            const size_t b = (size_t)yb * width + x, t = (size_t)yt * width + x;
-            const double hx = xr - xl, hy = yt - yb;
-            d->lod[i * 2] =
-                (float)fast_log2(footprint((d->sx[r] - d->sx[l]) / hx, (d->sy[r] - d->sy[l]) / hx));
-            d->lod[i * 2 + 1] =
-                (float)fast_log2(footprint((d->sx[t] - d->sx[b]) / hy, (d->sy[t] - d->sy[b]) / hy));
-        }
-    }
-}
-
-// Builds the levels up to (levels_x - 1, levels_y - 1) in `store`, one after the
-// other; level (0, 0), the Source itself, must be set already. Each level halves the
-// one to its left (or, in the first column, the one below) and drops an odd last row
-// or column.
-static void build_levels(int levels_x, int levels_y, float *store, Level *levels) {
-    for (int ny = 0; ny < levels_y; ++ny) {
-        for (int nx = 0; nx < levels_x; ++nx) {
-            Level *lv = &levels[ny * MAX_LEVELS + nx];
-            if (nx == 0 && ny == 0)
-                continue;
-            const int along_x = nx > 0;
-            const Level *from = along_x ? &levels[(size_t)ny * MAX_LEVELS + nx - 1]
-                                        : &levels[(size_t)(ny - 1) * MAX_LEVELS];
-            const int w = along_x ? from->width / 2 : from->width,
-                      h = along_x ? from->height : from->height / 2;
-            for (int y = 0; y < h; ++y) {
-                for (int x = 0; x < w; ++x) {
-                    const float *a = from->data + ((size_t)(along_x ? y : 2 * y) * from->width +
-                                                   (size_t)(along_x ? 2 * x : x)) *
-                                                      4;
-                    const float *b = along_x ? a + 4 : a + (size_t)from->width * 4;
-                    for (int c = 0; c < 4; ++c)
-                        store[((size_t)y * w + x) * 4 + c] = 0.5f * (a[c] + b[c]);
-                }
-            }
-            *lv = (Level){store, w, h};
-            store += (size_t)w * h * 4;
-        }
-    }
-}
-
-// Number of levels along an axis of n pixels (down to 1 pixel).
+// Number of reduced copies along an axis of n pixels (down to 1 pixel).
 static int max_levels(int n) {
     int levels = 1;
     while (levels < MAX_LEVELS && (n >> levels) >= 1)
@@ -439,167 +199,170 @@ static int max_levels(int n) {
     return levels;
 }
 
-static int process(const MsInput *inputs, int width, int height, float *output, char *err,
-                   size_t err_size, const Settings *s) {
-    const size_t pixels = (size_t)width * height;
-    const float *source = inputs[SOURCE].pixels;
-    const float *lens_input = s->has_lens ? inputs[LENS].pixels : source;
+// Size along an axis of `length` pixels of the image holding levels 0 to count - 1.
+static int levels_size(int length, int count) {
+    int size = 0;
+    for (int n = 0; n < count; ++n)
+        size += length >> n;
+    return size;
+}
 
-    float *mask = s->has_mask ? malloc(pixels * sizeof(float)) : NULL;
-    float *lens = malloc(pixels * sizeof(float));
-    float *sx = malloc(pixels * sizeof(float));
-    float *sy = malloc(pixels * sizeof(float));
-    float *lod = s->filter ? malloc(pixels * 2 * sizeof(float)) : NULL;
-    float *store = NULL; // the Filter levels
-    int ok = lens && sx && sy && (mask || !s->has_mask) && (lod || !s->filter);
+// One render: the images and settings of the kernels (src/halide/distort_generator.cpp,
+// mask_generator.cpp).
+typedef struct {
+    const Settings *s;
+    MsImage *source, *lens, *mask, *output; // lens: the Source if none
+    MsImage *shift, *mask_value, *largest;  // between the kernels
+    MsImage *levels;                        // Filter: sized by run()
+    int width, height;
+} Job;
 
-    // 1. Mask: luma or alpha, blurred by Blur Mask.
-    if (ok && mask) {
-        ms_mask_values(inputs[MASK].pixels, pixels, s->mask_alpha, s->invert_mask, mask);
-        ms_box3_blur(mask, width, height, 1, s->blur_mask);
-    }
+static int run_mask(MsApi api, const Job *j) {
+    const Settings *s = j->s;
+    return MS_KERNEL(MS_K_MASK, api, MS_IMAGE("mask", j->mask), MS_INT("mask_alpha", s->mask_alpha),
+                     MS_INT("invert_mask", s->invert_mask),
+                     MS_INT("blur_mask", floor(s->blur_mask + 0.5)),
+                     MS_IMAGE("mask_value", j->mask_value));
+}
 
-    // 2. Lens: luma (masked with Mask Lens), blurred by Blur Lens.
-    if (ok) {
-        const int masked = mask && s->mask_lens;
-        for (size_t i = 0; i < pixels; ++i)
-            lens[i] = ms_luma(lens_input + i * 4) * (masked ? mask[i] : 1.0f);
-        if (s->blur_lens > 0) {
-            ms_box3_blur(lens, width, height, 1, s->blur_lens);
-            const double gain = 1.0 + s->blur_lens / 24.0; // a blurred lens warps more
-            for (size_t i = 0; i < pixels; ++i)
-                lens[i] = (float)(lens[i] * gain);
-        }
-    }
+static int run_shift(MsApi api, const Job *j) {
+    const Settings *s = j->s;
+    const double gain = s->blur_lens > 0 ? 1.0 + s->blur_lens / 24.0 : 1.0; // a blurred lens
+    return MS_KERNEL(
+        MS_K_DISTORT_SHIFT, api, MS_IMAGE("lens", j->lens), MS_IMAGE("mask_value", j->mask_value),
+        MS_INT("mask_lens", s->has_mask && s->mask_lens),
+        MS_INT("blur_lens", floor(s->blur_lens + 0.5)), MS_FLOAT("amount", s->amount * gain),
+        MS_FLOAT("rel_x", s->rel_x), MS_FLOAT("rel_y", s->rel_y), MS_FLOAT("cos_r", s->cos_r),
+        MS_FLOAT("sin_r", s->sin_r), MS_IMAGE("shift", j->shift),
+        MS_IMAGE("largest_lod", j->largest));
+}
 
-    // 3. Shift per pixel: slope of the lens (central difference), rounded to 1/256 pixel.
-    // NOLINTBEGIN(clang-analyzer-security.ArrayBound): false positive, the analyzer
-    // does not tie the buffer size (width x height) to the loop bounds.
-    if (ok) {
-        for (int y = 0; y < height; ++y) {
-            for (int x = 0; x < width; ++x) {
-                // Neighbours: left, right, below, above (the pixel itself at a border).
-                const int xl = x > 0 ? x - 1 : x, xr = x < width - 1 ? x + 1 : x;
-                const int yb = y > 0 ? y - 1 : y, yt = y < height - 1 ? y + 1 : y;
-                const size_t i = (size_t)y * width + x;
-                const float *row = lens + (size_t)y * width;
-                const double gx = xr > xl ? (row[xr] - row[xl]) / (double)(xr - xl) : 0.0;
-                const double gy =
-                    yt > yb ? (lens[(size_t)yt * width + x] - lens[(size_t)yb * width + x]) /
-                                  (double)(yt - yb)
-                            : 0.0;
-                const double vx = s->amount * s->rel_x * gx, vy = s->amount * s->rel_y * gy;
-                sx[i] = (float)(floor((s->cos_r * vx - s->sin_r * vy) * 256.0 + 0.5) / 256.0);
-                sy[i] = (float)(floor((s->sin_r * vx + s->cos_r * vy) * 256.0 + 0.5) / 256.0);
-            }
-        }
-    }
-    // NOLINTEND(clang-analyzer-security.ArrayBound)
+static int run_levels(MsApi api, const Job *j, int levels_x, int levels_y) {
+    return MS_KERNEL(MS_K_DISTORT_LEVELS, api, MS_IMAGE("source", j->source),
+                     MS_INT("levels_x", levels_x), MS_INT("levels_y", levels_y),
+                     MS_IMAGE("output", j->levels));
+}
 
-    // 4. Filter: the reduced copies of the Source the warp needs.
-    Level levels[MAX_LEVELS * MAX_LEVELS];
+static int run_warp(MsApi api, const Job *j, MsImage *levels, int levels_x, int levels_y) {
+    const Settings *s = j->s;
+    return MS_KERNEL(
+        MS_K_DISTORT_WARP, api, MS_IMAGE("source", j->source), MS_IMAGE("shift", j->shift),
+        MS_IMAGE("mask_value", j->mask_value), MS_IMAGE("levels", levels),
+        MS_INT("filter", s->filter), MS_INT("levels_x", levels_x), MS_INT("levels_y", levels_y),
+        MS_INT("wrap_x", s->wrap_x), MS_INT("wrap_y", s->wrap_y), MS_FLOAT("crop_l", s->crop_l),
+        MS_FLOAT("crop_r", s->crop_r), MS_FLOAT("crop_b", s->crop_b), MS_FLOAT("crop_t", s->crop_t),
+        MS_INT("has_mask", s->has_mask), MS_INT("pre_effect", s->pre_effect),
+        MS_IMAGE("output", j->output));
+}
+
+// The kernels on `api`: mask (with a Mask), shift, levels (Filter), warp. With Enable GPU
+// off, only on the CPU.
+static int run(MsApi api, void *user) {
+    Job *j = user;
+    if (!j->s->gpu && api != MS_API_CPU)
+        return MS_RUN_DECLINE;
+    int status = j->s->has_mask ? run_mask(api, j) : 0;
+    if (status != 0)
+        return status;
+    status = run_shift(api, j);
+    if (status != 0)
+        return status;
+
+    // Filter: the levels the largest level of detail needs, capped by the image size.
+    MsImage *levels = j->source;
     int levels_x = 1, levels_y = 1;
-    if (ok && s->filter) {
-        Lod d = {sx, sy, width, height, lod};
-        ms_parallel(height, lod_rows, &d);
-        // Coarsest level needed per axis, capped by the image size.
-        double top_x = 0, top_y = 0;
-        for (size_t i = 0; i < pixels; ++i) {
-            if (lod[i * 2] > top_x)
-                top_x = lod[i * 2];
-            if (lod[i * 2 + 1] > top_y)
-                top_y = lod[i * 2 + 1];
-        }
-        levels_x = (int)ceil(top_x) + 1;
-        levels_y = (int)ceil(top_y) + 1;
-        if (levels_x > max_levels(width))
-            levels_x = max_levels(width);
-        if (levels_y > max_levels(height))
-            levels_y = max_levels(height);
-        size_t size = 0;
-        for (int ny = 0; ny < levels_y; ++ny)
-            for (int nx = 0; nx < levels_x; ++nx)
-                if (nx || ny)
-                    size += (size_t)(width >> nx) * (height >> ny) * 4;
-        levels[0] = (Level){source, width, height};
-        if (size > 0) {
-            store = malloc(size * sizeof(float));
-            ok = store != NULL;
-            if (ok)
-                build_levels(levels_x, levels_y, store, levels);
-        }
+    if (j->s->filter) {
+        status = halide_copy_to_host(NULL, &j->largest->b);
+        if (status != 0)
+            return status;
+        const float *largest = (const float *)j->largest->b.host;
+        levels_x = (int)ceil(largest[0]) + 1;
+        levels_y = (int)ceil(largest[1]) + 1;
+        if (levels_x > max_levels(j->width))
+            levels_x = max_levels(j->width);
+        if (levels_y > max_levels(j->height))
+            levels_y = max_levels(j->height);
+        const int w = levels_size(j->width, levels_x), h = levels_size(j->height, levels_y);
+        levels = j->levels;
+        levels->dim[0].extent = w;
+        levels->dim[1].extent = h;
+        levels->dim[1].stride = w * 4;
+        status = ms_image_device(levels, api); // now that its size is known
+        if (status == 0)
+            status = run_levels(api, j, levels_x, levels_y);
+        if (status != 0)
+            return status;
     }
+    return run_warp(api, j, levels, levels_x, levels_y);
+}
 
-    // 5. Warp.
+static int process(const MsInput *inputs, int half, int width, int height, void *output,
+                   ptrdiff_t output_row, char *err, size_t err_size, const Settings *s) {
+    const size_t pixels = (size_t)width * height;
+    // Between the kernels: the shift (4 values per pixel), the mask value and, with the
+    // Filter, the levels (at most 4 times the image; only the part the levels need is
+    // written, the rest never touched).
+    float *shift = malloc(pixels * 4 * sizeof(float));
+    float *mask_value = s->has_mask ? malloc(pixels * sizeof(float)) : NULL;
+    const size_t levels_floats = s->filter ? (size_t)levels_size(width, max_levels(width)) *
+                                                 levels_size(height, max_levels(height)) * 4
+                                           : 0;
+    float *levels = levels_floats > 0 ? malloc(levels_floats * sizeof(float)) : NULL;
+    float largest[2] = {0.0f, 0.0f};
+    int ok = shift && (mask_value || !s->has_mask) && (levels || !s->filter);
     if (ok) {
-        Warp w = {s, source, mask, sx, sy, lod, levels, levels_x, levels_y, width, height, output};
-        ms_parallel(height, warp_rows, &w);
+        MsImage bsource, blens, bmask, boutput, bshift, bmask_value, blargest, blevels;
+        const MsInput *source = &inputs[SOURCE];
+        // Without a Lens or a Mask, the Source stands in (only read without a Lens; the same
+        // image: on the GPU it is uploaded once).
+        const MsInput *lens = &inputs[s->has_lens ? LENS : SOURCE];
+        const MsInput *mask = &inputs[s->has_mask ? MASK : SOURCE];
+        // A Lens or a Mask that is the Source's image itself (the host gives the same
+        // pixels): the Source stands in, uploaded once.
+        const int lens_is_source = s->has_lens && ms_same_input(lens, source);
+        const int mask_is_source = s->has_mask && ms_same_input(mask, source);
+        ms_image_rgba(&bsource, source->pixels, source->row, half, width, height);
+        ms_image_rgba(&blens, lens->pixels, lens->row, half, width, height);
+        ms_image_rgba(&bmask, mask->pixels, mask->row, half, width, height);
+        ms_image_rgba(&boutput, output, output_row, half, width, height);
+        ms_image(&bshift, shift, (ptrdiff_t)width * 4, width, height, 4);
+        const float no_mask = 1.0f; // without a mask: one value for every pixel (strides 0)
+        if (mask_value)
+            ms_image(&bmask_value, mask_value, width, width, height, 1);
+        else
+            ms_image_constant(&bmask_value, &no_mask, width, height);
+        ms_image(&blargest, largest, 2, 2, 1, 1);
+        blargest.b.dimensions = 1;
+        ms_image(&blevels, levels, 4, 1, 1, 4); // sized by run()
+        Job job = {.s = s,
+                   .source = &bsource,
+                   .lens = s->has_lens && !lens_is_source ? &blens : &bsource,
+                   .mask = mask_is_source ? &bsource : &bmask,
+                   .output = &boutput,
+                   .shift = &bshift,
+                   .mask_value = &bmask_value,
+                   .largest = &blargest,
+                   .levels = &blevels,
+                   .width = width,
+                   .height = height};
+        MsImage *in[3] = {&bsource};
+        int in_count = 1;
+        if (s->has_lens && !lens_is_source)
+            in[in_count++] = &blens;
+        if (s->has_mask && !mask_is_source)
+            in[in_count++] = &bmask;
+        // Without a mask, its one value is an input (uploaded); with one, it is made there.
+        if (!s->has_mask)
+            in[in_count++] = &bmask_value;
+        MsImage *const between[] = {&bshift, &bmask_value, &blargest, &blevels};
+        ok = ms_run(run, &job, in, in_count, between, ARRAY_SIZE(between), &boutput, err, err_size);
     } else {
         snprintf(err, err_size, "not enough memory");
     }
-    free(store);
-    free(mask);
-    free(lens);
-    free(sx);
-    free(sy);
-    free(lod);
+    free(shift);
+    free(mask_value);
+    free(levels);
     return ok;
-}
-
-// ---------------------------------------------------------------- GPU
-
-// Same as `process`, as shader passes:
-//   1 mask value, 2-7 blur of the mask, 8 lens, 9-14 blur of the lens, 15 shift,
-//   16-17 Filter levels (all of them, side by side in one image), 18 warp.
-static int process_gpu(const MsInput *inputs, int width, int height, float *output, char *err,
-                       size_t err_size, const Settings *s) {
-    const int levels_x = s->filter ? max_levels(width) : 1,
-              levels_y = s->filter ? max_levels(height) : 1;
-    int atlas_w = 0, atlas_h = 0;
-    for (int n = 0; n < levels_x; ++n)
-        atlas_w += width >> n;
-    for (int n = 0; n < levels_y; ++n)
-        atlas_h += height >> n;
-
-    const double blur_mask = s->has_mask ? s->blur_mask : 0.0;
-    MsPass passes[18];
-    MsShaderValue radius[12];
-    int n = 0;
-    passes[n++] = (MsPass){mask_glsl, NULL, NULL, 0, 0, 0};
-    n = ms_add_blur(passes, n, radius, NULL, blur_mask, blur_mask);
-    passes[n++] = (MsPass){distort_lens_glsl, NULL, NULL, 0, 0, 0};
-    n = ms_add_blur(passes, n, radius + 6, NULL, s->blur_lens, s->blur_lens);
-    passes[n++] = (MsPass){distort_shift_glsl, NULL, NULL, 0, 0, 0};
-    passes[n++] = (MsPass){distort_atlas_x_glsl, "source", NULL, 0, atlas_w, height};
-    passes[n++] = (MsPass){distort_atlas_glsl, NULL, NULL, 0, atlas_w, atlas_h};
-    passes[n++] = (MsPass){distort_warp_glsl, "source", NULL, 0, 0, 0};
-
-    const double gain = s->blur_lens > 0 ? 1.0 + s->blur_lens / 24.0 : 1.0;
-    const MsShaderValue shader_values[] = {
-        {"has_lens", (float)s->has_lens},
-        {"has_mask", (float)s->has_mask},
-        {"mask_lens", (float)s->mask_lens},
-        {"mask_alpha", (float)s->mask_alpha},
-        {"invert_mask", (float)s->invert_mask},
-        {"pre_effect", (float)s->pre_effect},
-        {"amount", (float)(s->amount * gain)},
-        {"rel_x", (float)s->rel_x},
-        {"rel_y", (float)s->rel_y},
-        {"cos_r", (float)s->cos_r},
-        {"sin_r", (float)s->sin_r},
-        {"source_height", (float)height},
-        {"wrap_x", (float)s->wrap_x},
-        {"wrap_y", (float)s->wrap_y},
-        {"crop_l", (float)s->crop_l},
-        {"crop_r", (float)s->crop_r},
-        {"crop_b", (float)s->crop_b},
-        {"crop_t", (float)s->crop_t},
-        {"filter_on", (float)s->filter},
-        {"levels_x", (float)levels_x},
-        {"levels_y", (float)levels_y},
-    };
-    return ms_gpu_run(passes, n, inputs, ARRAY_SIZE(clips), width, height, shader_values,
-                      ARRAY_SIZE(shader_values), output, err, err_size);
 }
 
 // ---------------------------------------------------------------- render
@@ -633,8 +396,8 @@ static int render(const MsRender *r) {
     s.mask_lens = (int)v[MASK_LENS];
     s.pre_effect = v[APPLY_MASK] == 1;
     s.gpu = (int)v[ENABLE_GPU];
-    return (s.gpu ? process_gpu : process)(r->inputs, r->width, r->height, r->output, r->err,
-                                           r->err_size, &s);
+    return process(r->inputs, r->half, r->width, r->height, r->output, r->output_row, r->err,
+                   r->err_size, &s);
 }
 
 const MsEffect ms_distort_effect = {
@@ -646,4 +409,5 @@ const MsEffect ms_distort_effect = {
     params,
     ARRAY_SIZE(params),
     render,
+    NULL,
 };

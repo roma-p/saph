@@ -2,28 +2,40 @@
 // on a sanitizer build). It loads the plugin, then for one effect: describes it, creates
 // an instance and renders one frame of a test pattern with every input connected.
 //
-//   test_host <plugin.ofx> <effect id> [name=value ...] [!Clip ...]
+//   test_host <plugin.ofx> <effect id> [name=value ...] [!Clip ...] [--size WxH] [--frames N]
+//             [--save file] [--pad N]
 //
 //   name=value   sets a parameter (choices and checkboxes by number)
 //   !Clip        leaves that input unconnected, e.g. !Mask
+//   --size WxH   renders W x H pixels (default 97 x 61) of a photo-like image (gradients,
+//                a disc, a box, a little noise) instead of the test pattern
+//   --frames N   renders N times and prints the time of each render (tools/perf/)
+//   --save file  writes the Output (raw RGBA floats, bottom row first), to compare renders
+//   --pad N      images N pixels larger than the render window on each side (rows longer
+//                than the window, as hosts can give)
 //
 // Prints what the effect declares and the result of each action; exits with 1 if an
 // action fails. Only the host functions MillSaph uses are implemented.
 
+// clock_gettime: hidden by glibc under -std=c11 without it.
+#define _POSIX_C_SOURCE 200809L
+
 #include <dlfcn.h>
 #include <stdarg.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #include "ofxImageEffect.h"
 #include "ofxMessage.h"
 #include "ofxParam.h"
 #include "ofxProperty.h"
 
-// Odd sizes, to catch mistakes with odd rows and columns.
-#define WIDTH 97
-#define HEIGHT 61
+// Odd sizes by default, to catch mistakes with odd rows and columns.
+static int width = 97, height = 61, photo = 0;
+static int pad = 0; // --pad: images cover the render window and `pad` more pixels per side
 
 // ---------------------------------------------------------------- property sets
 
@@ -226,7 +238,7 @@ typedef struct {
     char name[64];
     PropSet props;
     PropSet image; // the image the host gives for this clip
-    float *pixels; // WIDTH x HEIGHT RGBA
+    float *pixels; // width x height RGBA
 } Clip;
 
 static Clip clips[MAX_CLIPS];
@@ -329,17 +341,35 @@ static const void *fetch_suite(OfxPropertySetHandle host, const char *name, int 
 
 // ---------------------------------------------------------------- run
 
-// Fills every input with its own pattern; the Output starts black.
+// A photo-like value: gradients, a disc and a box with hard edges, a little noise; alpha 1.
+static float photo_value(int x, int y, int k, uint32_t *seed) {
+    if (k == 3)
+        return 1.0f;
+    *seed = *seed * 1664525u + 1013904223u;
+    const float noise = ((float)(*seed >> 8) / 16777216.0f - 0.5f) * 0.04f;
+    const float dx = (float)x / (float)width - 0.39f, dy = (float)y / (float)height - 0.46f;
+    if (dx * dx * 256.0f / 81.0f + dy * dy < 0.077f) // a disc on a 16:9 image
+        return 0.9f - 0.3f * (float)k + noise;
+    if (x > width * 68 / 100 && x < width * 88 / 100 && y > height / 7 && y < height * 5 / 6)
+        return 0.1f + 0.2f * (float)k + noise;
+    return 0.2f + 0.5f * (float)x / (float)width * (float)(k + 1) / 3.0f +
+           0.2f * (float)y / (float)height + noise;
+}
+
+// Fills every input with its own pattern (or the photo-like image); the Output starts black.
 static void make_images(int argc, char **argv) {
     for (int c = 0; c < clip_count; ++c) {
         Clip *clip = &clips[c];
         const int output = strcmp(clip->name, kOfxImageEffectOutputClipName) == 0;
-        clip->pixels = calloc((size_t)WIDTH * HEIGHT * 4, sizeof(float));
-        for (int y = 0; y < HEIGHT && !output; ++y)
-            for (int x = 0; x < WIDTH; ++x)
+        const int w = width + 2 * pad, h = height + 2 * pad;
+        clip->pixels = calloc((size_t)w * h * 4, sizeof(float));
+        uint32_t seed = 1u + (uint32_t)c;
+        for (int y = 0; y < h && !output; ++y)
+            for (int x = 0; x < w; ++x)
                 for (int k = 0; k < 4; ++k)
-                    clip->pixels[((size_t)y * WIDTH + x) * 4 + k] =
-                        (float)((x * (7 + c) + y * 13 + k * 5) % 17) / 16.0f;
+                    clip->pixels[((size_t)y * w + x) * 4 + k] =
+                        photo ? photo_value(x, y, k, &seed)
+                              : (float)((x * (7 + c) + y * 13 + k * 5) % 17) / 16.0f;
 
         int connected = 1;
         for (int a = 3; a < argc; ++a)
@@ -352,8 +382,8 @@ static void make_images(int argc, char **argv) {
         OfxPropertySetHandle image = (OfxPropertySetHandle)&clip->image;
         clip->image = (PropSet){.owner = "image"};
         set_pointer(image, kOfxImagePropData, 0, clip->pixels);
-        set_int(image, kOfxImagePropRowBytes, 0, WIDTH * 4 * (int)sizeof(float));
-        const int bounds[4] = {0, 0, WIDTH, HEIGHT};
+        set_int(image, kOfxImagePropRowBytes, 0, w * 4 * (int)sizeof(float));
+        const int bounds[4] = {-pad, -pad, width + pad, height + pad};
         for (int i = 0; i < 4; ++i)
             set_int(image, kOfxImagePropBounds, i, bounds[i]);
     }
@@ -380,6 +410,12 @@ static void set_values(int argc, char **argv) {
     }
 }
 
+static double now_ms(void) {
+    struct timespec t;
+    clock_gettime(CLOCK_MONOTONIC, &t);
+    return (double)t.tv_sec * 1e3 + (double)t.tv_nsec / 1e6;
+}
+
 static int check(const char *action, OfxStatus status) {
     const int ok = status == kOfxStatOK || status == kOfxStatReplyDefault;
     printf("%s: %s (%d)\n", action, ok ? "ok" : "FAILED", status);
@@ -388,9 +424,24 @@ static int check(const char *action, OfxStatus status) {
 
 int main(int argc, char **argv) {
     if (argc < 3) {
-        fprintf(stderr, "usage: %s <plugin.ofx> <effect id> [name=value ...] [!Clip ...]\n",
+        fprintf(stderr,
+                "usage: %s <plugin.ofx> <effect id> [name=value ...] [!Clip ...] [--size WxH] "
+                "[--frames N] [--save file]\n",
                 argv[0]);
         return 2;
+    }
+    int frames = 1;
+    const char *save = NULL;
+    for (int a = 3; a + 1 < argc; ++a) {
+        if (strcmp(argv[a], "--size") == 0 && sscanf(argv[a + 1], "%dx%d", &width, &height) == 2 &&
+            width > 0 && height > 0)
+            photo = 1;
+        if (strcmp(argv[a], "--frames") == 0)
+            frames = atoi(argv[a + 1]) > 0 ? atoi(argv[a + 1]) : 1;
+        if (strcmp(argv[a], "--save") == 0)
+            save = argv[a + 1];
+        if (strcmp(argv[a], "--pad") == 0)
+            pad = atoi(argv[a + 1]) > 0 ? atoi(argv[a + 1]) : 0;
     }
     void *library = dlopen(argv[1], RTLD_NOW);
     if (!library) {
@@ -419,7 +470,7 @@ int main(int argc, char **argv) {
     set_double(r, kOfxPropTime, 0, 1.0);
     set_double(r, kOfxImageEffectPropRenderScale, 0, 1.0);
     set_double(r, kOfxImageEffectPropRenderScale, 1, 1.0);
-    const int window[4] = {0, 0, WIDTH, HEIGHT};
+    const int window[4] = {0, 0, width, height};
     for (int i = 0; i < 4; ++i)
         set_int(r, kOfxImageEffectPropRenderWindow, i, window[i]);
 
@@ -432,16 +483,33 @@ int main(int argc, char **argv) {
                                        (OfxPropertySetHandle)&context, NULL));
     if (ok) {
         effect_props.print = 0;
-        set_double((OfxPropertySetHandle)&effect_props, kOfxImageEffectPropProjectExtent, 0, WIDTH);
+        set_double((OfxPropertySetHandle)&effect_props, kOfxImageEffectPropProjectExtent, 0, width);
         set_double((OfxPropertySetHandle)&effect_props, kOfxImageEffectPropProjectExtent, 1,
-                   HEIGHT);
+                   height);
         set_values(argc, argv);
         make_images(argc, argv);
     }
     ok = ok &&
          check("create instance", plugin->mainEntry(kOfxActionCreateInstance, effect, NULL, NULL));
-    ok = ok && check("render", plugin->mainEntry(kOfxImageEffectActionRender, effect, r, NULL));
+    for (int f = 0; ok && f < frames; ++f) {
+        const double start = now_ms();
+        ok = check("render", plugin->mainEntry(kOfxImageEffectActionRender, effect, r, NULL));
+        if (frames > 1)
+            printf("render %d of %d x %d: %.1f ms\n", f + 1, width, height, now_ms() - start);
+    }
     check("unload", plugin->mainEntry(kOfxActionUnload, NULL, NULL, NULL));
+
+    for (int c = 0; ok && save && c < clip_count; ++c) {
+        if (strcmp(clips[c].name, kOfxImageEffectOutputClipName) != 0)
+            continue;
+        FILE *f = fopen(save, "wb");
+        const size_t floats = (size_t)(width + 2 * pad) * (height + 2 * pad) * 4;
+        ok = f && fwrite(clips[c].pixels, sizeof(float), floats, f) == floats;
+        if (f)
+            fclose(f);
+        if (!ok)
+            printf("cannot write %s\n", save);
+    }
 
     for (int c = 0; c < clip_count; ++c)
         free(clips[c].pixels);

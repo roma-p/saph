@@ -2,10 +2,14 @@
 // the OFX calls of an effect are here, so the effects themselves know nothing of OFX.
 
 #include <math.h>
+#include <stdio.h>
 #include <string.h>
 
 #include "common/defines.h"
 #include "common/effect.h"
+#include "common/log.h"
+#include "common/mutex.h"
+#include "engine/engine.h"
 #include "ofx/host.h"
 #include "ofx/image.h"
 #include "ofxOld.h" // kOfxParamDoubleTypeNormalisedX/Y: deprecated, but hosts show them in pixels
@@ -28,8 +32,11 @@ static OfxStatus describe(const MsEffect *e, OfxImageEffectHandle effect) {
     ms_prop->propSetString(props, kOfxImageEffectPropSupportedContexts, contexts,
                            kOfxImageEffectContextGeneral);
 
-    // Float only: host (dcc) are exepcted to convert to float if needed.
+    // Floats and 16-bit floats (the kernels compute in floats: engine/run.c converts); the
+    // host converts other depths. One depth for every image of a render.
     ms_prop->propSetString(props, kOfxImageEffectPropSupportedPixelDepths, 0, kOfxBitDepthFloat);
+    ms_prop->propSetString(props, kOfxImageEffectPropSupportedPixelDepths, 1, kOfxBitDepthHalf);
+    ms_prop->propSetInt(props, kOfxImageEffectPropSupportsMultipleClipDepths, 0, 0);
 
     // Whole frames, no tiling.
     ms_prop->propSetInt(props, kOfxImageEffectPropSupportsTiles, 0, 0);
@@ -80,9 +87,9 @@ static void define_param(OfxParamSetHandle params, const MsParam *p) {
     }
     ms_prop->propSetDouble(props, kOfxParamPropDefault, 0, p->def);
     if (p->min != 0.0 || p->max != 0.0) {
-        if (isfinite(p->min))
+        if (p->min > -MS_UNBOUNDED)
             ms_prop->propSetDouble(props, kOfxParamPropMin, 0, p->min);
-        if (isfinite(p->max))
+        if (p->max < MS_UNBOUNDED)
             ms_prop->propSetDouble(props, kOfxParamPropMax, 0, p->max);
     }
     if (p->display_min != 0.0 || p->display_max != 0.0) {
@@ -163,59 +170,108 @@ typedef struct {
     double frame_width, frame_height;
 } Job;
 
-static int run(const MsInput *inputs, int input_count, int width, int height, float *output,
-               char *err, size_t err_size, void *user) {
-    (void)input_count;
-    const Job *job = user;
-    const MsRender r = {job->values,      job->connected,    inputs, width, height,
-                        job->frame_width, job->frame_height, output, err,   err_size};
-    return job->effect->render(&r);
+// The settings of the first renders of a session (WIDTH and HEIGHT in pixels) and the API
+// the effect last ran on, in the log: what a slow render was asked to do.
+#define REPORTED_SETTINGS 5000
+
+static void log_settings(const MsEffect *e, const double *values) {
+    static int reported;
+    static MsMutex lock = MS_MUTEX_INIT;
+    ms_mutex_lock(&lock);
+    const int number = ++reported;
+    ms_mutex_unlock(&lock);
+    if (number > REPORTED_SETTINGS)
+        return;
+    char line[1024] = "";
+    size_t used = 0;
+    for (int i = 0; i < e->param_count && used < sizeof line; ++i) {
+        const MsParam *p = &e->params[i];
+        if (p->type != MS_PARAM_TEXT)
+            used += (size_t)snprintf(line + used, sizeof line - used, " %s=%g", p->name, values[i]);
+    }
+    const MsApi api = ms_api_used();
+    ms_log("settings %s:%s; ran on %s", e->label, line, ms_api_name(api));
 }
 
-static OfxStatus render(const MsEffect *e, OfxImageEffectHandle effect,
-                        OfxPropertySetHandle in_args) {
-    OfxTime time;
+static int run(const MsInput *inputs, int input_count, int half, int width, int height,
+               void *output, ptrdiff_t output_row, char *err, size_t err_size, void *user) {
+    (void)input_count;
+    const Job *job = user;
+    const MsRender r = {job->values,      job->connected,    inputs, width,      height,
+                        job->frame_width, job->frame_height, output, output_row, err,
+                        err_size,         half};
+    const int ok = job->effect->render(&r);
+    log_settings(job->effect, job->values);
+    return ok;
+}
+
+// The parameter values at the time of `in_args` (WIDTH and HEIGHT in pixels of the frame
+// `px` x `py`) and which inputs are connected. Returns 0 when the host does not give them.
+static int read_values(const MsEffect *e, OfxImageEffectHandle effect, OfxPropertySetHandle in_args,
+                       OfxTime *time, double *px, double *py, double *values, int *connected) {
     OfxParamSetHandle params;
     if (e->param_count > MAX_PARAMS || e->clip_count > MS_MAX_CLIPS ||
-        ms_prop->propGetDouble(in_args, kOfxPropTime, 0, &time) != kOfxStatOK ||
+        ms_prop->propGetDouble(in_args, kOfxPropTime, 0, time) != kOfxStatOK ||
         ms_effect->getParamSet(effect, &params) != kOfxStatOK)
-        return kOfxStatFailed;
-
-    double px, py; // WIDTH and HEIGHT values are fractions of these
-    frame_size(effect, in_args, &px, &py);
-    double values[MAX_PARAMS];
+        return 0;
+    frame_size(effect, in_args, px, py);
     for (int i = 0; i < e->param_count; ++i) {
         const MsParam *p = &e->params[i];
         switch (p->type) {
         case MS_PARAM_CHOICE:
         case MS_PARAM_BOOL:
-            values[i] = get_int(params, p->name, time);
+            values[i] = get_int(params, p->name, *time);
             break;
         case MS_PARAM_TEXT:
             values[i] = 0.0;
             break;
         case MS_PARAM_WIDTH:
-            values[i] = get_double(params, p->name, time) * px;
+            values[i] = get_double(params, p->name, *time) * *px;
             break;
         case MS_PARAM_HEIGHT:
-            values[i] = get_double(params, p->name, time) * py;
+            values[i] = get_double(params, p->name, *time) * *py;
             break;
         case MS_PARAM_DOUBLE:
         case MS_PARAM_ANGLE:
-            values[i] = get_double(params, p->name, time);
+            values[i] = get_double(params, p->name, *time);
             break;
         }
     }
-    int connected[MS_MAX_CLIPS];
     for (int c = 0; c < e->clip_count; ++c)
         connected[c] = clip_connected(effect, e->clips[c].clip);
+    return 1;
+}
 
+static OfxStatus render(const MsEffect *e, OfxImageEffectHandle effect,
+                        OfxPropertySetHandle in_args) {
+    OfxTime time;
+    double px, py; // WIDTH and HEIGHT values are fractions of these
+    double values[MAX_PARAMS];
+    int connected[MS_MAX_CLIPS];
+    if (!read_values(e, effect, in_args, &time, &px, &py, values, connected))
+        return kOfxStatFailed;
     Job job = {e, values, connected, px, py};
-    return ms_render_with(effect, in_args, e->clips, e->clip_count, run, &job);
+    return ms_render_with(effect, in_args, e->clips, connected, e->clip_count, run, &job);
+}
+
+// Settings that leave the Source as it is: the host uses the Source (at the same time)
+// without rendering.
+static OfxStatus is_identity(const MsEffect *e, OfxImageEffectHandle effect,
+                             OfxPropertySetHandle in_args, OfxPropertySetHandle out_args) {
+    OfxTime time;
+    double px, py;
+    double values[MAX_PARAMS];
+    int connected[MS_MAX_CLIPS];
+    if (!e->identity || !read_values(e, effect, in_args, &time, &px, &py, values, connected) ||
+        !e->identity(values, connected))
+        return kOfxStatReplyDefault;
+    ms_prop->propSetString(out_args, kOfxPropName, 0, e->clips[0].clip);
+    ms_prop->propSetDouble(out_args, kOfxPropTime, 0, time);
+    return kOfxStatOK;
 }
 
 static OfxStatus main_entry(const MsEffect *e, const char *action, const void *handle,
-                            OfxPropertySetHandle in_args) {
+                            OfxPropertySetHandle in_args, OfxPropertySetHandle out_args) {
     OfxImageEffectHandle effect = (OfxImageEffectHandle)handle;
     if (strcmp(action, kOfxActionLoad) == 0)
         return ms_load();
@@ -229,6 +285,8 @@ static OfxStatus main_entry(const MsEffect *e, const char *action, const void *h
         return create_instance(e, effect);
     if (strcmp(action, kOfxImageEffectActionRender) == 0)
         return render(e, effect, in_args);
+    if (strcmp(action, kOfxImageEffectActionIsIdentity) == 0)
+        return is_identity(e, effect, in_args, out_args);
     return kOfxStatReplyDefault;
 }
 
@@ -237,8 +295,7 @@ static OfxStatus main_entry(const MsEffect *e, const char *action, const void *h
 #define ENTRY(i)                                                                                   \
     static OfxStatus entry_##i(const char *action, const void *handle,                             \
                                OfxPropertySetHandle in_args, OfxPropertySetHandle out_args) {      \
-        (void)out_args;                                                                            \
-        return main_entry(ms_effects[i], action, handle, in_args);                                 \
+        return main_entry(ms_effects[i], action, handle, in_args, out_args);                       \
     }
 // clang-format off
 ENTRY(0) ENTRY(1) ENTRY(2) ENTRY(3) ENTRY(4) ENTRY(5) ENTRY(6) ENTRY(7)

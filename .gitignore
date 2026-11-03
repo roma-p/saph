@@ -5,3 +5,6 @@ third_party/
 .DS_Store
 .vscode/
 .idea/
+build_log.txt
+millsaph_report_*.txt
+millsaph_perf.zip
