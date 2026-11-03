@@ -15,6 +15,7 @@
 #include "common/mask.h"
 #include "effects/profile.h"
 #include "engine/engine.h"
+#include "halide/ms_limits.h"
 
 // Inputs: clip, label in the host, value where there is no image, optional, mask.
 static const MsClip clips[] = {
@@ -119,8 +120,8 @@ static int run(MsApi api, void *user) {
         if (status != 0)
             return status;
     }
-    // The staged GPU version holds a box's windows in on-chip memory: up to box radii of 200
-    // along x and 100 along y (src/halide/blur.h: STAGED_RADIUS_X / _Y). The largest box of a
+    // The staged GPU version holds a box's windows in on-chip memory: up to box radii of
+    // MS_STAGED_RADIUS_X along x and MS_STAGED_RADIUS_Y along y. The largest box of a
     // blur of total radius t is (t + 2) / 3. The prefix version costs the same whatever the
     // radius: for large blurs.
     const int box_x = ((j->blur1_x > j->blur2_x ? j->blur1_x : j->blur2_x) + 2) / 3;
@@ -131,7 +132,7 @@ static int run(MsApi api, void *user) {
                                     box >= p->bandpass_prefix
                                 ? MS_K_BANDPASS_PREFIX
                             : ms_kernel_built(MS_K_BANDPASS_STAGED, api) && p->bandpass_staged &&
-                                    box_x <= 200 && box_y <= 100
+                                    box_x <= MS_STAGED_RADIUS_X && box_y <= MS_STAGED_RADIUS_Y
                                 ? MS_K_BANDPASS_STAGED
                                 : MS_K_BANDPASS;
     return MS_KERNEL(kernel, api, MS_IMAGE("source", j->source),
@@ -182,7 +183,7 @@ static int render(const MsRender *r) {
     MsImage *const inputs[] = {&source, has_mask ? &mask : &value};
     MsImage *const between[] = {&value}; // made on the GPU from the Mask
     const int ok = ms_run(run, &j, inputs, mask_is_source ? 1 : 2, between, has_mask, &output,
-                          r->err, r->err_size);
+                          r->info, r->err, r->err_size);
     free(mask_value);
     return ok;
 }

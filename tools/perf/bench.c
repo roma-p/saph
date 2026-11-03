@@ -7,6 +7,10 @@
 //                                                    part of the names to run)
 //   millsaph_bench --sweep [width height] [renders] [effect]
 //   millsaph_bench --transfer [width height]          (CUDA copy speeds: transfer.c)
+//   millsaph_bench --dump DIR [width height] [renders] [case]
+//
+// --dump: also writes each result to DIR/<case>_<api>.raw (floats), to check that a change
+// of the code leaves every pixel as it was (cmp the folders before and after).
 //
 // --sweep: every effect (or the one named, e.g. MS_Distort), each parameter over a series of
 // values taken from its slider (CHOICE: every entry; BOOL: both), the others at their
@@ -148,9 +152,10 @@ static double run_case(const Case *c, MsApi api, const float *source, float **bl
         inputs[k] = (MsInput){k == 0 || same ? image : blank[k], (ptrdiff_t)width * 4};
     }
     char err[256] = "";
+    MsRunInfo info;
     MsRender r = {values, connected, inputs,   width,      height,
                   width,  height,    half ? (void *)result : (void *)output,
-                  (ptrdiff_t)width * 4, err, sizeof err, half};
+                  (ptrdiff_t)width * 4, err, sizeof err, half, &info};
     MsProfile profile = defaults[api];
     ms_pin_host(1);
     if (c->tweak)
@@ -161,10 +166,9 @@ static double run_case(const Case *c, MsApi api, const float *source, float **bl
     for (int i = 0; i < renders && !failed; ++i) {
         const double t = now_ms();
         if (!e->render(&r)) {
-            const int declined = strcmp(err, "no API to run on") == 0; // engine/run.c
-            if (!declined)
+            if (!info.declined)
                 printf("    render failed: %s\n", err);
-            failed = declined ? -2 : -1;
+            failed = info.declined ? -2 : -1;
             break;
         }
         const double ms = now_ms() - t;
@@ -239,9 +243,9 @@ static double in_pixels(const MsParam *p, double v) {
 static double timed(const MsEffect *e, const double *values, const int *connected,
                     const MsInput *inputs, float *output, MsApi api, double *first, MsApi *used,
                     char *err, size_t err_size) {
-    MsRender r = {
-        values, connected, inputs, width, height, width, height, output, (ptrdiff_t)width * 4,
-        err,    err_size,  0};
+    MsRunInfo info;
+    MsRender r = {values, connected, inputs,   width, height, width, height, output,
+                  (ptrdiff_t)width * 4, err, err_size, 0, &info};
     ms_api_only(api);
     double best = -1;
     *first = -1;
@@ -255,7 +259,7 @@ static double timed(const MsEffect *e, const double *values, const int *connecte
         else if (best < 0 || ms < best)
             best = ms;
     }
-    *used = ms_api_used();
+    *used = info.api;
     return renders > 1 ? best : *first;
 }
 
@@ -556,7 +560,32 @@ static int sweep(int argc, char **argv) {
     return 0;
 }
 
+// Writes `floats` values to DIR/<label>_<api>.raw (spaces as _); `dump`: DIR, or NULL.
+static void dump_result(const char *dump, const char *label, const char *api, const float *values,
+                        size_t floats) {
+    if (!dump)
+        return;
+    char path[512];
+    snprintf(path, sizeof path, "%s/%s_%s.raw", dump, label, api);
+    for (char *p = path + strlen(dump); *p; ++p)
+        if (*p == ' ')
+            *p = '_';
+    FILE *f = fopen(path, "wb");
+    if (!f || fwrite(values, sizeof(float), floats, f) != floats)
+        printf("    cannot write %s\n", path);
+    if (f)
+        fclose(f);
+}
+
 int main(int argc, char **argv) {
+    const char *dump = NULL;
+    if (argc >= 3 && strcmp(argv[1], "--dump") == 0) {
+        dump = argv[2];
+        make_dir(dump);
+        argv[2] = argv[0];
+        argc -= 2;
+        argv += 2;
+    }
     if (argc >= 2 && strcmp(argv[1], "--sweep") == 0)
         return sweep(argc - 1, argv + 1);
     if (argc >= 2 && strcmp(argv[1], "--transfer") == 0)
@@ -659,6 +688,8 @@ int main(int argc, char **argv) {
         const double t = run_case(c, MS_API_CPU, source, blank, cpu, &first, 0);
         printf("%-24s %-12s %9.1f %9.1f\n", c->label, "CPU", t, first);
         fflush(stdout);
+        if (t >= 0)
+            dump_result(dump, c->label, "CPU", cpu, floats);
         for (int a = 0; a <= MS_API_CPU; ++a) {
             if (!ms_api_built((MsApi)a) || (a == MS_API_CPU && !half))
                 continue;
@@ -677,6 +708,8 @@ int main(int argc, char **argv) {
             }
             char api_name[32];
             snprintf(api_name, sizeof api_name, "%s%s", ms_api_name((MsApi)a), half ? " half" : "");
+            if (g >= 0)
+                dump_result(dump, c->label, api_name, gpu, floats);
             printf("%-24s %-12s %9.1f %9.1f %12.2g %12.2g\n", c->label, api_name, g, first, worst,
                    sum / (double)floats);
             fflush(stdout);

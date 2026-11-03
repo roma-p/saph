@@ -174,7 +174,7 @@ typedef struct {
 // the effect last ran on, in the log: what a slow render was asked to do.
 #define REPORTED_SETTINGS 5000
 
-static void log_settings(const MsEffect *e, const double *values) {
+static void log_settings(const MsEffect *e, const double *values, MsApi api) {
     static int reported;
     static MsMutex lock = MS_MUTEX_INIT;
     ms_mutex_lock(&lock);
@@ -189,19 +189,19 @@ static void log_settings(const MsEffect *e, const double *values) {
         if (p->type != MS_PARAM_TEXT)
             used += (size_t)snprintf(line + used, sizeof line - used, " %s=%g", p->name, values[i]);
     }
-    const MsApi api = ms_api_used();
     ms_log("settings %s:%s; ran on %s", e->label, line, ms_api_name(api));
 }
 
 static int run(const MsInput *inputs, int input_count, int half, int width, int height,
-               void *output, ptrdiff_t output_row, char *err, size_t err_size, void *user) {
+               void *output, ptrdiff_t output_row, MsRunInfo *info, char *err, size_t err_size,
+               void *user) {
     (void)input_count;
     const Job *job = user;
     const MsRender r = {job->values,      job->connected,    inputs, width,      height,
                         job->frame_width, job->frame_height, output, output_row, err,
-                        err_size,         half};
+                        err_size,         half,              info};
     const int ok = job->effect->render(&r);
-    log_settings(job->effect, job->values);
+    log_settings(job->effect, job->values, info->api);
     return ok;
 }
 

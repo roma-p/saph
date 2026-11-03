@@ -78,6 +78,7 @@ typedef struct {
     size_t err_size;
     int half; // the inputs and the output in 16-bit floats (else floats): engine.h,
               // ms_image_rgba
+    struct MsRunInfo *info; // what the effect's ms_run did (engine.h), or NULL
 } MsRender;
 
 typedef struct {

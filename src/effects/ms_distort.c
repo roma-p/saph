@@ -296,8 +296,9 @@ static int run(MsApi api, void *user) {
     return run_warp(api, j, levels, levels_x, levels_y);
 }
 
-static int process(const MsInput *inputs, int half, int width, int height, void *output,
-                   ptrdiff_t output_row, char *err, size_t err_size, const Settings *s) {
+static int process(const MsRender *r, const Settings *s) {
+    const MsInput *inputs = r->inputs;
+    const int half = r->half, width = r->width, height = r->height;
     const size_t pixels = (size_t)width * height;
     // Between the kernels: the shift (4 values per pixel), the mask value and, with the
     // Filter, the levels (at most 4 times the image; only the part the levels need is
@@ -324,7 +325,7 @@ static int process(const MsInput *inputs, int half, int width, int height, void 
         ms_image_rgba(&bsource, source->pixels, source->row, half, width, height);
         ms_image_rgba(&blens, lens->pixels, lens->row, half, width, height);
         ms_image_rgba(&bmask, mask->pixels, mask->row, half, width, height);
-        ms_image_rgba(&boutput, output, output_row, half, width, height);
+        ms_image_rgba(&boutput, r->output, r->output_row, half, width, height);
         ms_image(&bshift, shift, (ptrdiff_t)width * 4, width, height, 4);
         const float no_mask = 1.0f; // without a mask: one value for every pixel (strides 0)
         if (mask_value)
@@ -355,9 +356,10 @@ static int process(const MsInput *inputs, int half, int width, int height, void 
         if (!s->has_mask)
             in[in_count++] = &bmask_value;
         MsImage *const between[] = {&bshift, &bmask_value, &blargest, &blevels};
-        ok = ms_run(run, &job, in, in_count, between, ARRAY_SIZE(between), &boutput, err, err_size);
+        ok = ms_run(run, &job, in, in_count, between, ARRAY_SIZE(between), &boutput, r->info,
+                    r->err, r->err_size);
     } else {
-        snprintf(err, err_size, "not enough memory");
+        snprintf(r->err, r->err_size, "not enough memory");
     }
     free(shift);
     free(mask_value);
@@ -396,8 +398,7 @@ static int render(const MsRender *r) {
     s.mask_lens = (int)v[MASK_LENS];
     s.pre_effect = v[APPLY_MASK] == 1;
     s.gpu = (int)v[ENABLE_GPU];
-    return process(r->inputs, r->half, r->width, r->height, r->output, r->output_row, r->err,
-                   r->err_size, &s);
+    return process(r, &s);
 }
 
 const MsEffect ms_distort_effect = {

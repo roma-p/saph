@@ -46,9 +46,7 @@ static const char *const names[MS_API_COUNT] = {"Metal", "CUDA", "Vulkan", "Dire
 // APIs that failed once in this session: not tried again. APIs already reported as used.
 static int failed[MS_API_COUNT];
 static int used[MS_API_COUNT];
-static MsApi last_used = MS_API_COUNT;
 static MsApi only = MS_API_COUNT; // ms_api_only
-static double last_kernels_ms, last_download_ms; // ms_run_times
 
 #define MAX_INPUTS 4 // images an effect uploads (ms_run's inputs)
 static MsMutex lock = MS_MUTEX_INIT;
@@ -96,20 +94,6 @@ int ms_api_built(MsApi api) {
         if (apis[i] == api)
             return 1;
     return 0;
-}
-
-void ms_run_times(double *kernels_ms, double *download_ms) {
-    ms_mutex_lock(&lock);
-    *kernels_ms = last_kernels_ms;
-    *download_ms = last_download_ms;
-    ms_mutex_unlock(&lock);
-}
-
-MsApi ms_api_used(void) {
-    ms_mutex_lock(&lock);
-    const MsApi api = last_used;
-    ms_mutex_unlock(&lock);
-    return api;
 }
 
 void ms_api_only(MsApi api) { only = api; }
@@ -199,8 +183,12 @@ static int to_half(MsImage *image, MsApi api, MsImage *view, MsPinned *pin, int 
 }
 
 int ms_run(MsRun run, void *user, MsImage *const *inputs, int input_count, MsImage *const *between,
-           int between_count, MsImage *output, char *err, size_t err_size) {
+           int between_count, MsImage *output, MsRunInfo *info, char *err, size_t err_size) {
     ms_catch_errors();
+    MsRunInfo none = {MS_API_COUNT, 0, 0, 0};
+    if (!info)
+        info = &none;
+    *info = none;
     // Keep Halide's GPU buffers between frames instead of allocating them each time.
     halide_reuse_device_allocations(NULL, 1);
     if (input_count > MAX_INPUTS) {
@@ -306,10 +294,8 @@ int ms_run(MsRun run, void *user, MsImage *const *inputs, int input_count, MsIma
             ms_mutex_lock(&lock);
             const int first = !used[api];
             used[api] = 1;
-            last_used = api;
-            last_kernels_ms = ran - start;
-            last_download_ms = done - ran;
             ms_mutex_unlock(&lock);
+            *info = (MsRunInfo){api, ran - start, done - ran, 0};
             if (first) // once per API and session: which one the effects really run on
                 ms_log("running on %s", names[api]);
             return 1;
@@ -331,5 +317,6 @@ int ms_run(MsRun run, void *user, MsImage *const *inputs, int input_count, MsIma
         snprintf(err, err_size, "no API to run on");
     else
         snprintf(err, err_size, "Halide error %d", status);
+    info->declined = status == MS_RUN_DECLINE;
     return 0;
 }

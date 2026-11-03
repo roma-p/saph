@@ -15,7 +15,8 @@
 // The GPU memory of the images of a render, kept for the next renders instead of freed:
 // a new allocation is slow to write the first time (and Halide only keeps allocations for
 // CUDA). At most SLOTS allocations and limit() bytes in all, the oldest freed first; small
-// ones are not kept.
+// ones are not kept. Halide keeps what it frees too (engine/run.c turns that on, for its
+// kernels' own stages): memory this pool frees is then released for real (release()).
 #define SLOTS 16
 #define SMALLEST ((size_t)1 << 20u)
 
@@ -47,7 +48,7 @@ static uint64_t machine_memory(void) {
 }
 
 // GPU memory kept at most: 1/16 of the machine's memory (the host needs the rest; on a Mac
-// the GPU shares it), between 256 MB and 2 GB.
+// the GPU shares it), between 256 MB and 2 GB. Caller holds the lock.
 static size_t limit(void) {
     static size_t bytes;
     if (!bytes) {
@@ -88,6 +89,13 @@ static void free_device(uint64_t device, const struct halide_device_interface_t 
     halide_device_free(NULL, &b);
 }
 
+// Gives the memory Halide keeps back to the GPU API (it keeps what it frees while reuse is
+// on): turned off, which releases it, then on again.
+static void release(void) {
+    halide_reuse_device_allocations(NULL, 0);
+    halide_reuse_device_allocations(NULL, 1);
+}
+
 // Kept memory fits when it is at least the buffer's size and at most 1.5 times it.
 void ms_pool_take(halide_buffer_t *b, const struct halide_device_interface_t *interface) {
     if (b->device || !interface)
@@ -113,12 +121,19 @@ void ms_pool_park(halide_buffer_t *b, int keep) {
     if (!b->device)
         return;
     const size_t bytes = buffer_bytes(b);
-    if (!keep || bytes < SMALLEST || bytes > limit()) {
+    if (keep && bytes < SMALLEST) { // small: Halide keeps it, for the next render
         halide_device_free(NULL, b);
         return;
     }
     ms_mutex_lock(&lock);
+    if (!keep || bytes > limit()) { // after a failure, or too large to keep
+        ms_mutex_unlock(&lock);
+        halide_device_free(NULL, b);
+        release();
+        return;
+    }
     size_t total = bytes;
+    int evicted = 0;
     for (int i = 0; i < parked_count; ++i)
         total += parked[i].bytes;
     // Room for it: free the oldest kept ones.
@@ -130,9 +145,12 @@ void ms_pool_park(halide_buffer_t *b, int keep) {
         total -= parked[oldest].bytes;
         free_device(parked[oldest].device, parked[oldest].interface, parked[oldest].bytes);
         parked[oldest] = parked[--parked_count];
+        evicted = 1;
     }
     parked[parked_count++] = (Parked){b->device, b->device_interface, bytes, ++clock_now};
     ms_mutex_unlock(&lock);
+    if (evicted)
+        release();
     b->device = 0;
     b->device_interface = NULL;
     b->flags &= ~device_dirty;
@@ -144,4 +162,5 @@ void ms_pool_free_all(void) {
         free_device(parked[i].device, parked[i].interface, parked[i].bytes);
     parked_count = 0;
     ms_mutex_unlock(&lock);
+    halide_reuse_device_allocations(NULL, 0); // and what Halide keeps (the plugin is unloaded)
 }

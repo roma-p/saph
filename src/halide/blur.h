@@ -5,6 +5,7 @@
 #pragma once
 
 #include "Halide.h"
+#include "ms_limits.h"
 
 namespace ms_blur {
 
@@ -154,7 +155,7 @@ inline Func blur3(Func in, Expr total_x, Expr total_y, Expr width, Expr height, 
 // on-chip memory, then sums the windows there. Blocks of 64 x 4 pixels along x, 8 x 32
 // along y: on-chip memory (64 + 2r) x 4 or 8 x (32 + 2r) float4, within 32 KB (Metal) for
 // box radii up to STAGED_RADIUS_X / _Y (the caller checks).
-constexpr int STAGED_RADIUS_X = 200, STAGED_RADIUS_Y = 100;
+constexpr int STAGED_RADIUS_X = MS_STAGED_RADIUS_X, STAGED_RADIUS_Y = MS_STAGED_RADIUS_Y;
 
 // Each box computed whole, over `channels` channels (1, or 3 / 4 for RGB(A)).
 inline void schedule(std::vector<Box> &boxes, bool gpu, int channels, bool staged = false) {

@@ -5,6 +5,7 @@
 
 #include "common/defines.h"
 #include "common/effect.h"
+#include "common/mutex.h"
 #include "engine/engine.h"
 
 // Inputs: clip, label in the host, value where there is no image, optional, mask.
@@ -27,17 +28,23 @@ static int run(MsApi api, void *user) {
 // or why it does not.
 static const char *runs_on(void) {
     static char line[300];
-    static float pixels[16 * 16 * 4] = {0.5f}, result[16 * 16 * 4];
+    static MsMutex lock = MS_MUTEX_INIT; // `line`: shared by the instances
+    float pixels[16 * 16 * 4] = {0.5f}, result[16 * 16 * 4];
     MsImage source, output;
     ms_image(&source, pixels, 64, 16, 16, 4);
     ms_image(&output, result, 64, 16, 16, 4);
     Job j = {&source, &output, 2.0f};
     MsImage *const inputs[] = {&source};
     char err[256] = "";
-    if (ms_run(run, &j, inputs, 1, NULL, 0, &output, err, sizeof err) && result[0] == 1.0f)
-        snprintf(line, sizeof line, "%s", ms_api_name(ms_api_used()));
+    MsRunInfo info;
+    const int ok = ms_run(run, &j, inputs, 1, NULL, 0, &output, &info, err, sizeof err) &&
+                   result[0] == 1.0f;
+    ms_mutex_lock(&lock);
+    if (ok)
+        snprintf(line, sizeof line, "%s", ms_api_name(info.api));
     else
         snprintf(line, sizeof line, "failed: %s", err[0] ? err : "wrong result");
+    ms_mutex_unlock(&lock);
     return line;
 }
 
@@ -61,7 +68,7 @@ static int render(const MsRender *r) {
     ms_image_rgba(&output, r->output, r->output_row, r->half, r->width, r->height);
     Job j = {&source, &output, (float)r->values[GAIN]};
     MsImage *const inputs[] = {&source};
-    return ms_run(run, &j, inputs, 1, NULL, 0, &output, r->err, r->err_size);
+    return ms_run(run, &j, inputs, 1, NULL, 0, &output, r->info, r->err, r->err_size);
 }
 
 const MsEffect ms_test_effect = {

@@ -258,8 +258,13 @@ class DtSharp : public Generator<DtSharp> {
         return {pos, k};
     }
 
-    // ceil(log2(n)) for n >= 1.
-    static Expr log2_ceil(Expr n) { return cast<int>(ceil(log(cast<float>(n)) / std::log(2.0f) - 1e-4f)); }
+    // ceil(log2(n)) for n >= 1, exact: the float logarithm, then corrected by one where it
+    // is off (just above a power of two, the float rounds down).
+    static Expr log2_ceil(Expr n) {
+        Expr guess = max(cast<int>(ceil(log(cast<float>(n)) / std::log(2.0f))), 0);
+        guess = select((1 << guess) < n, guess + 1, guess);
+        return select(guess > 0 && (1 << (guess - 1)) >= n, guess - 1, guess);
+    }
 
     // Filters `in` along x (along_x) or y with the distances `dist`.
     struct Line {

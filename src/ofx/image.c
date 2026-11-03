@@ -306,11 +306,12 @@ OfxStatus ms_render_with(OfxImageEffectHandle effect, OfxPropertySetHandle in_ar
     // 5. process; on failure, show the error in the host.
     t[2] = now_ms();
     t[3] = t[4] = t[2];
+    MsRunInfo info = {MS_API_COUNT, 0, 0, 0};
     if (status == kOfxStatOK) {
         char err[2048] = "";
         const int ok =
-            process(inputs, clip_count, half, width, height, output, output_row, err, sizeof err,
-                    user);
+            process(inputs, clip_count, half, width, height, output, output_row, &info, err,
+                    sizeof err, user);
         t[3] = t[4] = now_ms();
         if (ok) {
             if (result)
@@ -346,8 +347,6 @@ OfxStatus ms_render_with(OfxImageEffectHandle effect, OfxPropertySetHandle in_ar
         char *name = "?";
         if (ms_effect->getPropertySet(effect, &props) == kOfxStatOK)
             ms_prop->propGetString(props, kOfxPropLabel, 0, &name);
-        double kernels = 0, download = 0;
-        ms_run_times(&kernels, &download);
         char inputs_line[512] = "";
         size_t used = 0;
         for (int c = 0; c < clip_count && used < sizeof inputs_line; ++c)
@@ -356,8 +355,8 @@ OfxStatus ms_render_with(OfxImageEffectHandle effect, OfxPropertySetHandle in_ar
         ms_log("render %d %s %dx%d: fetch %.1f ms, copy in %.1f, effect %.1f (kernels with "
                "uploads %.1f, download %.1f), copy out %.1f, release %.1f (inputs: %s; output %s, "
                "host %s; window %d %d %d %d, image %d %d %d %d)",
-               number, name, width, height, t[1] - t[0], t[2] - t[1], t[3] - t[2], kernels,
-               download, t[4] - t[3], t[5] - t[4], inputs_line, result ? "copied" : "in place",
+               number, name, width, height, t[1] - t[0], t[2] - t[1], t[3] - t[2],
+               info.kernels_ms, info.download_ms, t[4] - t[3], t[5] - t[4], inputs_line, result ? "copied" : "in place",
                dst.depth, window.x1, window.y1,
                window.x2, window.y2, area.x1, area.y1, area.x2, area.y2);
     }

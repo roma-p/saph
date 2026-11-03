@@ -50,6 +50,18 @@ uintptr_t halide_cuda_get_device_ptr(void *user_context, struct halide_buffer_t 
 
 #define CU_POINTER_ATTRIBUTE_CONTEXT 1
 
+// The memory locked now, shared by the renders using it (two renders can read the same image
+// of the host at once): locked by the first, released by the last.
+#define LOCKED 64
+typedef struct {
+    void *start;
+    size_t bytes;
+    int users;
+} Locked;
+static Locked locked[LOCKED];
+static int locked_count;
+static MsMutex locked_lock = MS_MUTEX_INIT;
+
 static int(CALL *pointer_attribute)(void *, int, unsigned long long);
 static int(CALL *push_context)(void *);
 static int(CALL *pop_context)(void **);
@@ -109,30 +121,53 @@ int ms_pin(MsPinned *p, const halide_buffer_t *b, void *context) {
         return 0;
     void *start = b->host + low * (ptrdiff_t)element;
     const size_t bytes = (size_t)(high - low + 1) * element;
-    void *popped;
-    if (push_context(context) != 0)
-        return 0;
-    // Fails for memory locked already (another image on the same pages, or the host's own):
-    // then copied as it is.
-    const int status = host_register(start, bytes, 0);
-    pop_context(&popped);
-    static int reported;
-    if (status != 0 && !reported) {
-        reported = 1;
-        ms_log("CUDA: page-locking an image failed (error %d): copied as it is", status);
+    ms_mutex_lock(&locked_lock);
+    int found = -1;
+    for (int i = 0; i < locked_count && found < 0; ++i)
+        if (locked[i].start == start && locked[i].bytes == bytes)
+            found = i;
+    if (found >= 0) { // locked already by another render
+        ++locked[found].users;
+        p->start = start;
+    } else if (locked_count < LOCKED) {
+        // Fails for memory locked otherwise (another image on the same pages, or the
+        // host's own): then copied as it is.
+        void *popped;
+        int status = push_context(context);
+        if (status == 0) {
+            status = host_register(start, bytes, 0);
+            pop_context(&popped);
+        }
+        static int reported;
+        if (status != 0 && !reported) {
+            reported = 1;
+            ms_log("CUDA: page-locking an image failed (error %d): copied as it is", status);
+        }
+        if (status == 0) {
+            locked[locked_count++] = (Locked){start, bytes, 1};
+            p->start = start;
+        }
     }
-    if (status != 0)
-        return 0;
-    p->start = start;
-    return 1;
+    ms_mutex_unlock(&locked_lock);
+    return p->start != NULL;
 }
 
 void ms_unpin(MsPinned *p, void *context) {
-    void *popped;
-    if (!p->start || push_context(context) != 0)
+    if (!p->start)
         return;
-    host_unregister(p->start);
-    pop_context(&popped);
+    ms_mutex_lock(&locked_lock);
+    for (int i = 0; i < locked_count; ++i) {
+        if (locked[i].start != p->start || --locked[i].users > 0)
+            continue;
+        void *popped;
+        if (push_context(context) == 0) {
+            host_unregister(p->start);
+            pop_context(&popped);
+        }
+        locked[i] = locked[--locked_count];
+        break;
+    }
+    ms_mutex_unlock(&locked_lock);
     p->start = NULL;
 }
 #endif

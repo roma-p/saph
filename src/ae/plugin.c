@@ -334,7 +334,8 @@ static PF_Err render(const MsEffect *e, PF_InData *in_data, PF_OutData *out_data
         const MsRender r = {values,       connected,     inputs,
                             area.width,   area.height,   frame_width,
                             frame_height, result,        (ptrdiff_t)area.width * 4,
-                            message,      sizeof message, 0};
+                            message,      sizeof message, 0,
+                            NULL};
         if (e->render(&r)) {
             unpack(result, area, output, depth);
         } else {

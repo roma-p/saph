@@ -112,20 +112,19 @@ typedef int (*MsRun)(MsApi api, void *user);
 // memory (at most 2 GB). `between`: the images `run` uses between its kernels; they stay on
 // the GPU (those without host memory get GPU memory before `run`, if their size is set).
 // An API that does not work here (no driver, no device) is not tried again in this session.
-// Returns 1 on success, or 0 with the reason in err.
+// Returns 1 on success, or 0 with the reason in err; `info` (or NULL) says what it did.
+typedef struct MsRunInfo {
+    MsApi api;                      // the API it ran on (MS_API_COUNT: none)
+    double kernels_ms, download_ms; // the kernels with the uploads of the inputs, then the
+                                    // download of the result (0 on the CPU)
+    int declined;                   // every API declined (`run` returned MS_RUN_DECLINE)
+} MsRunInfo;
 int ms_run(MsRun run, void *user, MsImage *const *inputs, int input_count, MsImage *const *between,
-           int between_count, MsImage *output, char *err, size_t err_size);
+           int between_count, MsImage *output, MsRunInfo *info, char *err, size_t err_size);
 
 // Name of `api`, e.g. "Metal"; 1 when a version of the kernels is built for it.
 const char *ms_api_name(MsApi api);
 int ms_api_built(MsApi api);
-
-// The API the last successful ms_run used, MS_API_COUNT before any.
-MsApi ms_api_used(void);
-
-// The times of the last successful ms_run, in ms: its kernels with the uploads of the inputs
-// to the GPU, and the download of the result (0 on the CPU).
-void ms_run_times(double *kernels_ms, double *download_ms);
 
 // Benchmarks (tools/perf/bench.c): ms_run uses only `api` (MS_API_COUNT: all, the default).
 void ms_api_only(MsApi api);

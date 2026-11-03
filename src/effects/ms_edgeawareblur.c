@@ -401,8 +401,8 @@ static int process(const MsRender *r, const Settings *s) {
             between[between_count++] = &ismooth;
         between[between_count++] = soft ? &iwx : &dy_turned;
         between[between_count++] = soft ? &iwy : &turned;
-        ok = ms_run(run_passes, &p, uploaded, count, between, between_count, &output, r->err,
-                    r->err_size);
+        ok = ms_run(run_passes, &p, uploaded, count, between, between_count, &output, r->info,
+                    r->err, r->err_size);
     }
     free(dx);
     free(dy);
