@@ -33,10 +33,10 @@ On Linux (Rocky 9; Rocky 8 is too old: Halide needs glibc 2.34):
 ## GPU
 
 Effects with a GPU version try, at render time, each GPU API of the system in this order,
-then the CPU (`src/engine/run.c`): Metal on macOS; CUDA then Vulkan on Linux; CUDA then
-Direct3D 12 on Windows. Only the driver is needed (NVIDIA for CUDA, a Vulkan driver for
-Vulkan). An API that does not work (no driver, no device) is not tried again in that
-session; the terminal and `~/millsaph.log` (in the home folder; Windows: `%TEMP%\millsaph.log`) say
+then the CPU (`src/engine/run.c`): Metal on macOS; CUDA on Linux; CUDA then Direct3D 12 on
+Windows. Only the driver is needed (NVIDIA for CUDA). An API that does not work (no driver,
+no device) is not tried again in that session; the terminal and `~/millsaph.log` (in the
+home folder; Windows: `%TEMP%\millsaph.log`) say
 `[MillSaph] CUDA not available ..., trying the next`, and `[MillSaph] running on Metal` once
 for the API the effects run on. The first 5000 renders of a session also log where their
 time goes, their settings and the API they ran on. The MS_Test effect shows
@@ -100,7 +100,7 @@ compiling against a stand-in of its headers. See the open points at the top of
 | `src/ae/` | The After Effects adapter (Windows): `plugin.c`, and `pipl.r`, which lists the effects for After Effects. |
 | `src/effects/` | The effects (`ms_*.c`): parameters and inputs, then the kernels each render runs, in order, and on which API (`profile.c`). The list of effects: `effects.c`. |
 | `src/engine/` | What the effects run on (`engine.h`): kernels called by name, images, and `ms_run`, which runs an effect's kernels on the first API that works and keeps their GPU memory between renders. |
-| `src/halide/` | The kernels, in Halide (C++): compiled at build time for the CPU and each GPU API (Metal on macOS, CUDA / Vulkan on Linux, CUDA / Direct3D 12 on Windows). `CMakeLists.txt` lists them (`ms_kernel`) and generates their table. |
+| `src/halide/` | The kernels, in Halide (C++): compiled at build time for the CPU and each GPU API (Metal on macOS, CUDA on Linux, CUDA / Direct3D 12 on Windows). `CMakeLists.txt` lists them (`ms_kernel`) and generates their table. |
 | `src/common/` | Shared by every layer, without any host or GPU API: the effect description (`effect.h`), the Mask parameters, a mutex. |
 
 Includes name their folder (`#include "engine/engine.h"`), so each file shows which

@@ -1,6 +1,6 @@
 #!/bin/sh
 # Collects everything about this machine and MillSaph's speed on it into one report file,
-# to send back: the machine (OS, CPU, memory, GPU, drivers, CUDA / Vulkan libraries), the
+# to send back: the machine (OS, CPU, memory, GPU, drivers, CUDA libraries), the
 # build, every effect on every API (tools/perf/bench.c, with the GPU results checked against
 # the CPU), the OFX test host's timings (perf.sh), Nuke's timing if nuke_time.py ran, and
 # MillSaph's log (~/millsaph.log: renders in Flame or Nuke, with where their time went).
@@ -35,8 +35,7 @@ run() { # a command, if it exists
     section "GPU"
     run nvidia-smi
     run nvidia-smi -q | head -120
-    run ldconfig -p | grep -iE 'libcuda|libnvidia-ptxjitcompiler|libvulkan'
-    run vulkaninfo --summary
+    run ldconfig -p | grep -iE 'libcuda|libnvidia-ptxjitcompiler'
     run system_profiler SPDisplaysDataType
 
     section "tools"

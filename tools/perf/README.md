@@ -7,9 +7,9 @@
 Builds, then writes one report file, `millsaph_report_<host>_<date>.txt`, to send back as it
 is:
 
-- the machine (OS, CPU, memory, GPU, drivers, CUDA and Vulkan libraries) and the build log;
+- the machine (OS, CPU, memory, GPU, drivers, CUDA libraries) and the build log;
 - `build/millsaph_bench` (`bench.c`): every effect at 4K and HD on every API built here (the
-  CPU, then Metal, or CUDA and Vulkan), each GPU result compared with the CPU's, and the
+  CPU, then Metal or CUDA), each GPU result compared with the CPU's, and the
   choices tuned on another machine (`src/effects/profile.c`) tried both ways;
 - `perf.sh` (below);
 - Nuke's timing, if `nuke_time.py` ran on this machine before (see below: run it first).
@@ -96,7 +96,7 @@ after the first render. The effects print the GPU API they really run on:
     [MillSaph] running on CUDA
 
 or, when an API fails, `[MillSaph] CUDA not available (Halide error ...), trying the next`
-(then Vulkan, then the CPU). EdgeAwareBlur Soft runs on the GPU where `src/effects/profile.c`
+(then the CPU). EdgeAwareBlur Soft runs on the GPU where `src/effects/profile.c`
 says so (not on Metal: the M1 Pro's CPU is faster); the bench's `EAB Soft gpu` / `EAB Soft cpu`
 cases compare the two.
 

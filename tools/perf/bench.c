@@ -1,5 +1,5 @@
-// Times every effect on every API built for this machine (the CPU, and Metal, or CUDA and
-// Vulkan, ...), checks each GPU result against the CPU one, and times the choices the effects
+// Times every effect on every API built for this machine (the CPU, and Metal or CUDA, ...),
+// checks each GPU result against the CPU one, and times the choices the effects
 // make that were tuned on another machine (effects/profile.h). Run by tools/perf/collect.sh;
 // built with the plugin (build/millsaph_bench).
 //

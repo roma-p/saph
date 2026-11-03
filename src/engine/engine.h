@@ -1,7 +1,7 @@
 // What the effects run on: Halide kernels (src/halide), each built for the CPU and for the
 // GPU APIs of the platform (CMakeLists.txt: ms_kernel), called by name; the images they
 // read and write; and ms_run, which runs an effect's kernels on the first API that works
-// (macOS: Metal; Linux: CUDA, then Vulkan; Windows: CUDA, then Direct3D 12; then the CPU)
+// (macOS: Metal; Linux: CUDA; Windows: CUDA, then Direct3D 12; then the CPU)
 // and keeps their GPU memory between renders.
 
 #pragma once

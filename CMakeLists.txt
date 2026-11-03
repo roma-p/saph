@@ -84,7 +84,10 @@ if(APPLE)
 elseif(WIN32)
   set(gpu_apis cuda d3d12compute)
 else()
-  set(gpu_apis cuda vulkan)
+  # Not Vulkan: on an RTX A6000 it was slower than the CPU (about 350 ms per HD frame against
+  # 45 to 90) and Distort's results were wrong; after CUDA, the CPU. (The engine still takes
+  # it: `cuda vulkan` here builds it again.)
+  set(gpu_apis cuda)
 endif()
 
 file(GLOB generators CONFIGURE_DEPENDS src/halide/*_generator.cpp)
