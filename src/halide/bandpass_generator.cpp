@@ -6,10 +6,12 @@
 
 #include "Halide.h"
 #include "blur.h"
+#include "shared.h"
 
 using namespace Halide;
 using ms_blur::blur3;
 using ms_blur::Box;
+using ms_blur::Boxes;
 
 namespace {
 
@@ -25,12 +27,14 @@ class BandPass : public Generator<BandPass> {
     Input<int> blur2_x{"blur2_x"}, blur2_y{"blur2_y"};
     Input<float> brightness{"brightness"}, saturation{"saturation"}, offset_darks{"offset_darks"};
     Output<Buffer<float, 3>> output{"output"};
-    // GPU: windows read from on-chip memory (blur.h); the "staged" versions, for box radii
-    // up to ms_blur::STAGED_RADIUS_X / _Y (effects/ms_bandpass.c).
-    GeneratorParam<bool> staged{"staged", false};
-    // GPU: windows as differences of running sums (blur.h): the same cost whatever the blur;
-    // the "prefix" versions, for large blurs (effects/ms_bandpass.c).
-    GeneratorParam<bool> prefix{"prefix", false};
+    // GPU boxes (blur.h): windows, or the "staged" versions (windows read from on-chip
+    // memory, for box radii up to ms_blur::STAGED_RADIUS_X / _Y) and the "prefix" ones (the
+    // same cost whatever the blur, for large blurs); effects/ms_bandpass.c chooses.
+    GeneratorParam<Boxes> boxes{"boxes",
+                                Boxes::windows,
+                                {{"windows", Boxes::windows},
+                                 {"staged", Boxes::staged},
+                                 {"prefix", Boxes::prefix}}};
 
     void generate() {
         const bool gpu = get_target().has_gpu_feature();
@@ -40,8 +44,8 @@ class BandPass : public Generator<BandPass> {
         Func src("src");
         src(x, y, c) = source(x, y, c);
         std::vector<Box> rgb;
-        Func blur1 = blur3(src, blur1_x, blur1_y, width, height, gpu, "blur1_", rgb, false, prefix);
-        Func blur2 = blur3(src, blur2_x, blur2_y, width, height, gpu, "blur2_", rgb, false, prefix);
+        Func blur1 = blur3(src, blur1_x, blur1_y, width, height, gpu, "blur1_", rgb, boxes);
+        Func blur2 = blur3(src, blur2_x, blur2_y, width, height, gpu, "blur2_", rgb, boxes);
 
         // The band-pass: difference of the blurs, saturation, brightness, offset darks,
         // mixed over the Source by the mask; alpha unchanged.
@@ -56,18 +60,15 @@ class BandPass : public Generator<BandPass> {
         Expr s = source(x, y, c);
         output(x, y, c) = select(c == 3, s, s * (1.0f - mk) + effect * mk);
 
-        // Interleaved RGBA: channels next to each other.
-        source.dim(0).set_stride(4);
-        source.dim(2).set_stride(1).set_bounds(0, 4);
+        ms::interleaved(source);
         mask_value.dim(0).set_stride(Expr()); // without a mask: one value (stride 0)
-        output.dim(0).set_stride(4);
-        output.dim(2).set_stride(1).set_bounds(0, 4);
+        ms::interleaved(output);
 
         // Schedule: each box computed whole (RGB: 3 channels); d and l per pixel of the
         // output. (On the GPU, sliding windows (blur.h) were slower here than summing each
         // window: 213 vs 147 ms at 4K; staged windows: 82 ms.)
         Var xo("xo"), yo("yo"), xi("xi"), yi("yi");
-        ms_blur::schedule(rgb, gpu, 3, staged);
+        ms_blur::schedule(rgb, gpu, 3);
         if (gpu) {
             output.bound(c, 0, 4).reorder(c, x, y).unroll(c).gpu_tile(x, y, xo, yo, xi, yi, 16, 16);
         } else {
@@ -77,4 +78,3 @@ class BandPass : public Generator<BandPass> {
 };
 
 HALIDE_REGISTER_GENERATOR(BandPass, ms_bandpass)
-HALIDE_REGISTER_GENERATOR(BandPass, ms_bandpass_gpu) // for the staged and prefix versions

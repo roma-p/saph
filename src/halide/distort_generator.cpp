@@ -11,6 +11,7 @@
 #include "Halide.h"
 #include "blur.h"
 #include "mask.h"
+#include "shared.h"
 
 using namespace Halide;
 
@@ -19,12 +20,6 @@ namespace {
 Var x("x"), y("y"), c("c");
 
 constexpr int MAX_LEVELS = 16; // reduced copies per axis, at most (2^15 pixels)
-
-// Interleaved RGBA: channels next to each other.
-template <typename B> void interleaved(B &b) {
-    b.dim(0).set_stride(4);
-    b.dim(2).set_stride(1).set_bounds(0, 4);
-}
 
 // Level of detail for a footprint of d pixels: log2 with a linear step between powers of
 // two (level n at d = 2^n), 0 below 1. Exact: from the float's exponent and mantissa.
@@ -80,7 +75,7 @@ class DistortShift : public Generator<DistortShift> {
         Func l("l");
         l(x, y, c) = ms_mask::luma(lens, x, y) * select(mask_lens != 0, mask_value(x, y), 1.0f);
         Func lb = ms_blur::blur3(l, blur_lens, blur_lens, width, height, gpu, "lensb_", boxes,
-                                 true);
+                                 ms_blur::Boxes::sliding);
 
         // Shift: slope of the lens (central difference, one-sided at the borders) times
         // amount, per axis, turned by the warp direction, rounded to 1/256 pixel.
@@ -112,9 +107,9 @@ class DistortShift : public Generator<DistortShift> {
         row(y) = {maximum(lod(rx, y)[0]), maximum(lod(rx, y)[1])};
         largest_lod(c) = mux(c, {maximum(row(ry)[0]), maximum(row(ry)[1])});
 
-        interleaved(lens);
+        ms::interleaved(lens);
         mask_value.dim(0).set_stride(Expr()); // without a mask: one value (stride 0)
-        interleaved(shift);
+        ms::interleaved(shift);
         largest_lod.dim(0).set_bounds(0, 2);
 
         // Schedule.
@@ -180,8 +175,8 @@ class DistortLevels : public Generator<DistortLevels> {
             ry.push_back(r);
         }
 
-        interleaved(source);
-        interleaved(output);
+        ms::interleaved(source);
+        ms::interleaved(output);
 
         // Schedule: each level is a pass over its pixels (they only read the level before:
         // no race between them).
@@ -305,10 +300,10 @@ class DistortWarp : public Generator<DistortWarp> {
         Expr src = source(x, y, c);
         output(x, y, c) = src + (warped - src) * m;
 
-        interleaved(source);
-        interleaved(shift);
-        interleaved(levels);
-        interleaved(output);
+        ms::interleaved(source);
+        ms::interleaved(shift);
+        ms::interleaved(levels);
+        ms::interleaved(output);
         mask_value.dim(0).set_stride(Expr()); // without a mask: one value (stride 0)
 
         Var xo("xo"), yo("yo"), xi("xi"), yi("yi");

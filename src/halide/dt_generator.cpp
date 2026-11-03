@@ -14,6 +14,7 @@
 #include "Halide.h"
 #include "blur.h"
 #include "mask.h"
+#include "shared.h"
 
 #include <cmath>
 #include <functional>
@@ -27,6 +28,77 @@ Var x("x"), y("y"), c("c");
 
 constexpr int ROWS = 8;     // rows filtered side by side (horizontal)
 constexpr int COLUMNS = 32; // columns filtered side by side (vertical)
+
+// Smallest index in [first, last] for which above(index) holds (false before it, true from
+// it on; it must hold at `last`). Branch-free binary search: from `first`, jumps of
+// 2^(steps-1), ..., 2, 1 samples are kept while every sample skipped is still below.
+// steps = ceil(log2(last - first + 1)) is enough.
+struct Search {
+    Func pos;
+    RDom k;
+};
+Search lower_bound(const std::string &name, Expr first, Expr last, Expr steps,
+                   const std::function<Expr(Expr)> &above) {
+    Func pos(name);
+    pos(x, y) = first;
+    RDom k(0, steps, name + "_k");
+    Expr probe = pos(x, y) + (1 << (steps - 1 - k));
+    pos(x, y) = select(probe <= last && !above(probe - 1), probe, pos(x, y));
+    return {pos, k};
+}
+
+// ceil(log2(n)) for n >= 1, exact: the float logarithm, then corrected by one where it is
+// off (just above a power of two, the float rounds down).
+Expr log2_ceil(Expr n) {
+    Expr guess = max(cast<int>(ceil(log(cast<float>(n)) / std::log(2.0f))), 0);
+    guess = select((1 << guess) < n, guess + 1, guess);
+    return select(guess > 0 && (1 << (guess - 1)) >= n, guess - 1, guess);
+}
+
+// One direction of a CPU Sharp or Softer pass: its output, the running position ct and
+// running sums `acc` along the line (RDoms ct_r, acc_r), and the searches of its windows.
+struct CpuLine {
+    Func out, ct, acc;
+    RDom ct_r, acc_r;
+    std::vector<Search> searches;
+};
+
+// ct(0) = 0, ct(i) = ct(i - 1) + dist(i): each sample's position along the line, in double.
+void positions(Func ct, Func dist, RDom r, bool along_x) {
+    ct(x, y) = cast<double>(0);
+    if (along_x)
+        ct(r, y) = ct(r - 1, y) + cast<double>(dist(r, y));
+    else
+        ct(x, r) = ct(x, r - 1) + cast<double>(dist(x, r));
+}
+
+// The schedule of a CPU pass: rows `h`, then columns `v` into `output`.
+void schedule_lines(CpuLine &h, CpuLine &v, Func output) {
+    Var xo("xo"), xi("xi"), yo("yo"), yi("yi");
+    const TailStrategy guard = TailStrategy::GuardWithIf;
+    // Rows: tiles of ROWS rows in parallel; the searches of a row are vectorised along it.
+    h.out.compute_root().bound(c, 0, 4).reorder_storage(c, x, y);
+    h.out.split(y, yo, yi, ROWS, guard).reorder(c, x, yi, yo).vectorize(c).parallel(yo);
+    h.ct.compute_at(h.out, yo);
+    h.acc.compute_at(h.out, yo).bound(c, 0, 4).reorder_storage(c, x, y);
+    h.acc.update().reorder(c, y, h.acc_r).vectorize(c);
+    for (Search &s : h.searches) {
+        s.pos.compute_at(h.out, yi).vectorize(x, 8, guard);
+        s.pos.update().reorder(x, s.k).vectorize(x, 8, guard);
+    }
+    // Columns: strips of COLUMNS columns in parallel; sums and searches are vectorised
+    // across the strip's columns.
+    output.bound(c, 0, 4).split(x, xo, xi, COLUMNS, guard).reorder(c, xi, y, xo).vectorize(c)
+        .parallel(xo);
+    v.ct.compute_at(output, xo);
+    v.ct.update().reorder(x, v.ct_r).vectorize(x, 8, guard);
+    v.acc.compute_at(output, xo).bound(c, 0, 4).reorder_storage(c, x, y);
+    v.acc.update().reorder(c, x, v.acc_r).vectorize(c);
+    for (Search &s : v.searches) {
+        s.pos.compute_at(output, y).vectorize(x, 8, guard);
+        s.pos.update().reorder(x, s.k).vectorize(x, 8, guard);
+    }
+}
 
 } // namespace
 
@@ -61,10 +133,8 @@ class DtDistances : public Generator<DtDistances> {
         dx(x, y) = select(x == 0, 1.0f, stretch(x, y, xl, y, floor_x) + scale_x * contrast(x, y, xl, y));
         dy(x, y) = select(y == 0, 1.0f, stretch(x, y, x, yb, floor_y) + scale_y * contrast(x, y, x, yb));
 
-        edge.dim(0).set_stride(4);
-        edge.dim(2).set_stride(1).set_bounds(0, 4);
-        mask.dim(0).set_stride(4);
-        mask.dim(2).set_stride(1).set_bounds(0, 4);
+        ms::interleaved(edge);
+        ms::interleaved(mask);
 
         Var xo("xo"), yo("yo"), xi("xi"), yi("yi");
         for (auto *d : {&dx, &dy}) {
@@ -90,13 +160,11 @@ class DtEdgeSmooth : public Generator<DtEdgeSmooth> {
         in(x, y, c) = edge(x, y, c);
         std::vector<ms_blur::Box> boxes;
         Func blurred = ms_blur::blur3(in, radius, radius, edge.width(), edge.height(), gpu,
-                                      "smooth", boxes, false, true);
+                                      "smooth", boxes, ms_blur::Boxes::prefix);
         output(x, y, c) = blurred(x, y, c);
 
-        edge.dim(0).set_stride(4);
-        edge.dim(2).set_stride(1).set_bounds(0, 4);
-        output.dim(0).set_stride(4);
-        output.dim(2).set_stride(1).set_bounds(0, 4);
+        ms::interleaved(edge);
+        ms::interleaved(output);
         ms_blur::schedule(boxes, gpu, 4);
         Var xo("xo"), yo("yo"), xi("xi"), yi("yi");
         output.bound(c, 0, 4).reorder(c, x, y);
@@ -121,8 +189,7 @@ class DtLargest : public Generator<DtLargest> {
         row(y) = maximum(ms_mask::value(mask, rx, y, mask_alpha, invert_mask));
         largest(x) = max(1.0f, maximum(row(ry)));
 
-        mask.dim(0).set_stride(4);
-        mask.dim(2).set_stride(1).set_bounds(0, 4);
+        ms::interleaved(mask);
         Var yo("yo"), yi("yi");
         row.compute_root().split(y, yo, yi, 16).parallel(yo);
     }
@@ -151,7 +218,9 @@ class DtSoftWeights : public Generator<DtSoftWeights> {
 };
 
 // Soft Edges, one pass: the recursive filter, forward then backward along each row, then
-// along each column, with the weights of DtSoftWeights.
+// along each column, with the weights of DtSoftWeights. On the GPU, in float as on the CPU,
+// one thread per line: a thread per row horizontally, per column vertically (neighbouring
+// threads read neighbouring columns together).
 class DtSoft : public Generator<DtSoft> {
   public:
     Input<Buffer<float, 3>> input{"input"};
@@ -186,13 +255,25 @@ class DtSoft : public Generator<DtSoft> {
         by(x, iy, c) = (1 - wyc(x, iy + 1)) * fy(x, iy, c) + wyc(x, iy + 1) * by(x, iy + 1, c);
         output(x, y, c) = by(x, y, c);
 
-        input.dim(0).set_stride(4);
-        input.dim(2).set_stride(1).set_bounds(0, 4);
-        output.dim(0).set_stride(4);
-        output.dim(2).set_stride(1).set_bounds(0, 4);
+        ms::interleaved(input);
+        ms::interleaved(output);
 
         // ---- schedule
         Var xo("xo"), xi("xi"), yo("yo"), yi("yi"), cx("cx");
+        if (get_target().has_gpu_feature()) {
+            // Each stage whole, RGBA as float4.
+            for (Func *f : {&fx, &bx, &fy, &by}) {
+                f->compute_root().bound(c, 0, 4).reorder_storage(c, x, y);
+                f->reorder(c, x, y).vectorize(c).gpu_tile(x, y, xo, yo, xi, yi, 16, 16);
+            }
+            fx.update().reorder(c, rx, y).vectorize(c).gpu_tile(y, yo, yi, 64);
+            bx.update().reorder(c, rbx, y).vectorize(c).gpu_tile(y, yo, yi, 64);
+            fy.update().reorder(c, ry, x).vectorize(c).gpu_tile(x, xo, xi, 64);
+            by.update().reorder(c, rby, x).vectorize(c).gpu_tile(x, xo, xi, 64);
+            output.bound(c, 0, 4).reorder(c, x, y).vectorize(c).gpu_tile(x, y, xo, yo, xi, yi, 16,
+                                                                          16);
+            return;
+        }
         // Horizontal: tiles of ROWS rows, in parallel. Each step along x does the tile's
         // rows x 4 channels (one vector per row).
         bx.compute_root().bound(c, 0, 4).reorder_storage(c, x, y);
@@ -238,64 +319,27 @@ class DtSharp : public Generator<DtSharp> {
     Input<int> span_wide{"span_wide"}; // samples one more unit of distance can add, at most
     Output<Buffer<float, 3>> output{"output"};
 
-    // Smallest index in [first, last] for which above(index) holds (false before it, true
-    // from it on; it must hold at `last`), with `steps` halvings.
-    // Smallest index in [first, last] for which above(index) holds (false before it, true
-    // from it on; it must hold at `last`). Branch-free binary search: from `first`, jumps of
-    // 2^(steps-1), ..., 2, 1 samples are kept while every sample skipped is still below.
-    // steps = ceil(log2(last - first + 1)) is enough.
-    struct Search {
-        Func pos;
-        RDom k;
-    };
-    static Search lower_bound(const std::string &name, Expr first, Expr last, Expr steps,
-                              const std::function<Expr(Expr)> &above) {
-        Func pos(name);
-        pos(x, y) = first;
-        RDom k(0, steps, name + "_k");
-        Expr probe = pos(x, y) + (1 << (steps - 1 - k));
-        pos(x, y) = select(probe <= last && !above(probe - 1), probe, pos(x, y));
-        return {pos, k};
-    }
-
-    // ceil(log2(n)) for n >= 1, exact: the float logarithm, then corrected by one where it
-    // is off (just above a power of two, the float rounds down).
-    static Expr log2_ceil(Expr n) {
-        Expr guess = max(cast<int>(ceil(log(cast<float>(n)) / std::log(2.0f))), 0);
-        guess = select((1 << guess) < n, guess + 1, guess);
-        return select(guess > 0 && (1 << (guess - 1)) >= n, guess - 1, guess);
-    }
-
-    // Filters `in` along x (along_x) or y with the distances `dist`.
-    struct Line {
-        Func out, ct, sums;
-        RDom r, q; // along the line, for ct and sums
-        std::vector<Search> searches;
-    };
-    Line filter(Func in, Func dist, Expr length, bool along_x, Expr radius, Expr span,
-                const std::string &name) {
-        Line l{Func(name), Func(name + "_ct"), Func(name + "_sums"),
-               RDom(1, length - 1, name + "_r"), RDom(0, length, name + "_q"), {}};
-        RDom &r = l.r, &q = l.q;
+    // Filters `in` along x (along_x) or y with the distances `dist`; acc(i): the sum of the
+    // values before i.
+    CpuLine filter(Func in, Func dist, Expr length, bool along_x, Expr radius, Expr span,
+                   const std::string &name) {
+        CpuLine l{Func(name), Func(name + "_ct"), Func(name + "_sums"),
+                  RDom(1, length - 1, name + "_r"), RDom(0, length, name + "_q"), {}};
+        RDom &q = l.acc_r;
         Expr eps = Internal::make_const(Float(64), 1e-9); // window bounds are inclusive
         Var &u = along_x ? x : y;  // position along the line
         auto at = [&](Func f, Expr i) { return along_x ? f(i, y) : f(x, i); };
         auto at_c = [&](Func f, Expr i) { return along_x ? f(i, y, c) : f(x, i, c); };
 
-        // Running sums: position ct (ct(0) = 0) and values (sums(i) = sum of values < i).
-        l.ct(x, y) = cast<double>(0);
+        positions(l.ct, dist, l.ct_r, along_x);
+        l.acc(x, y, c) = cast<double>(0);
         if (along_x)
-            l.ct(r, y) = l.ct(r - 1, y) + cast<double>(dist(r, y));
+            l.acc(q + 1, y, c) = l.acc(q, y, c) + cast<double>(in(q, y, c));
         else
-            l.ct(x, r) = l.ct(x, r - 1) + cast<double>(dist(x, r));
-        l.sums(x, y, c) = cast<double>(0);
-        if (along_x)
-            l.sums(q + 1, y, c) = l.sums(q, y, c) + cast<double>(in(q, y, c));
-        else
-            l.sums(x, q + 1, c) = l.sums(x, q, c) + cast<double>(in(x, q, c));
+            l.acc(x, q + 1, c) = l.acc(x, q, c) + cast<double>(in(x, q, c));
 
         auto ct = [&](Expr i) { return at(l.ct, clamp(i, 0, length - 1)); };
-        auto sums = [&](Expr i) { return at_c(l.sums, clamp(i, 0, length)); };
+        auto sums = [&](Expr i) { return at_c(l.acc, clamp(i, 0, length)); };
         Expr whole = floor(radius), fraction = radius - whole;
         Expr steps = log2_ceil(span + 1); // ranges of span + 1 samples
         Expr here = ct(u);
@@ -330,40 +374,13 @@ class DtSharp : public Generator<DtSharp> {
         Func in = BoundaryConditions::repeat_edge(input);
         Func dxc = BoundaryConditions::repeat_edge(dx), dyc = BoundaryConditions::repeat_edge(dy);
 
-        Line h = filter(in, dxc, width, true, radius_x, span_x, "h");
-        Line v = filter(h.out, dyc, height, false, radius_y, span_y, "v");
+        CpuLine h = filter(in, dxc, width, true, radius_x, span_x, "h");
+        CpuLine v = filter(h.out, dyc, height, false, radius_y, span_y, "v");
         output(x, y, c) = v.out(x, y, c);
 
-        input.dim(0).set_stride(4);
-        input.dim(2).set_stride(1).set_bounds(0, 4);
-        output.dim(0).set_stride(4);
-        output.dim(2).set_stride(1).set_bounds(0, 4);
-
-        // ---- schedule
-        Var xo("xo"), xi("xi"), yo("yo"), yi("yi");
-        const TailStrategy guard = TailStrategy::GuardWithIf;
-        // Rows: tiles of ROWS rows in parallel; the searches of a row are vectorised along it.
-        h.out.compute_root().bound(c, 0, 4).reorder_storage(c, x, y);
-        h.out.split(y, yo, yi, ROWS, guard).reorder(c, x, yi, yo).vectorize(c).parallel(yo);
-        h.ct.compute_at(h.out, yo);
-        h.sums.compute_at(h.out, yo).bound(c, 0, 4).reorder_storage(c, x, y);
-        h.sums.update().reorder(c, y, h.q).vectorize(c);
-        for (Search &s : h.searches) {
-            s.pos.compute_at(h.out, yi).vectorize(x, 8, guard);
-            s.pos.update().reorder(x, s.k).vectorize(x, 8, guard);
-        }
-        // Columns: strips of COLUMNS columns in parallel; sums and searches are vectorised
-        // across the strip's columns.
-        output.bound(c, 0, 4).split(x, xo, xi, COLUMNS, guard).reorder(c, xi, y, xo)
-            .vectorize(c).parallel(xo);
-        v.ct.compute_at(output, xo);
-        v.ct.update().reorder(x, v.r).vectorize(x, 8, guard);
-        v.sums.compute_at(output, xo).bound(c, 0, 4).reorder_storage(c, x, y);
-        v.sums.update().reorder(c, x, v.q).vectorize(c);
-        for (Search &s : v.searches) {
-            s.pos.compute_at(output, y).vectorize(x, 8, guard);
-            s.pos.update().reorder(x, s.k).vectorize(x, 8, guard);
-        }
+        ms::interleaved(input);
+        ms::interleaved(output);
+        schedule_lines(h, v, output);
     }
 };
 
@@ -380,39 +397,32 @@ class DtSofter : public Generator<DtSofter> {
     Input<int> span_x{"span_x"}, span_y{"span_y"};     // samples per side, at most
     Output<Buffer<float, 3>> output{"output"};
 
-    struct Line {
-        Func out, ct, area;
-        RDom r;
-        std::vector<DtSharp::Search> searches;
-    };
-    Line filter(Func in, Func dist, Expr length, bool along_x, Expr h, Expr span,
-                const std::string &name) {
-        Line l{Func(name), Func(name + "_ct"), Func(name + "_area"), RDom(1, length - 1, name + "_r"), {}};
-        RDom &r = l.r;
+    // Filters `in` along x (along_x) or y with the distances `dist`; acc(i): the integral
+    // from ct(0) to ct(i).
+    CpuLine filter(Func in, Func dist, Expr length, bool along_x, Expr h, Expr span,
+                   const std::string &name) {
+        RDom r(1, length - 1, name + "_r");
+        CpuLine l{Func(name), Func(name + "_ct"), Func(name + "_area"), r, r, {}};
         Var &u = along_x ? x : y;
         Expr half = Internal::make_const(Float(64), 0.5);
         auto at = [&](Func f, Expr i) { return along_x ? f(i, y) : f(x, i); };
         auto value = [&](Expr i) { return cast<double>(along_x ? in(i, y, c) : in(x, i, c)); };
 
-        // Position ct (ct(0) = 0) and integral area (area(i): from ct(0) to ct(i)).
-        l.ct(x, y) = cast<double>(0);
-        l.area(x, y, c) = cast<double>(0);
-        if (along_x) {
-            l.ct(r, y) = l.ct(r - 1, y) + cast<double>(dist(r, y));
-            l.area(r, y, c) = l.area(r - 1, y, c) +
-                              cast<double>(dist(r, y)) * half * (value(r) + value(r - 1));
-        } else {
-            l.ct(x, r) = l.ct(x, r - 1) + cast<double>(dist(x, r));
-            l.area(x, r, c) = l.area(x, r - 1, c) +
-                              cast<double>(dist(x, r)) * half * (value(r) + value(r - 1));
-        }
+        positions(l.ct, dist, r, along_x);
+        l.acc(x, y, c) = cast<double>(0);
+        if (along_x)
+            l.acc(r, y, c) =
+                l.acc(r - 1, y, c) + cast<double>(dist(r, y)) * half * (value(r) + value(r - 1));
+        else
+            l.acc(x, r, c) =
+                l.acc(x, r - 1, c) + cast<double>(dist(x, r)) * half * (value(r) + value(r - 1));
         auto ct = [&](Expr i) { return at(l.ct, clamp(i, 0, length - 1)); };
         auto area = [&](Expr i) {
             i = clamp(i, 0, length - 1);
-            return along_x ? l.area(i, y, c) : l.area(x, i, c);
+            return along_x ? l.acc(i, y, c) : l.acc(x, i, c);
         };
         auto v = [&](Expr i) { return value(clamp(i, 0, length - 1)); };
-        Expr steps = DtSharp::log2_ceil(span + 2);
+        Expr steps = log2_ceil(span + 2);
 
         // The integral up to position t, with k the last index <= length - 2 whose ct <= t.
         auto integral = [&](Expr t, Expr k) {
@@ -429,11 +439,10 @@ class DtSofter : public Generator<DtSofter> {
         auto above = [&](Expr t) {
             return [=](Expr j) { return j >= length - 1 || ct(j) > t; };
         };
-        DtSharp::Search low = DtSharp::lower_bound(name + "_low", max(u - span, 1),
-                                                   max(min(u + 1, length - 1), 1), steps, above(low_t));
-        DtSharp::Search high = DtSharp::lower_bound(name + "_high", max(min(u, length - 1), 1),
-                                                    max(min(u + span + 1, length - 1), 1), steps,
-                                                    above(high_t));
+        Search low = lower_bound(name + "_low", max(u - span, 1), max(min(u + 1, length - 1), 1),
+                                 steps, above(low_t));
+        Search high = lower_bound(name + "_high", max(min(u, length - 1), 1),
+                                  max(min(u + span + 1, length - 1), 1), steps, above(high_t));
         l.searches = {low, high};
         Expr k_low = low.pos(x, y) - 1, k_high = high.pos(x, y) - 1;
         Expr mean = (integral(high_t, k_high) - integral(low_t, k_low)) / (2 * h);
@@ -446,37 +455,13 @@ class DtSofter : public Generator<DtSofter> {
         Func in = BoundaryConditions::repeat_edge(input);
         Func dxc = BoundaryConditions::repeat_edge(dx), dyc = BoundaryConditions::repeat_edge(dy);
 
-        Line hl = filter(in, dxc, width, true, half_x, span_x, "h");
-        Line vl = filter(hl.out, dyc, height, false, half_y, span_y, "v");
-        output(x, y, c) = vl.out(x, y, c);
+        CpuLine h = filter(in, dxc, width, true, half_x, span_x, "h");
+        CpuLine v = filter(h.out, dyc, height, false, half_y, span_y, "v");
+        output(x, y, c) = v.out(x, y, c);
 
-        input.dim(0).set_stride(4);
-        input.dim(2).set_stride(1).set_bounds(0, 4);
-        output.dim(0).set_stride(4);
-        output.dim(2).set_stride(1).set_bounds(0, 4);
-
-        // ---- schedule (as DtSharp)
-        Var xo("xo"), xi("xi"), yo("yo"), yi("yi");
-        const TailStrategy guard = TailStrategy::GuardWithIf;
-        hl.out.compute_root().bound(c, 0, 4).reorder_storage(c, x, y);
-        hl.out.split(y, yo, yi, ROWS, guard).reorder(c, x, yi, yo).vectorize(c).parallel(yo);
-        hl.ct.compute_at(hl.out, yo);
-        hl.area.compute_at(hl.out, yo).bound(c, 0, 4).reorder_storage(c, x, y);
-        hl.area.update().reorder(c, y, hl.r).vectorize(c);
-        for (DtSharp::Search &s : hl.searches) {
-            s.pos.compute_at(hl.out, yi).vectorize(x, 8, guard);
-            s.pos.update().reorder(x, s.k).vectorize(x, 8, guard);
-        }
-        output.bound(c, 0, 4).split(x, xo, xi, COLUMNS, guard).reorder(c, xi, y, xo)
-            .vectorize(c).parallel(xo);
-        vl.ct.compute_at(output, xo);
-        vl.ct.update().reorder(x, vl.r).vectorize(x, 8, guard);
-        vl.area.compute_at(output, xo).bound(c, 0, 4).reorder_storage(c, x, y);
-        vl.area.update().reorder(c, x, vl.r).vectorize(c);
-        for (DtSharp::Search &s : vl.searches) {
-            s.pos.compute_at(output, y).vectorize(x, 8, guard);
-            s.pos.update().reorder(x, s.k).vectorize(x, 8, guard);
-        }
+        ms::interleaved(input);
+        ms::interleaved(output);
+        schedule_lines(h, v, output); // as DtSharp
     }
 };
 
@@ -509,6 +494,14 @@ struct BlockSums {
     int chunk;
     bool channels;
 
+    // The coordinates of index i of block t, row y (and channel c).
+    std::vector<Expr> args(Expr i, Expr t) const {
+        std::vector<Expr> a{i, t, y};
+        if (channels)
+            a.push_back(c);
+        return a;
+    }
+
     // `value`: sample i of block t of row y (and channel c), for i in [0, chunks x chunk).
     BlockSums(const std::string &name, Expr value, Var i, Var t, Var ch, Expr chunks, int chunk,
               bool channels)
@@ -517,22 +510,13 @@ struct BlockSums {
         Expr at = r.y * chunk + r.x;
         RDom q(0, chunks, name + "_q");
         Expr chunk_end = q * chunk + chunk - 1;
-        if (channels) {
-            pre(i, t, y, c) = value;
-            pre(at + 1, t, y, c) += pre(at, t, y, c);
-            off(ch, t, y, c) = sum(select(q < ch, pre(chunk_end, t, y, c), 0.0f));
-        } else {
-            pre(i, t, y) = value;
-            pre(at + 1, t, y) += pre(at, t, y);
-            off(ch, t, y) = sum(select(q < ch, pre(chunk_end, t, y), 0.0f));
-        }
+        pre(args(i, t)) = value;
+        pre(args(at + 1, t)) += pre(args(at, t));
+        off(args(ch, t)) = sum(select(q < ch, pre(args(chunk_end, t)), 0.0f));
     }
 
     // The sum of samples 0 to j of block t, row y, included.
-    Expr upto(Expr j, Expr t) const {
-        return channels ? off(j / chunk, t, y, c) + pre(j, t, y, c)
-                        : off(j / chunk, t, y) + pre(j, t, y);
-    }
+    Expr upto(Expr j, Expr t) const { return off(args(j / chunk, t)) + pre(args(j, t)); }
 
     // The sum of samples k + 1 to j (j >= k), or minus that of j + 1 to k.
     Expr diff(Expr j, Expr k, Expr t) const { return upto(j, t) - upto(k, t); }
@@ -570,67 +554,24 @@ struct BlockSums {
     }
 };
 
-// GPU Soft: the same recursions as DtSoft, in float as there, one thread per line: a
-// thread per row horizontally, per column vertically (neighbouring threads read
-// neighbouring columns together). The weights a^d of every pass: DtSoftWeights.
-class DtSoftGpu : public Generator<DtSoftGpu> {
-  public:
-    Input<Buffer<float, 3>> input{"input"};
-    Input<Buffer<float, 2>> wx{"wx"}, wy{"wy"};
-    Output<Buffer<float, 3>> output{"output"};
-
-    void generate() {
-        Expr width = input.width(), height = input.height();
-        Func in = BoundaryConditions::repeat_edge(input);
-        Func wxc = BoundaryConditions::repeat_edge(wx), wyc = BoundaryConditions::repeat_edge(wy);
-
-        Func fx("fx"), bx("bx"), fy("fy"), by("by");
-        RDom rx(1, width - 1, "rx");
-        fx(x, y, c) = in(x, y, c);
-        fx(rx, y, c) = (1 - wxc(rx, y)) * in(rx, y, c) + wxc(rx, y) * fx(rx - 1, y, c);
-        RDom rbx(0, width - 1, "rbx");
-        Expr ix = width - 2 - rbx;
-        bx(x, y, c) = fx(x, y, c);
-        bx(ix, y, c) = (1 - wxc(ix + 1, y)) * fx(ix, y, c) + wxc(ix + 1, y) * bx(ix + 1, y, c);
-        RDom ry(1, height - 1, "ry");
-        fy(x, y, c) = bx(x, y, c);
-        fy(x, ry, c) = (1 - wyc(x, ry)) * bx(x, ry, c) + wyc(x, ry) * fy(x, ry - 1, c);
-        RDom rby(0, height - 1, "rby");
-        Expr iy = height - 2 - rby;
-        by(x, y, c) = fy(x, y, c);
-        by(x, iy, c) = (1 - wyc(x, iy + 1)) * fy(x, iy, c) + wyc(x, iy + 1) * by(x, iy + 1, c);
-        output(x, y, c) = by(x, y, c);
-
-        input.dim(0).set_stride(4);
-        input.dim(2).set_stride(1).set_bounds(0, 4);
-        output.dim(0).set_stride(4);
-        output.dim(2).set_stride(1).set_bounds(0, 4);
-
-        // ---- schedule: each stage whole, RGBA as float4.
-        Var xo("xo"), xi("xi"), yo("yo"), yi("yi");
-        for (Func *f : {&fx, &bx, &fy, &by}) {
-            f->compute_root().bound(c, 0, 4).reorder_storage(c, x, y);
-            f->reorder(c, x, y).vectorize(c).gpu_tile(x, y, xo, yo, xi, yi, 16, 16);
-        }
-        fx.update().reorder(c, rx, y).vectorize(c).gpu_tile(y, yo, yi, 64);
-        bx.update().reorder(c, rbx, y).vectorize(c).gpu_tile(y, yo, yi, 64);
-        fy.update().reorder(c, ry, x).vectorize(c).gpu_tile(x, xo, xi, 64);
-        by.update().reorder(c, rby, x).vectorize(c).gpu_tile(x, xo, xi, 64);
-        output.bound(c, 0, 4).reorder(c, x, y).vectorize(c).gpu_tile(x, y, xo, yo, xi, yi, 16, 16);
-    }
-};
-
 // Running sums along whole rows, for windows too wide for a block's on-chip memory (the
 // "rows" versions): in GPU memory, each a whole stage. In chunks of `chunk` samples: the sum
 // inside the chunk up to each sample (each sample re-reads its chunk: every sample
-// independent), and per row the sum of the chunks before each chunk, compensated (Kahan:
-// the sum and what its rounding left out). Only differences of sums are used: the large
-// sums of chunks first, so that their rounding is about the difference's size, not theirs.
+// independent), and per row the sum of the chunks before each chunk, compensated (shared.h).
+// Only differences of sums are used (ms::difference).
 struct RowSums {
     Func value, loc, before;
     RDom kk;
     int chunk;
     bool channels;
+
+    // The coordinates of index i of row y (and channel c).
+    std::vector<Expr> args(Expr i) const {
+        std::vector<Expr> a{i, y};
+        if (channels)
+            a.push_back(c);
+        return a;
+    }
 
     // `v`: sample i of row y (and channel c), for i in [0, length).
     RowSums(const std::string &name, Expr v, Var i, Expr length, int chunk, bool channels)
@@ -640,35 +581,22 @@ struct RowSums {
         Expr start = i - i % chunk;
         kk = RDom(1, (length + chunk - 1) / chunk, name + "_kk");
         Expr end = kk * chunk - 1; // the last sample of chunk kk - 1
-        if (channels) {
-            value(i, y, c) = v;
-            loc(i, y, c) = sum(select(r <= i % chunk, value(start + r, y, c), 0.0f));
-            before(i, y, c) = Tuple(0.0f, 0.0f);
-            Expr add = loc(end, y, c) - before(kk - 1, y, c)[1];
-            Expr total = strict_float(before(kk - 1, y, c)[0] + add);
-            before(kk, y, c) = Tuple(total, strict_float((total - before(kk - 1, y, c)[0]) - add));
-        } else {
-            value(i, y) = v;
-            loc(i, y) = sum(select(r <= i % chunk, value(start + r, y), 0.0f));
-            before(i, y) = Tuple(0.0f, 0.0f);
-            Expr add = loc(end, y) - before(kk - 1, y)[1];
-            Expr total = strict_float(before(kk - 1, y)[0] + add);
-            before(kk, y) = Tuple(total, strict_float((total - before(kk - 1, y)[0]) - add));
-        }
+        value(args(i)) = v;
+        loc(args(i)) = sum(select(r <= i % chunk, value(args(start + r)), 0.0f));
+        before(args(i)) = Tuple(0.0f, 0.0f);
+        before(args(kk)) =
+            ms::kahan_add(before(args(kk - 1))[0], before(args(kk - 1))[1], loc(args(end)));
     }
 
-    // f at sample j (part < 0: loc), or part `part` of the chunks before j's chunk.
-    Expr at(Func f, Expr j, int part = -1) const {
-        if (part < 0)
-            return channels ? Expr(f(j, y, c)) : Expr(f(j, y));
-        return channels ? Expr(f(j / chunk, y, c)[part]) : Expr(f(j / chunk, y)[part]);
+    // The running sum at sample j: the chunks before its chunk, and its chunk up to it.
+    ms::Compensated at(Expr j) const {
+        return {before(args(j / chunk))[0], before(args(j / chunk))[1], loc(args(j))};
     }
-    Expr upto(Expr j) const { return (at(before, j, 0) - at(before, j, 1)) + at(loc, j); }
-    Expr diff(Expr j, Expr k) const {
-        return strict_float(((at(before, j, 0) - at(before, k, 0)) -
-                             (at(before, j, 1) - at(before, k, 1))) +
-                            (at(loc, j) - at(loc, k)));
+    Expr upto(Expr j) const {
+        ms::Compensated s = at(j);
+        return (s.chunks - s.left_out) + s.inside;
     }
+    Expr diff(Expr j, Expr k) const { return ms::difference(at(j), at(k)); }
 
     // Each stage whole: the sums inside chunks one thread per sample, neighbouring threads on
     // neighbouring samples; the chunks before, one thread per row. Channels as float4.
@@ -707,9 +635,12 @@ struct Sums {
     }
 };
 
-// What the GPU pipelines share: inputs, block layout, output schedule.
+// What the GPU pipelines share: inputs, block layout, output and its schedule.
 template <typename T> class DtGpu : public Generator<T> {
   public:
+    GeneratorInput<Buffer<float, 3>> input{"input"};
+    GeneratorInput<Buffer<float, 2>> dist{"dist"};
+
     // Pixels per block, samples per chunk. Small tiles keep more blocks on the GPU at once
     // but load their margins more often: the "short" versions (tile 64, chunk 8) are faster
     // for margins up to about 128 samples (CMakeLists.txt, effects/ms_edgeawareblur.c).
@@ -733,23 +664,12 @@ template <typename T> class DtGpu : public Generator<T> {
     };
     Blocks blocks(Expr length, Expr margin) {
         const int TILE = tile, CHUNK = chunk;
-        if (rows) { // one "block": the whole row, without margin
-            margin = 0;
-        }
-        Blocks b;
-        b.tile_ = rows ? 0 : TILE;
-        b.length = length;
-        b.margin = margin;
-        b.size = TILE + 2 * margin;            // samples per block, with its margins
-        b.chunks = (b.size + CHUNK) / CHUNK;   // covers indices up to size
-        b.tt = x / TILE;
-        b.k = x - b.tt * TILE + margin;
-        if (rows) {
-            b.size = length;
-            b.tt = 0;
-            b.k = x;
-        }
-        return b;
+        if (rows) // one "block": the whole row, without margin (no chunks: RowSums has its own)
+            return {length, 0, length, Expr(), 0, x, 0};
+        Expr size = TILE + 2 * margin; // samples per block, with its margins
+        Expr tt = x / TILE;
+        // chunks: covers indices up to size.
+        return {length, margin, size, (size + CHUNK) / CHUNK, tt, x - tt * TILE + margin, TILE};
     }
 
     // The block of a sample (Var t), 0 for the rows versions.
@@ -766,11 +686,20 @@ template <typename T> class DtGpu : public Generator<T> {
         return s;
     }
 
-    // output(x, y) = filtered(y, x): one block per tile of a row, one thread per pixel,
-    // written to a column of the output, all 4 channels at once (float4).
-    void schedule_output(Func output) {
+    // output(x, y) = filtered(y, x), and the schedule: one block per tile of a row, one
+    // thread per pixel, written to a column of the output, all 4 channels at once (float4);
+    // the running sums per block, the searches per pixel.
+    void finish(Func output, Func filtered, std::initializer_list<Sums *> sums,
+                std::initializer_list<Search *> searches) {
+        output(x, y, c) = filtered(y, x, c);
+        ms::interleaved(input);
+        ms::interleaved(output.output_buffer());
         output.bound(c, 0, 4).split(y, xo, xi, (int)tile, TailStrategy::GuardWithIf)
             .reorder(c, xi, xo, x).vectorize(c).gpu_blocks(xo, x).gpu_threads(xi);
+        for (Sums *s : sums)
+            s->schedule(output, xo, tile);
+        for (Search *s : searches)
+            s->pos.compute_at(output, xi);
     }
 };
 
@@ -779,8 +708,6 @@ template <typename T> class DtGpu : public Generator<T> {
 // window, so the windows do not change.
 class DtSharpGpu : public DtGpu<DtSharpGpu> {
   public:
-    Input<Buffer<float, 3>> input{"input"};
-    Input<Buffer<float, 2>> dist{"dist"};
     Input<float> radius{"radius"}; // 0: no blur, only transposed
     Input<int> span{"span"};       // samples per side, at most
     Input<int> span_wide{"span_wide"}; // samples one more unit of distance can add, at most
@@ -804,36 +731,25 @@ class DtSharpGpu : public DtGpu<DtSharpGpu> {
         };
         Expr eps = 1e-9f;
         Expr whole = floor(radius), fraction = radius - whole;
-        Expr steps = DtSharp::log2_ceil(span + 1);
+        Expr steps = log2_ceil(span + 1);
         Expr first = k - min(span, x);
         Expr last = k + min(span + 1, length - x);
         Expr end = k + (length - x); // index of position `length`
-        DtSharp::Search lo = DtSharp::lower_bound(
-            "lo", first, k, steps, [&](Expr j) { return ct(j) >= -whole - eps; });
-        DtSharp::Search hi = DtSharp::lower_bound(
-            "hi", k + 1, last, steps, [&](Expr j) { return j >= end || ct(j) > whole + eps; });
+        Search lo =
+            lower_bound("lo", first, k, steps, [&](Expr j) { return ct(j) >= -whole - eps; });
+        Search hi = lower_bound("hi", k + 1, last, steps,
+                                [&](Expr j) { return j >= end || ct(j) > whole + eps; });
         Expr lo_edge = lo.pos(x, y);
-        DtSharp::Search lo_wide = DtSharp::lower_bound(
-            "low", max(lo_edge - span_wide, k - x), lo_edge, DtSharp::log2_ceil(span_wide + 1),
-            [&](Expr j) { return ct(j) >= -(whole + 1) - eps; });
+        Search lo_wide =
+            lower_bound("low", max(lo_edge - span_wide, k - x), lo_edge, log2_ceil(span_wide + 1),
+                        [&](Expr j) { return ct(j) >= -(whole + 1) - eps; });
 
         Expr a = lo.pos(x, y), b = hi.pos(x, y) - 1, w = lo_wide.pos(x, y);
         Expr mean = (1.0f - fraction) / cast<float>(b - a + 1) * values(a, b);
         Expr wide = mean + fraction / cast<float>(b - w + 1) * values(w, b);
         Func filtered("filtered");
         filtered(x, y, c) = select(radius > 0, select(fraction > 0, wide, mean), in(x, y, c));
-        output(x, y, c) = filtered(y, x, c);
-
-        input.dim(0).set_stride(4);
-        input.dim(2).set_stride(1).set_bounds(0, 4);
-        output.dim(0).set_stride(4);
-        output.dim(2).set_stride(1).set_bounds(0, 4);
-
-        schedule_output(output);
-        d.schedule(output, xo, tile);
-        v.schedule(output, xo, tile);
-        for (DtSharp::Search *s : {&lo, &hi, &lo_wide})
-            s->pos.compute_at(output, xi);
+        finish(output, filtered, {&d, &v}, {&lo, &hi, &lo_wide});
     }
 };
 
@@ -845,8 +761,6 @@ class DtSharpGpu : public DtGpu<DtSharpGpu> {
 // inside, and the positions of the segments inside, measured from `here`, do not change.
 class DtSofterGpu : public DtGpu<DtSofterGpu> {
   public:
-    Input<Buffer<float, 3>> input{"input"};
-    Input<Buffer<float, 2>> dist{"dist"};
     Input<float> half{"half"}; // h; 0: no blur, only transposed
     Input<int> span{"span"};   // samples per side, at most
     Output<Buffer<float, 3>> output{"output"}; // transposed: (y, x, c)
@@ -876,15 +790,14 @@ class DtSofterGpu : public DtGpu<DtSofterGpu> {
 
         // First index (from 1 on) whose position is past t = here + offset; the segment
         // holding t starts one before it (as DtSofter).
-        Expr steps = DtSharp::log2_ceil(span + 2);
+        Expr steps = log2_ceil(span + 2);
         auto above = [&](Expr offset) {
             return [=](Expr j) { return j >= length - 1 || rel(j) > offset; };
         };
-        DtSharp::Search low = DtSharp::lower_bound("low", max(x - span, 1),
-                                                   max(min(x + 1, length - 1), 1), steps, above(-h));
-        DtSharp::Search high = DtSharp::lower_bound("high", max(min(x, length - 1), 1),
-                                                    max(min(x + span + 1, length - 1), 1), steps,
-                                                    above(h));
+        Search low =
+            lower_bound("low", max(x - span, 1), max(min(x + 1, length - 1), 1), steps, above(-h));
+        Search high = lower_bound("high", max(min(x, length - 1), 1),
+                                  max(min(x + span + 1, length - 1), 1), steps, above(h));
         Expr kl = low.pos(x, y) - 1, kh = high.pos(x, y) - 1;
 
         // From here - h to here: before the row's start (constant), or the end of segment
@@ -902,23 +815,12 @@ class DtSofterGpu : public DtGpu<DtSofterGpu> {
         Expr mean = (lower + upper) / (2 * h);
         Func filtered("filtered");
         filtered(x, y, c) = select(h > 0 && length > 1, mean, in(x, y, c));
-        output(x, y, c) = filtered(y, x, c);
-
-        input.dim(0).set_stride(4);
-        input.dim(2).set_stride(1).set_bounds(0, 4);
-        output.dim(0).set_stride(4);
-        output.dim(2).set_stride(1).set_bounds(0, 4);
-
-        schedule_output(output);
-        d.schedule(output, xo, tile);
-        a.schedule(output, xo, tile);
-        for (DtSharp::Search *s : {&low, &high})
-            s->pos.compute_at(output, xi);
+        finish(output, filtered, {&d, &a}, {&low, &high});
     }
 };
 
 // A one-channel image transposed: (x, y) -> (y, x). For the GPU Sharp's and Softer's
-// distances along y (see DtGpu).
+// distances along y (see DtGpu); GPU only.
 class DtTranspose : public Generator<DtTranspose> {
   public:
     Input<Buffer<float, 2>> input{"input"};
@@ -927,10 +829,7 @@ class DtTranspose : public Generator<DtTranspose> {
     void generate() {
         output(x, y) = input(y, x);
         Var xo("xo"), yo("yo"), xi("xi"), yi("yi");
-        if (get_target().has_gpu_feature())
-            output.gpu_tile(x, y, xo, yo, xi, yi, 16, 16);
-        else
-            output.tile(x, y, xo, yo, xi, yi, 16, 16).vectorize(xi, 8).parallel(yo);
+        output.gpu_tile(x, y, xo, yo, xi, yi, 16, 16);
     }
 };
 
@@ -942,6 +841,5 @@ HALIDE_REGISTER_GENERATOR(DtSofterGpu, ms_dt_softer_gpu)
 HALIDE_REGISTER_GENERATOR(DtDistances, ms_dt_distances)
 HALIDE_REGISTER_GENERATOR(DtSoftWeights, ms_dt_soft_weights)
 HALIDE_REGISTER_GENERATOR(DtSoft, ms_dt_soft)
-HALIDE_REGISTER_GENERATOR(DtSoftGpu, ms_dt_soft_gpu)
 HALIDE_REGISTER_GENERATOR(DtEdgeSmooth, ms_dt_edge_smooth)
 HALIDE_REGISTER_GENERATOR(DtLargest, ms_dt_largest)

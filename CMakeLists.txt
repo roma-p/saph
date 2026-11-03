@@ -149,8 +149,8 @@ ms_kernel(to_float GENERATOR ms_to_float CPU GPU)
 ms_kernel(to_half GENERATOR ms_to_half CPU GPU)
 # MS_BandPass. On the GPU, the staged version (windows in on-chip memory) for most blur sizes.
 ms_kernel(bandpass GENERATOR ms_bandpass CPU GPU)
-ms_kernel(bandpass_staged GENERATOR ms_bandpass_gpu PARAMS staged=true GPU)
-ms_kernel(bandpass_prefix GENERATOR ms_bandpass_gpu PARAMS prefix=true GPU) # large blurs
+ms_kernel(bandpass_staged GENERATOR ms_bandpass PARAMS boxes=staged GPU)
+ms_kernel(bandpass_prefix GENERATOR ms_bandpass PARAMS boxes=prefix GPU) # large blurs
 # MS_Distort.
 foreach(name distort_shift distort_levels distort_warp)
   ms_kernel(${name} GENERATOR ms_${name} CPU GPU)
@@ -159,11 +159,10 @@ endforeach()
 # float, per block of a row) besides the CPU one (in double, over whole lines), and so has
 # their preparation (Edge Smooth, distances); Soft, a recursion along whole lines, too (one
 # GPU thread per line).
-foreach(name dt_distances dt_edge_smooth dt_soft_weights)
+foreach(name dt_distances dt_edge_smooth dt_soft_weights dt_soft)
   ms_kernel(${name} GENERATOR ms_${name} CPU GPU)
 endforeach()
-ms_kernel(dt_soft_gpu GENERATOR ms_dt_soft_gpu GPU)
-foreach(name dt_largest dt_soft dt_sharp dt_softer)
+foreach(name dt_largest dt_sharp dt_softer)
   ms_kernel(${name} GENERATOR ms_${name} CPU)
 endforeach()
 ms_kernel(dt_transpose GENERATOR ms_dt_transpose GPU)

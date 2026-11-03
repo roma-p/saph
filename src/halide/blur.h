@@ -6,21 +6,28 @@
 
 #include "Halide.h"
 #include "ms_limits.h"
+#include "shared.h"
 
 namespace ms_blur {
 
 using namespace Halide;
 
+// How the GPU boxes sum their windows (the CPU's: a running sum in double):
+//   windows  every pixel sums its window
+//   staged   the same, the block's pixels and windows loaded first into on-chip memory
+//   sliding  each thread slides the window along a run of pixels (one channel)
+//   prefix   differences of running sums: the same cost whatever the radius
+enum class Boxes { windows, staged, sliding, prefix };
+
 // One box: the mean over [i - r, i + r] along x or y.
 struct Box {
     Func out;
     Func running; // CPU: running sum along the line; GPU sliding: along a run of pixels
-    Func first;   // GPU sliding: the window of the first pixel of each run
+    Func first;   // GPU sliding: the window of the first pixel of each run; GPU windows: the sum
     bool along_x;
-    bool sliding;
+    Boxes kind; // on the GPU
     Expr radius;
-    Func input; // GPU windows: the mirrored input
-    bool prefix = false;
+    Func input;  // GPU windows: the mirrored input
     Func chunks; // GPU prefix: the sum of each chunk of the line
     Func before; // GPU prefix: the sum of the chunks before each chunk
     RDom scan;   // GPU prefix: the chunks of before's update
@@ -38,14 +45,13 @@ constexpr int SLIDE = 32;
 // double): the line's first pixel is taken off every pixel first, to keep the sums small.
 constexpr int CHUNK = 16;
 
-inline Box box(Func in, Expr r, bool along_x, Expr width, Expr height, bool gpu, bool sliding,
-               const std::string &name, bool prefix = false) {
+inline Box box(Func in, Expr r, bool along_x, Expr width, Expr height, bool gpu, Boxes kind,
+               const std::string &name) {
     Var x = in.args()[0], y = in.args()[1], c = in.args()[2];
     Func mirrored = BoundaryConditions::mirror_image(in, {{0, width}, {0, height}});
-    Box b{Func(name), Func(name + "_sum"), Func(name + "_first"), along_x, gpu && sliding, r};
+    Box b{Func(name), Func(name + "_sum"), Func(name + "_first"), along_x, kind, r};
     Expr n = cast<float>(2 * r + 1);
-    if (gpu && prefix) {
-        b.prefix = true;
+    if (gpu && kind == Boxes::prefix) {
         b.chunks = Func(name + "_chunks");
         b.before = Func(name + "_before");
         // Along the line: the first coordinate; across it: o. The line starts at pixel -r - 1.
@@ -59,32 +65,24 @@ inline Box box(Func in, Expr r, bool along_x, Expr width, Expr height, bool gpu,
         b.chunks(k, o, c) = sum(v(start + k * CHUNK + j, o));
         // Chunks of the line: up to the last one a window of the image reaches.
         RDom kk(1, (length + 2 * r + 1) / CHUNK + 1, name + "_kk");
-        // Compensated (Kahan): the sum, and what its rounding left out (strict: kept as is).
+        // Compensated (shared.h).
         b.before(k, o, c) = Tuple(0.0f, 0.0f);
-        Expr add = b.chunks(kk - 1, o, c) - b.before(kk - 1, o, c)[1];
-        Expr total = strict_float(b.before(kk - 1, o, c)[0] + add);
-        b.before(kk, o, c) = Tuple(total, strict_float((total - b.before(kk - 1, o, c)[0]) - add));
+        b.before(kk, o, c) = ms::kahan_add(b.before(kk - 1, o, c)[0], b.before(kk - 1, o, c)[1],
+                                           b.chunks(kk - 1, o, c));
         b.scan = kk;
-        // The running sum up to pixel `along`, included.
         // The running sum up to pixel `along`, included: the sum of the chunks before its
         // chunk (with what its rounding left out), and its chunk up to it.
-        struct Sum {
-            Expr chunks, left_out, inside;
-        };
         auto sums = [&](Expr along, Expr other) {
             Expr from = along - start, chunk = from / CHUNK;
             RDom i(0, CHUNK, name + "_i");
-            return Sum{b.before(chunk, other, c)[0], b.before(chunk, other, c)[1],
-                       sum(select(i <= from % CHUNK, v(start + chunk * CHUNK + i, other), 0.0f))};
+            return ms::Compensated{
+                b.before(chunk, other, c)[0], b.before(chunk, other, c)[1],
+                sum(select(i <= from % CHUNK, v(start + chunk * CHUNK + i, other), 0.0f))};
         };
         Expr along = along_x ? Expr(x) : Expr(y), other = along_x ? Expr(y) : Expr(x);
-        Sum s2 = sums(along + r, other), s1 = sums(along - r - 1, other);
-        // The large sums of chunks first: their difference is about the window's size, so
-        // its rounding is too (not the sums').
-        Expr window = strict_float(((s2.chunks - s1.chunks) - (s2.left_out - s1.left_out)) +
-                                   (s2.inside - s1.inside));
+        Expr window = ms::difference(sums(along + r, other), sums(along - r - 1, other));
         b.out(x, y, c) = select(r == 0, mirrored(x, y, c), window / n + at(0, other));
-    } else if (gpu && sliding) {
+    } else if (gpu && kind == Boxes::sliding) {
         // run(i, run index, other coordinate, c): window sum of pixel run x SLIDE + i.
         Var i("i"), run("run"), o("o");
         RDom k(-r, 2 * r + 1, name + "_k");
@@ -135,35 +133,34 @@ inline Box box(Func in, Expr r, bool along_x, Expr width, Expr height, bool gpu,
 // The 3 box radii of a blur of total radius `total`.
 inline Expr box_radius(Expr total, int i) { return total / 3 + select(i >= 3 - total % 3, 1, 0); }
 
-// The 3-box blur of `in` (x, y, c): 3 horizontal boxes, then 3 vertical ones. Appends its 6
-// boxes to `boxes` (for schedule()).
+// The 3-box blur of `in` (x, y, c): 3 horizontal boxes, then 3 vertical ones, of `kind` on
+// the GPU. Appends its 6 boxes to `boxes` (for schedule()).
 inline Func blur3(Func in, Expr total_x, Expr total_y, Expr width, Expr height, bool gpu,
-                  const std::string &name, std::vector<Box> &boxes, bool sliding = false,
-                  bool prefix = false) {
+                  const std::string &name, std::vector<Box> &boxes,
+                  Boxes kind = Boxes::windows) {
     Func f = in;
     for (int i = 0; i < 6; ++i) {
         const bool along_x = i < 3;
         Expr r = box_radius(along_x ? total_x : total_y, i % 3);
-        boxes.push_back(
-            box(f, r, along_x, width, height, gpu, sliding, name + std::to_string(i), prefix));
+        boxes.push_back(box(f, r, along_x, width, height, gpu, kind, name + std::to_string(i)));
         f = boxes.back().out;
     }
     return f;
 }
 
-// GPU RGB boxes with `staged`: each block first loads its pixels and their windows into
-// on-chip memory, then sums the windows there. Blocks of 64 x 4 pixels along x, 8 x 32
+// GPU RGB staged boxes: each block first loads its pixels and their windows into on-chip
+// memory, then sums the windows there. Blocks of 64 x 4 pixels along x, 8 x 32
 // along y: on-chip memory (64 + 2r) x 4 or 8 x (32 + 2r) float4, within 32 KB (Metal) for
 // box radii up to STAGED_RADIUS_X / _Y (the caller checks).
 constexpr int STAGED_RADIUS_X = MS_STAGED_RADIUS_X, STAGED_RADIUS_Y = MS_STAGED_RADIUS_Y;
 
 // Each box computed whole, over `channels` channels (1, or 3 / 4 for RGB(A)).
-inline void schedule(std::vector<Box> &boxes, bool gpu, int channels, bool staged = false) {
+inline void schedule(std::vector<Box> &boxes, bool gpu, int channels) {
     for (Box &b : boxes) {
         Var x = b.out.args()[0], y = b.out.args()[1], c = b.out.args()[2];
         Var xo("xo"), yo("yo"), xi("xi"), yi("yi");
         const int lanes = channels > 1 ? 4 : 1; // RGB as float4 (a fourth channel unused)
-        if (b.prefix) {
+        if (gpu && b.kind == Boxes::prefix) {
             // The chunks: one thread each; before: one thread per line; the windows: as the
             // other GPU boxes, RGB as float4.
             auto rgb = [&](Func f) {
@@ -188,31 +185,25 @@ inline void schedule(std::vector<Box> &boxes, bool gpu, int channels, bool stage
                 b.before.update().vectorize(bc);
             b.out.compute_root().gpu_tile(x, y, xo, yo, xi, yi, 16, 16);
             rgb(b.out);
-        } else if (b.sliding) {
+        } else if (gpu && b.kind == Boxes::sliding) {
             // One thread per run of pixels: along x, runs of a row; along y, runs of a
-            // column (neighbouring threads read neighbouring pixels).
-            Var run("run"), i("i"), t("t"), to("to"), ti("ti");
+            // column (neighbouring threads read neighbouring pixels). One channel.
+            Var run("run"), i("i");
             Var u = b.along_x ? x : y, other = b.along_x ? y : x;
-            b.out.compute_root().bound(c, 0, lanes).reorder_storage(c, x, y);
+            b.out.compute_root().bound(c, 0, 1).reorder_storage(c, x, y);
             b.out.split(u, run, i, SLIDE, TailStrategy::GuardWithIf);
             if (b.along_x)
                 b.out.reorder(c, i, run, y).gpu_tile(run, y, xo, yo, xi, yi, 16, 16);
             else
                 b.out.reorder(c, i, x, run).gpu_tile(x, run, xo, yo, xi, yi, 16, 16);
-            if (channels > 1)
-                b.out.vectorize(c);
             b.running.compute_at(b.out, xi);
             b.first.compute_at(b.out, xi);
-            if (channels > 1) {
-                b.running.bound(b.running.args()[3], 0, lanes).vectorize(b.running.args()[3]);
-                b.running.update().vectorize(b.running.args()[3]);
-            }
         } else if (gpu && channels > 1) {
             // Channels as float4, stored together: one load and one add per tap for all
             // channels (a fourth channel is computed and unused for RGB).
             b.out.compute_root().bound(c, 0, 4).reorder_storage(c, x, y).reorder(c, x, y).vectorize(
                 c);
-            if (staged) {
+            if (b.kind == Boxes::staged) {
                 const int tw = b.along_x ? 64 : 8, th = b.along_x ? 4 : 32;
                 b.out.gpu_tile(x, y, xo, yo, xi, yi, tw, th);
                 b.first.compute_at(b.out, xi).bound(c, 0, 4).vectorize(c);

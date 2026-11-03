@@ -192,10 +192,7 @@ static int gpu_rows(MsApi api, const Passes *p, int columns, MsImage *in, MsImag
 // One pass on `api`. GPU Sharp and Softer: the rows, then the columns as rows of the
 // transposed image; GPU Soft: rows then columns, in place. CPU: in double, exact (Soft: float).
 static int pass(MsApi api, const Passes *p, MsImage *in, MsImage *out) {
-    if (api != MS_API_CPU && p->dt->type == MS_DT_SOFT)
-        return MS_KERNEL(MS_K_DT_SOFT_GPU, api, MS_IMAGE("input", in), MS_IMAGE("wx", p->wx),
-                         MS_IMAGE("wy", p->wy), MS_IMAGE("output", out));
-    if (api != MS_API_CPU) {
+    if (api != MS_API_CPU && p->dt->type != MS_DT_SOFT) {
         const int status = gpu_rows(api, p, 0, in, p->turned);
         return status != 0 ? status : gpu_rows(api, p, 1, p->turned, out);
     }
@@ -206,7 +203,7 @@ static int pass(MsApi api, const Passes *p, MsImage *in, MsImage *out) {
                          MS_DOUBLE("radius_y", p->radius_y), MS_INT("span_x", p->span_x),
                          MS_INT("span_y", p->span_y), MS_INT("span_wide", p->span_wide),
                          MS_IMAGE("output", out));
-    case MS_DT_SOFT:
+    case MS_DT_SOFT: // the same kernel on the GPU
         return MS_KERNEL(MS_K_DT_SOFT, api, MS_IMAGE("input", in), MS_IMAGE("wx", p->wx),
                          MS_IMAGE("wy", p->wy), MS_IMAGE("output", out));
     default:

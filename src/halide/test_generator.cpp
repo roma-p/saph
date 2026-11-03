@@ -2,6 +2,7 @@
 // (effects/ms_test.c).
 
 #include "Halide.h"
+#include "shared.h"
 
 using namespace Halide;
 
@@ -14,10 +15,8 @@ class Gain : public Generator<Gain> {
     void generate() {
         Var x("x"), y("y"), c("c"), xo("xo"), yo("yo"), xi("xi"), yi("yi");
         output(x, y, c) = select(c == 3, source(x, y, c), source(x, y, c) * gain);
-        source.dim(0).set_stride(4);
-        source.dim(2).set_stride(1).set_bounds(0, 4);
-        output.dim(0).set_stride(4);
-        output.dim(2).set_stride(1).set_bounds(0, 4);
+        ms::interleaved(source);
+        ms::interleaved(output);
         output.bound(c, 0, 4).reorder(c, x, y).unroll(c);
         if (get_target().has_gpu_feature())
             output.gpu_tile(x, y, xo, yo, xi, yi, 16, 16);

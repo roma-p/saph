@@ -3,6 +3,7 @@
 #include "Halide.h"
 #include "blur.h"
 #include "mask.h"
+#include "shared.h"
 
 using namespace Halide;
 
@@ -27,11 +28,10 @@ class Mask : public Generator<Mask> {
         Func m("m");
         m(x, y, c) = ms_mask::value(mask, x, y, mask_alpha, invert_mask);
         Func mb = ms_blur::blur3(m, blur_mask, blur_mask, mask.width(), mask.height(), gpu, "maskb_",
-                                 boxes, false, true);
+                                 boxes, ms_blur::Boxes::prefix);
         mask_value(x, y) = mb(x, y, 0);
 
-        mask.dim(0).set_stride(4);
-        mask.dim(2).set_stride(1).set_bounds(0, 4);
+        ms::interleaved(mask);
         Var xo("xo"), yo("yo"), xi("xi"), yi("yi");
         ms_blur::schedule(boxes, gpu, 1);
         if (gpu)
