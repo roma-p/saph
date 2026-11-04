@@ -28,9 +28,9 @@ void ms_catch_errors(void);
 const struct halide_device_interface_t *ms_device_interface(MsApi api);
 
 // GPU memory kept between renders (pool.c). ms_pool_take gives `b` kept memory of
-// `interface` if some fits; ms_pool_park takes `b`'s GPU memory away from it, kept for the
+// `api_interface` if some fits; ms_pool_park takes `b`'s GPU memory away from it, kept for the
 // next renders (`keep`) or freed.
-void ms_pool_take(halide_buffer_t *b, const struct halide_device_interface_t *interface);
+void ms_pool_take(halide_buffer_t *b, const struct halide_device_interface_t *api_interface);
 void ms_pool_park(halide_buffer_t *b, int keep);
 void ms_pool_free_all(void);
 

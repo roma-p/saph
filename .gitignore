@@ -1,6 +1,8 @@
 build/
 build-sanitize/
-third_party/
+# Downloaded or unzipped by cmake/deps.cmake; only Adobe's After Effects SDK zips are kept.
+third_party/*
+!third_party/AfterEffectsSDK_*.zip
 
 .DS_Store
 .vscode/

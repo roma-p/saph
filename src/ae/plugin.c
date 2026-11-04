@@ -1,6 +1,6 @@
 // After Effects adapter: makes an After Effects effect of MS_BandPass, MS_EdgeAwareBlur
-// and MS_Distort (common/effect.h). SmartFX, 8, 16 and 32 bits per channel. Windows for
-// now (see CMakeLists.txt: it needs Adobe's After Effects SDK).
+// and MS_Distort (common/effect.h). SmartFX, 8, 16 and 32 bits per channel. Windows and
+// macOS (see CMakeLists.txt: it needs Adobe's After Effects SDK).
 //
 // Each effect has its own entry point (EffectMain_<Name>) and PiPL resource (pipl.r).
 // Its After Effects parameters, by index:
@@ -16,9 +16,6 @@
 //   unpremultiplied, alpha, where OFX hosts give premultiplied images);
 // - origin_x / origin_y of the checked-out buffers, read here as the position of their
 //   top-left pixel in the layer;
-// - PF_REGISTER_EFFECT_EXT2 may be written for C++ in some SDK versions; if this file
-//   does not compile, PluginDataEntryFunction2 can go (the PiPL resources are enough
-//   for older versions) or the file can be compiled as C++.
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -26,12 +23,17 @@
 
 #include "AE_Effect.h"
 #include "AE_EffectCB.h"
+#include "AE_PluginData.h"
 
 #include "common/defines.h"
 #include "common/effect.h"
 #include "engine/engine.h"
 
+#ifdef _WIN32
 #define EXPORT __declspec(dllexport)
+#else
+#define EXPORT __attribute__((visibility("default")))
+#endif
 
 // These must match AE_Effect_Version and AE_Effect_Global_OutFlags(_2) in pipl.r, or
 // After Effects warns when it loads the plugin.
@@ -93,7 +95,7 @@ static PF_Err params_setup(AeEffect *ae, PF_InData *in_data, PF_OutData *out_dat
             continue;
         PF_ParamDef def;
         memset(&def, 0, sizeof def);
-        snprintf(def.name, sizeof def.name, "%s", p->label);
+        snprintf(def.PF_DEF_NAME, sizeof def.PF_DEF_NAME, "%s", p->label);
         def.uu.id = param_index(e, i); // saved in projects: keep it stable
 
         if (p->type == MS_PARAM_CHOICE) {
@@ -137,7 +139,7 @@ static PF_Err params_setup(AeEffect *ae, PF_InData *in_data, PF_OutData *out_dat
     for (int c = 1; c < e->clip_count && !err; ++c) {
         PF_ParamDef def;
         memset(&def, 0, sizeof def);
-        snprintf(def.name, sizeof def.name, "%s", e->clips[c].label);
+        snprintf(def.PF_DEF_NAME, sizeof def.PF_DEF_NAME, "%s", e->clips[c].label);
         def.param_type = PF_Param_LAYER;
         def.u.ld.dephault = PF_LayerDefault_NONE;
         def.uu.id = layer_index(e, c);
@@ -272,7 +274,7 @@ static void unpack(const float *buffer, Area area, PF_EffectWorld *world, int de
 // The result covers the whole Source, even when After Effects asked for less.
 static PF_Err pre_render(const MsEffect *e, PF_InData *in_data, PF_PreRenderExtra *extra) {
     PF_RenderRequest request = extra->input->output_request;
-    request.preserve_rgb_of_zero_alpha = TRUE;
+    request.preserve_rgb_of_zero_alpha = 1;
     PF_CheckoutResult source;
     // First look: how far the Source goes (max_result_rect); then ask for all of it.
     PF_Err err =
@@ -407,22 +409,34 @@ ENTRY(BandPass, BANDPASS)
 ENTRY(EdgeAwareBlur, EDGEAWAREBLUR)
 ENTRY(Distort, DISTORT)
 
+// One effect for PluginDataEntryFunction2: what the SDK's PF_REGISTER_EFFECT_EXT2 does
+// (Util/entry.h, C++ only), as an effect plug-in ('eFKT') with the reserved info it gives.
+static PF_Err register_effect(PF_PluginDataPtr in_ptr, PF_PluginDataCB2 callback,
+                              const char *name, const char *match_name, const char *entry) {
+    const A_long effect_kind = ('e' << 24) | ('F' << 16) | ('K' << 8) | 'T';
+    const A_long reserved_info = 8; // AE_RESERVED_INFO
+    const A_Err err = callback(in_ptr, (const A_u_char *)name, (const A_u_char *)match_name,
+                               (const A_u_char *)MS_GROUP, (const A_u_char *)entry, effect_kind,
+                               PF_AE_PLUG_IN_VERSION, PF_AE_PLUG_IN_SUBVERS, reserved_info,
+                               (const A_u_char *)"");
+    return err == A_Err_NONE ? PF_Err_NONE : (PF_Err)err;
+}
+
 // Registers the effects with After Effects 2022 and later (the PiPL resources say the
 // same for older versions).
 EXPORT PF_Err PluginDataEntryFunction2(PF_PluginDataPtr in_ptr, PF_PluginDataCB2 callback,
-                                       SPBasicSuite *basic, const char *host_name,
+                                       struct SPBasicSuite *basic, const char *host_name,
                                        const char *host_version) {
     (void)basic;
     (void)host_name;
     (void)host_version;
-    PF_Err err = PF_REGISTER_EFFECT_EXT2(in_ptr, callback, "MS_BandPass", "MillSaph BandPass",
-                                         MS_GROUP, AE_RESERVED_INFO, "EffectMain_BandPass", "");
+    PF_Err err = register_effect(in_ptr, callback, "MS_BandPass", "MillSaph BandPass",
+                                 "EffectMain_BandPass");
     if (!err)
-        err =
-            PF_REGISTER_EFFECT_EXT2(in_ptr, callback, "MS_EdgeAwareBlur", "MillSaph EdgeAwareBlur",
-                                    MS_GROUP, AE_RESERVED_INFO, "EffectMain_EdgeAwareBlur", "");
+        err = register_effect(in_ptr, callback, "MS_EdgeAwareBlur", "MillSaph EdgeAwareBlur",
+                              "EffectMain_EdgeAwareBlur");
     if (!err)
-        err = PF_REGISTER_EFFECT_EXT2(in_ptr, callback, "MS_Distort", "MillSaph Distort", MS_GROUP,
-                                      AE_RESERVED_INFO, "EffectMain_Distort", "");
+        err = register_effect(in_ptr, callback, "MS_Distort", "MillSaph Distort",
+                              "EffectMain_Distort");
     return err;
 }

@@ -81,13 +81,13 @@ void ms_engine_shutdown(void) { ms_pool_free_all(); }
 
 int ms_image_device(MsImage *image, MsApi api) {
     ms_catch_errors();
-    const struct halide_device_interface_t *interface = ms_device_interface(api);
-    if (!interface)
+    const struct halide_device_interface_t *api_interface = ms_device_interface(api);
+    if (!api_interface)
         return 0;
-    ms_pool_take(&image->b, interface);
+    ms_pool_take(&image->b, api_interface);
     if (image->b.device || image->b.host)
         return 0; // with host memory, Halide allocates GPU memory itself when needed
-    return halide_device_malloc(NULL, &image->b, interface);
+    return halide_device_malloc(NULL, &image->b, api_interface);
 }
 
 // Errors that say the API does not work here (no driver, no device, a failed launch...): it

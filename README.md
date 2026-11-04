@@ -7,8 +7,9 @@ order.
 
 ## Build
 
-Needs CMake 3.18+ and a C compiler (Xcode command line tools on macOS,
-`gcc` on Linux, Visual Studio on Windows).
+Needs CMake 3.28+ (Halide's CMake package) and a C and C++ compiler: Xcode command line
+tools on macOS, `gcc` on Linux, Visual Studio 2022 ("Desktop development with C++") on
+Windows.
 
 ```sh
 ./build.sh        # macOS / Linux
@@ -79,25 +80,33 @@ Copy the whole `MillSaph.ofx.bundle` folder to the OFX plugin folder, then resta
 | Linux | `/usr/OFX/Plugins/` |
 | Windows | `C:\Program Files\Common Files\OFX\Plugins\` |
 
-## After Effects (Windows, experimental)
+## After Effects (experimental)
 
-`build.bat` also builds `build/ae/MillSaph.aex` (MS_BandPass, MS_EdgeAwareBlur,
-MS_Distort) when Adobe's After Effects SDK is present: download it from
-developer.adobe.com (needs an Adobe account) and unzip it so that
-`third_party/AfterEffectsSDK/Examples` exists. Copy `MillSaph.aex` to
-`C:\Program Files\Adobe\Common\Plug-ins\7.0\MediaCore\`. The effects are in the
-MillSaph category; widths are shown as a percentage of the layer width.
+`build.sh` / `build.bat` also build the After Effects plugin (MS_BandPass,
+MS_EdgeAwareBlur, MS_Distort) with Adobe's After Effects SDK: its zips for macOS and Windows
+(27.0, from developer.adobe.com, Adobe account needed) are in `third_party/`, and the build
+unzips the one for its system. A newer SDK: put its zip there, named as Adobe names it
+(`AfterEffectsSDK_<version>_mac.zip` / `_win.zip`); the newest is used.
 
-Not yet tried in After Effects: written from the SDK documentation and checked only by
-compiling against a stand-in of its headers. See the open points at the top of
-`src/ae/plugin.c`.
+- macOS: `build/ae/MillSaph.plugin` (arm64 + x86_64), to copy to
+  `/Library/Application Support/Adobe/Common/Plug-ins/7.0/MediaCore/`.
+- Windows: `build/ae/MillSaph.aex`, to copy to
+  `C:\Program Files\Adobe\Common\Plug-ins\7.0\MediaCore\`.
+
+The effects are in the MillSaph category; widths are shown as a percentage of the layer
+width.
+
+Known limitations: built against the SDK (27.0 on macOS), but never run in After Effects.
+To check there, see the open points at the top of `src/ae/plugin.c` (straight or
+premultiplied alpha, the buffers' origin). The images are converted to packed floats on the
+CPU (8, 16 or 32 bits), without the OFX plugin's in-place reads and 16-bit transfers.
 
 ## Source layout
 
 | Folder | What |
 |---|---|
 | `src/ofx/` | The OFX adapter: it turns each effect into an OFX plugin (`plugin.c`, `image.c`, `host.c`). It reads and writes the host's images in place where it can. |
-| `src/ae/` | The After Effects adapter (Windows): `plugin.c`, and `pipl.r`, which lists the effects for After Effects. |
+| `src/ae/` | The After Effects adapter (macOS, Windows): `plugin.c`, and `pipl.r`, which lists the effects for After Effects. |
 | `src/effects/` | The effects (`ms_*.c`): parameters and inputs, then the kernels each render runs, in order, and on which API (`profile.c`). The list of effects: `effects.c`. |
 | `src/engine/` | What the effects run on (`engine.h`): kernels called by name, images, and `ms_run`, which runs an effect's kernels on the first API that works and keeps their GPU memory between renders. |
 | `src/halide/` | The kernels, in Halide (C++): compiled at build time for the CPU and each GPU API (Metal on macOS, CUDA on Linux, CUDA / Direct3D 12 on Windows). `CMakeLists.txt` lists them (`ms_kernel`) and generates their table. |

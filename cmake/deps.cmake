@@ -52,3 +52,24 @@ if(NOT EXISTS ${third_party}/halide/lib/cmake/Halide/HalideConfig.cmake)
   file(RENAME ${CMAKE_BINARY_DIR}/halide_unpack/${halide_name} ${third_party}/halide)
   file(REMOVE ${archive})
 endif()
+
+# After Effects SDK (Adobe's licence, for the After Effects plugin; optional): Adobe gives it
+# to Adobe accounts only (developer.adobe.com), so it is not downloaded here. Its zips, as
+# Adobe names them (AfterEffectsSDK_<version>_mac.zip / _win.zip), are in the repository's
+# third_party/ (or in ${third_party}): the one for this system is unzipped into
+# ${third_party} the first time (the newest if there are several).
+if(NOT EXISTS ${third_party}/AfterEffectsSDK/Examples/Headers/AE_Effect.h)
+  if(CMAKE_HOST_WIN32)
+    set(ae_os win)
+  else()
+    set(ae_os mac)
+  endif()
+  file(GLOB ae_zips ${CMAKE_SOURCE_DIR}/third_party/AfterEffectsSDK_*_${ae_os}.zip
+       ${third_party}/AfterEffectsSDK_*_${ae_os}.zip)
+  if(ae_zips)
+    list(SORT ae_zips COMPARE NATURAL)
+    list(GET ae_zips -1 ae_zip)
+    message(STATUS "Unzipping ${ae_zip}")
+    file(ARCHIVE_EXTRACT INPUT ${ae_zip} DESTINATION ${third_party})
+  endif()
+endif()

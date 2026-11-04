@@ -22,7 +22,7 @@
 
 typedef struct {
     uint64_t device;
-    const struct halide_device_interface_t *interface;
+    const struct halide_device_interface_t *api_interface;
     size_t bytes;
     uint64_t last_use;
 } Parked;
@@ -73,12 +73,12 @@ static size_t buffer_bytes(const halide_buffer_t *b) {
 static const uint64_t device_dirty = halide_buffer_flag_device_dirty;
 
 // Frees GPU memory that is not in any buffer (caller holds the lock).
-static void free_device(uint64_t device, const struct halide_device_interface_t *interface,
+static void free_device(uint64_t device, const struct halide_device_interface_t *api_interface,
                         size_t bytes) {
     halide_dimension_t dim = {0, (int32_t)bytes, 1, 0};
     halide_buffer_t b = {0};
     b.device = device;
-    b.device_interface = interface;
+    b.device_interface = api_interface;
     b.type.code = halide_type_uint;
     b.type.bits = 8;
 #if HALIDE_VERSION_MAJOR < 22
@@ -97,20 +97,20 @@ static void release(void) {
 }
 
 // Kept memory fits when it is at least the buffer's size and at most 1.5 times it.
-void ms_pool_take(halide_buffer_t *b, const struct halide_device_interface_t *interface) {
-    if (b->device || !interface)
+void ms_pool_take(halide_buffer_t *b, const struct halide_device_interface_t *api_interface) {
+    if (b->device || !api_interface)
         return;
     const size_t bytes = buffer_bytes(b);
     ms_mutex_lock(&lock);
     int best = -1;
     for (int i = 0; i < parked_count; ++i)
-        if (parked[i].interface == interface && parked[i].bytes >= bytes &&
+        if (parked[i].api_interface == api_interface && parked[i].bytes >= bytes &&
             parked[i].bytes <= bytes + bytes / 2 &&
             (best < 0 || parked[i].bytes < parked[best].bytes))
             best = i;
     if (best >= 0) {
         b->device = parked[best].device;
-        b->device_interface = parked[best].interface;
+        b->device_interface = parked[best].api_interface;
         b->flags &= ~device_dirty;
         parked[best] = parked[--parked_count];
     }
@@ -143,7 +143,7 @@ void ms_pool_park(halide_buffer_t *b, int keep) {
             if (parked[i].last_use < parked[oldest].last_use)
                 oldest = i;
         total -= parked[oldest].bytes;
-        free_device(parked[oldest].device, parked[oldest].interface, parked[oldest].bytes);
+        free_device(parked[oldest].device, parked[oldest].api_interface, parked[oldest].bytes);
         parked[oldest] = parked[--parked_count];
         evicted = 1;
     }
@@ -159,7 +159,7 @@ void ms_pool_park(halide_buffer_t *b, int keep) {
 void ms_pool_free_all(void) {
     ms_mutex_lock(&lock);
     for (int i = 0; i < parked_count; ++i)
-        free_device(parked[i].device, parked[i].interface, parked[i].bytes);
+        free_device(parked[i].device, parked[i].api_interface, parked[i].bytes);
     parked_count = 0;
     ms_mutex_unlock(&lock);
     halide_reuse_device_allocations(NULL, 0); // and what Halide keeps (the plugin is unloaded)

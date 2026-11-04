@@ -1,9 +1,17 @@
 // PiPL resources: how After Effects finds and lists each effect (see plugin.c). Built by
-// CMakeLists.txt with Adobe's PiPLtool. One resource per effect; the version and the
-// flags must equal VERSION, OUT_FLAGS and OUT_FLAGS_2 in plugin.c.
+// CMakeLists.txt, through the C preprocessor first (MS_EFFECT), then on Windows Adobe's
+// PiPLtool, on macOS Apple's Rez (after the SDK's AE_General.r, which defines the PiPL
+// type). One resource per effect; the version and the flags must equal VERSION, OUT_FLAGS
+// and OUT_FLAGS_2 in plugin.c.
 
 #include "AEConfig.h"
 #include "AE_EffectVers.h"
+
+#ifndef AE_OS_WIN
+#define MS_CODE(ENTRY) CodeMacIntel64 { ENTRY }, CodeMacARM64 { ENTRY },
+#else
+#define MS_CODE(ENTRY) CodeWin64X86 { ENTRY },
+#endif
 
 #define MS_EFFECT(ID, NAME, MATCH_NAME, ENTRY)                                                     \
 resource 'PiPL' (ID) {                                                                             \
@@ -11,7 +19,7 @@ resource 'PiPL' (ID) {                                                          
         Kind { AEEffect },                                                                         \
         Name { NAME },                                                                             \
         Category { "MillSaph" },                                                                   \
-        CodeWin64X86 { ENTRY },                                                                    \
+        MS_CODE(ENTRY)                                                                             \
         AE_PiPL_Version { 2, 0 },                                                                  \
         AE_Effect_Spec_Version { PF_PLUG_IN_VERSION, PF_PLUG_IN_SUBVERS },                         \
         AE_Effect_Version { 524289 },                                                              \

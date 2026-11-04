@@ -55,7 +55,7 @@ set(CMAKE_CXX_STANDARD 17)
 
 # millsaph_core: the effects and what they need, without any host API (src/common,
 # src/effects, src/engine, and the kernels below). The host adapters link it: src/ofx makes
-# the OFX plugin, src/ae the After Effects plugin (Windows). Includes name the folder:
+# the OFX plugin, src/ae the After Effects plugin (macOS, Windows). Includes name the folder:
 # "engine/engine.h".
 file(GLOB core_sources CONFIGURE_DEPENDS src/common/*.c src/effects/*.c src/engine/*.c)
 add_library(millsaph_core STATIC ${core_sources} ${CMAKE_BINARY_DIR}/generated/kernels.c)
@@ -103,6 +103,13 @@ if(APPLE)
   set_target_properties(millsaph_generators PROPERTIES OSX_ARCHITECTURES ${CMAKE_HOST_SYSTEM_PROCESSOR})
   target_compile_options(millsaph_generators PRIVATE -mmacosx-version-min=13.1)
   target_link_options(millsaph_generators PRIVATE -mmacosx-version-min=13.1)
+endif()
+if(WIN32)
+  # The generator runs at build time: Halide's DLL next to it, where Windows looks first.
+  add_custom_command(TARGET millsaph_generators POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_RUNTIME_DLLS:millsaph_generators>
+            $<TARGET_FILE_DIR:millsaph_generators>
+    COMMAND_EXPAND_LISTS)
 endif()
 add_halide_runtime(millsaph_halide_runtime) # shared; gets the GPU support its users need
 
@@ -251,11 +258,38 @@ millsaph_warnings(millsaph_bench)
 
 # ---------------------------------------------------------------- After Effects plugin
 
-# Windows only for now. Needs the After Effects SDK, which Adobe distributes to Adobe
+# Windows (MSVC) and macOS. Needs the After Effects SDK, which Adobe distributes to Adobe
 # accounts (developer.adobe.com): unzip it so that third_party/AfterEffectsSDK/Examples
 # exists. Without it, only the OFX plugin is built.
 set(ae_sdk ${third_party}/AfterEffectsSDK/Examples)
-if(WIN32 AND MSVC AND EXISTS ${ae_sdk}/Headers/AE_Effect.h)
+if(APPLE AND EXISTS ${ae_sdk}/Headers/AE_Effect.h)
+  # build/ae/MillSaph.plugin: the module in Contents/MacOS, the PiPL resource (src/ae/pipl.r)
+  # in Contents/Resources. Rez's own preprocessor has no macros with arguments: the C one
+  # expands them first.
+  set(ae_bundle ${CMAKE_BINARY_DIR}/ae/MillSaph.plugin)
+  file(MAKE_DIRECTORY ${ae_bundle}/Contents/Resources)
+  add_custom_command(
+    OUTPUT ${ae_bundle}/Contents/Resources/MillSaph.rsrc
+    COMMAND ${CMAKE_C_COMPILER} -E -P -x c -I${ae_sdk}/Headers -I${ae_sdk}/Resources
+            ${CMAKE_SOURCE_DIR}/src/ae/pipl.r -o ${CMAKE_BINARY_DIR}/ae/pipl.rr
+    COMMAND xcrun Rez -d __MACH__ -useDF -i ${ae_sdk}/Headers -i ${ae_sdk}/Resources
+            -o ${ae_bundle}/Contents/Resources/MillSaph.rsrc ${ae_sdk}/Resources/AE_General.r
+            ${CMAKE_BINARY_DIR}/ae/pipl.rr
+    DEPENDS src/ae/pipl.r
+    VERBATIM)
+  add_library(MillSaphAE MODULE src/ae/plugin.c ${ae_bundle}/Contents/Resources/MillSaph.rsrc)
+  target_include_directories(MillSaphAE PRIVATE ${ae_sdk}/Headers ${ae_sdk}/Headers/SP)
+  target_link_libraries(MillSaphAE PRIVATE millsaph_core)
+  millsaph_warnings(MillSaphAE)
+  set_target_properties(MillSaphAE PROPERTIES
+    OUTPUT_NAME MillSaph
+    PREFIX ""
+    SUFFIX ""
+    LIBRARY_OUTPUT_DIRECTORY ${ae_bundle}/Contents/MacOS
+  )
+  configure_file(cmake/AEInfo.plist.in ${ae_bundle}/Contents/Info.plist @ONLY)
+  add_custom_command(TARGET MillSaphAE POST_BUILD COMMAND codesign --force --sign - ${ae_bundle})
+elseif(WIN32 AND MSVC AND EXISTS ${ae_sdk}/Headers/AE_Effect.h)
   # The PiPL resource (src/ae/pipl.r) describes each effect to After Effects. Adobe's
   # PiPLtool turns it into a Windows resource, between two passes of the preprocessor.
   set(pipl ${CMAKE_BINARY_DIR}/ae)
@@ -272,6 +306,8 @@ if(WIN32 AND MSVC AND EXISTS ${ae_sdk}/Headers/AE_Effect.h)
 
   add_library(MillSaphAE MODULE src/ae/plugin.c ${pipl}/pipl.rc)
   target_include_directories(MillSaphAE PRIVATE ${ae_sdk}/Headers ${ae_sdk}/Headers/SP)
+  # The SDK's headers pick their Windows types with _WINDOWS (Visual Studio's default).
+  target_compile_definitions(MillSaphAE PRIVATE _WINDOWS)
   target_link_libraries(MillSaphAE PRIVATE millsaph_core)
   set_target_properties(MillSaphAE PROPERTIES
     OUTPUT_NAME MillSaph
