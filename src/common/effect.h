@@ -113,3 +113,4 @@ extern const MsEffect ms_edgeawareblur_effect;
 extern const MsEffect ms_distort_effect;
 extern const MsEffect ms_mosaic_effect;
 extern const MsEffect ms_glow_effect;
+extern const MsEffect ms_edgeblur_effect;

@@ -7,9 +7,7 @@
 // Mask's RGB; per channel T = max(0, (s - t - add) / (1 - t)) (t >= 1: s where s - add > t,
 // else 0); the pixel is s x (T_r + T_g + T_b) / (s_r + s_g + s_b), at most s.
 //
-// Subpixel radii: the blurs of floor(r) and floor(r) + 1 differ in one box only (radius
-// floor(r) / 3 against one more), which mixes the two by the fraction. Each box is at most as
-// wide as the image (radius (n - 1) / 2).
+// The blur: blur.h's blur3_subpixel.
 //
 // Images are packed RGBA floats (x, y, c), interleaved, bottom row first.
 
@@ -69,28 +67,12 @@ class GlowBlur : public Generator<GlowBlur> {
         msk(x, y, c) = mask(x, y, c);
         Func th = thresholded(src, msk,
                               {threshold, add_r, add_g, add_b, from_alpha, has_mask, invert_mask});
-        Func f = th;
-        Expr width = source.width(), height = source.height();
         std::vector<ms_blur::Box> boxes;
-        for (int axis = 0; axis < 2; ++axis) {
-            const bool along_x = axis == 0;
-            Expr n = along_x ? select(c == 0, rx_r, c == 1, rx_g, rx_b)
-                             : select(c == 0, ry_r, c == 1, ry_g, ry_b);
-            Expr frac = along_x ? select(c == 0, fx_r, c == 1, fx_g, fx_b)
-                                : select(c == 0, fy_r, c == 1, fy_g, fy_b);
-            Expr n_max = along_x ? max(rx_r, max(rx_g, rx_b)) : max(ry_r, max(ry_g, ry_b));
-            Expr limit = ((along_x ? width : height) - 1) / 2; // a box at most the image
-            Expr r_max = min(n_max / 3 + 1, limit);
-            Expr q = n / 3, mixed_box = 2 - n % 3;
-            for (int i = 0; i < 3; ++i) {
-                Expr r = select(i == mixed_box, q, ms_blur::box_radius(n, i));
-                Expr fr = select(i == mixed_box && min(r + 1, limit) == r + 1, frac, 0.0f);
-                boxes.push_back(ms_blur::box(
-                    f, min(r, limit), along_x, width, height, gpu, ms_blur::Boxes::prefix,
-                    "glow" + std::to_string(axis * 3 + i), {r_max, fr, transparent}));
-                f = boxes.back().out;
-            }
-        }
+        Func f = ms_blur::blur3_subpixel(
+            th, select(c == 0, rx_r, c == 1, rx_g, rx_b), select(c == 0, fx_r, c == 1, fx_g, fx_b),
+            max(rx_r, max(rx_g, rx_b)), select(c == 0, ry_r, c == 1, ry_g, ry_b),
+            select(c == 0, fy_r, c == 1, fy_g, fy_b), max(ry_r, max(ry_g, ry_b)), transparent,
+            source.width(), source.height(), gpu, "glow", boxes);
         glow(x, y, c) = f(x, y, c);
 
         ms::interleaved(source);

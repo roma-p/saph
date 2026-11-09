@@ -150,9 +150,10 @@ static double run_case(const Case *c, MsApi api, const float *source, float **bl
     set_values(e, c->settings, values);
     // "same": every input connected to the Source's image itself, as a host plugging the
     // Source in everywhere (the effects upload it once).
-    // "lens": the Lens connected (to an image of its own).
+    // "lens", "matte": the Lens, the Matte connected (to an image of its own).
     // "pageable": CUDA copies from the images as they are, not page-locked (engine.h).
     const int same = has_word(c->settings, "same"), lens = has_word(c->settings, "lens");
+    const int matte = has_word(c->settings, "matte");
     const size_t floats = (size_t)width * height * 4;
     uint16_t *halves = half ? malloc(floats * sizeof(uint16_t)) : NULL;
     uint16_t *result = half ? malloc(floats * sizeof(uint16_t)) : NULL;
@@ -165,7 +166,8 @@ static double run_case(const Case *c, MsApi api, const float *source, float **bl
         halves[i] = ms_half_from_float(source[i]);
     const void *image = half ? (const void *)halves : (const void *)source;
     for (int k = 0; k < e->clip_count; ++k) { // blank: zeros, in floats or halves
-        connected[k] = k == 0 || same || (lens && strcmp(e->clips[k].clip, "Lens") == 0);
+        connected[k] = k == 0 || same || (lens && strcmp(e->clips[k].clip, "Lens") == 0) ||
+                       (matte && strcmp(e->clips[k].clip, "Matte") == 0);
         inputs[k] = (MsInput){k == 0 || same ? image : blank[k], (ptrdiff_t)width * 4};
     }
     char err[256] = "";
@@ -684,6 +686,13 @@ int main(int argc, char **argv) {
         {"Glow t1", "MS_Glow", "threshold=1", NULL},
         {"Glow t0.99", "MS_Glow", "threshold=0.99", NULL},
         {"Glow t1.5", "MS_Glow", "threshold=1.5", NULL},
+        {"EdgeBlur", "MS_EdgeBlur", "", NULL},
+        {"EdgeBlur wide", "MS_EdgeBlur", "blur_width=0.1 edge_width=0.1", NULL},
+        {"EdgeBlur whole", "MS_EdgeBlur", "subpixel=0", NULL},
+        {"EdgeBlur edges", "MS_EdgeBlur", "show=1", NULL},
+        {"EdgeBlur matte", "MS_EdgeBlur", "matte matte_use=1", NULL},
+        {"EdgeBlur same", "MS_EdgeBlur", "same", NULL},
+        {"EdgeBlur half", "MS_EdgeBlur", "half", NULL},
     };
 
     printf("%d x %d, best of %d renders after the first. GPU APIs built:", width, height,

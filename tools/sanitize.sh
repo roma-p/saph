@@ -67,5 +67,10 @@ Glow !Mask glow_width=0.013 width_x=0.3 width_y=2.7 subpixel=1 threshold=0.2 thr
 Glow invert_mask=1 edge_mode=0 combine=0 subpixel=0 glow_width=0.5
 Glow !Mask show=1 threshold=1.2
 Glow --half --pad 3
+EdgeBlur
+EdgeBlur !Matte blur_width=0.013 edge_width=0.021 edge_strength=2 edge_threshold=0.1 subpixel=1
+EdgeBlur matte_use=1 subpixel=0 blur_width=0.5 edge_width=0.4
+EdgeBlur !Matte show=1
+EdgeBlur --half --pad 3
 CASES
 [ $failed = 0 ] && echo "all clean" || exit 1

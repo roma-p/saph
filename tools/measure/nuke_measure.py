@@ -49,7 +49,7 @@ EFFECTS = {
     "BandPass": ("Stylize.S_BandPass_v1", "BandPass_v1"),
     "EdgeAwareBlur": ("BlurSharpen.S_EdgeAwareBlur_v1", "EdgeAwareBlur_v1"),
     "Distort": ("Distort.S_Distort_v1", "Distort_v1"),
-    "EdgeBlur": ("BlurSharpen.S_EdgeBlur_v1", None),
+    "EdgeBlur": ("BlurSharpen.S_EdgeBlur_v1", "EdgeBlur_v1"),
     "RackDefocus": ("BlurSharpen.S_RackDefocus_v1", None),
     "Glow": ("Lighting.S_Glow_v1", "Glow_v1"),
     "Glint": ("Lighting.S_Glint_v1", None),

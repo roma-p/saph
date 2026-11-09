@@ -160,6 +160,32 @@ inline Func blur3(Func in, Expr total_x, Expr total_y, Expr width, Expr height, 
     return f;
 }
 
+// The 3-box blur of `in` (x, y, c) along x then y, total radius n + f per axis: f between the
+// blurs of n and n + 1, which differ in one box only (radius n / 3 against one more). n and
+// f may differ per channel (Exprs of c; n_max: n's largest value, without c). Each box at
+// most as wide as the image (radius (length - 1) / 2). Prefix boxes on the GPU; `zero` != 0:
+// 0 outside the image, else mirrored. Appends its 6 boxes to `boxes` (for schedule()).
+inline Func blur3_subpixel(Func in, Expr nx, Expr fx, Expr nx_max, Expr ny, Expr fy, Expr ny_max,
+                           Expr zero, Expr width, Expr height, bool gpu, const std::string &name,
+                           std::vector<Box> &boxes) {
+    Func f = in;
+    for (int axis = 0; axis < 2; ++axis) {
+        const bool along_x = axis == 0;
+        Expr n = along_x ? nx : ny, frac = along_x ? fx : fy;
+        Expr limit = ((along_x ? width : height) - 1) / 2;
+        Expr r_max = min((along_x ? nx_max : ny_max) / 3 + 1, limit);
+        Expr mixed_box = 2 - n % 3;
+        for (int i = 0; i < 3; ++i) {
+            Expr r = box_radius(n, i);
+            Expr fr = select(i == mixed_box && r + 1 <= limit, frac, 0.0f);
+            boxes.push_back(box(f, min(r, limit), along_x, width, height, gpu, Boxes::prefix,
+                                name + std::to_string(axis * 3 + i), {r_max, fr, zero}));
+            f = boxes.back().out;
+        }
+    }
+    return f;
+}
+
 // GPU RGB staged boxes: each block first loads its pixels and their windows into on-chip
 // memory, then sums the windows there. Blocks of 64 x 4 pixels along x, 8 x 32
 // along y: on-chip memory (64 + 2r) x 4 or 8 x (32 + 2r) float4, within 32 KB (Metal) for

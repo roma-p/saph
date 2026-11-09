@@ -169,6 +169,9 @@ ms_kernel(mosaic GENERATOR ms_mosaic CPU GPU)
 # MS_Glow: the thresholded Source blurred, then combined.
 ms_kernel(glow_blur GENERATOR ms_glow_blur CPU GPU)
 ms_kernel(glow_combine GENERATOR ms_glow_combine CPU GPU)
+# MS_EdgeBlur: the edges of the Matte, then the Source blurred where they are.
+ms_kernel(edge_blur_edges GENERATOR ms_edge_blur_edges CPU GPU)
+ms_kernel(edge_blur GENERATOR ms_edge_blur CPU GPU)
 # MS_Distort.
 foreach(name distort_shift distort_levels distort_warp)
   ms_kernel(${name} GENERATOR ms_${name} CPU GPU)
