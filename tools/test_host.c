@@ -17,7 +17,8 @@
 //                still writes floats)
 //
 // Prints what the effect declares and the result of each action; exits with 1 if an
-// action fails. Only the host functions MillSaph uses are implemented.
+// action fails. With an effect id the plugin does not have (e.g. "list"), lists its effects.
+// Only the host functions MillSaph uses are implemented.
 
 // clock_gettime: hidden by glibc under -std=c11 without it.
 #define _POSIX_C_SOURCE 200809L
@@ -469,7 +470,9 @@ int main(int argc, char **argv) {
         if (strcmp(get_plugin(i)->pluginIdentifier, argv[2]) == 0)
             plugin = get_plugin(i);
     if (!plugin) {
-        fprintf(stderr, "no effect %s in %s\n", argv[2], argv[1]);
+        fprintf(stderr, "no effect %s in %s; its effects:\n", argv[2], argv[1]);
+        for (int i = 0; plugin_count && get_plugin && i < plugin_count(); ++i)
+            fprintf(stderr, "  %s\n", get_plugin(i)->pluginIdentifier);
         dlclose(library);
         return 1;
     }

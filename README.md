@@ -131,6 +131,7 @@ The checks use LLVM's tools (`clang-format`, `clang-tidy`, `clangd`). On macOS:
 | `tools/tidy.sh` | Static checks with clang-tidy (`.clang-tidy`): likely bugs, found without running the code. |
 | `tools/sanitize.sh` | Builds with AddressSanitizer + UndefinedBehaviorSanitizer and renders every effect outside any host (`tools/test_host.c`). Stops at the line of a memory error. |
 | `tools/perf/` | Timings and GPU checks outside any host and in Nuke (`tools/perf/README.md`). |
+| `tools/measure/` | Measuring an effect in Nuke to recreate it: parameters, probe images, renders, comparisons (`tools/measure/README.md`). |
 
 Editors: `clangd` reads `build/compile_commands.json` (written by `./build.sh`), shows
 errors and clang-tidy warnings as you type, and formats on save with `.clang-format`.
