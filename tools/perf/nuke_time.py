@@ -31,6 +31,7 @@ EFFECTS = [
     ("Distort", SAPPHIRE + "Distort.S_Distort_v1", MILLSAPH + "Distort_v1", "amount", [("", {})]),
     ("Mosaic", SAPPHIRE + "Stylize.S_Mosaic_v1", MILLSAPH + "Mosaic_v1", "mix_with_source",
      [("", {}), ("Smooth", {"smooth_colors": 20})]),
+    ("Glow", SAPPHIRE + "Lighting.S_Glow_v1", MILLSAPH + "Glow_v1", "brightness", [("", {})]),
 ]
 # The photo-like image: gradients, a disc and a box with hard edges, a little noise.
 DISC = "pow(x/width-0.39,2)*256/81+pow(y/height-0.46,2)<0.077"

@@ -166,6 +166,9 @@ ms_kernel(blur GENERATOR ms_blur CPU GPU)
 ms_kernel(blur_prefix GENERATOR ms_blur PARAMS boxes=prefix GPU)
 # MS_Mosaic.
 ms_kernel(mosaic GENERATOR ms_mosaic CPU GPU)
+# MS_Glow: the thresholded Source blurred, then combined.
+ms_kernel(glow_blur GENERATOR ms_glow_blur CPU GPU)
+ms_kernel(glow_combine GENERATOR ms_glow_combine CPU GPU)
 # MS_Distort.
 foreach(name distort_shift distort_levels distort_warp)
   ms_kernel(${name} GENERATOR ms_${name} CPU GPU)

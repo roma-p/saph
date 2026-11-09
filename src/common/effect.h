@@ -33,6 +33,9 @@ typedef enum {
     MS_PARAM_CHOICE, // a popup menu: the value is the index of the chosen entry
     MS_PARAM_BOOL,   // a checkbox: 0 or 1
     MS_PARAM_TEXT,   // a read-only line of text, set by `text` when the effect is created
+    MS_PARAM_RGB,    // a colour: red here, green and blue in the next two entries
+    // Green or blue of the MS_PARAM_RGB before (`def`: its default; no host parameter).
+    MS_PARAM_RGB_PART,
 } MsParamType;
 
 // One parameter. Unset fields are 0, so tables use designated initializers.
@@ -109,3 +112,4 @@ extern const MsEffect ms_bandpass_effect;
 extern const MsEffect ms_edgeawareblur_effect;
 extern const MsEffect ms_distort_effect;
 extern const MsEffect ms_mosaic_effect;
+extern const MsEffect ms_glow_effect;

@@ -166,7 +166,7 @@ typedef struct {
     char name[64];
     char type[64];
     PropSet props;
-    double value;
+    double value[3]; // RGB: 3, else the first
 } Param;
 
 static Param params[MAX_PARAMS];
@@ -211,9 +211,12 @@ static OfxStatus param_get_value_at_time(OfxParamHandle handle, OfxTime time, ..
     va_list args;
     va_start(args, time);
     if (is_int(p))
-        *va_arg(args, int *) = (int)p->value;
+        *va_arg(args, int *) = (int)p->value[0];
+    else if (strcmp(p->type, kOfxParamTypeRGB) == 0)
+        for (int k = 0; k < 3; ++k)
+            *va_arg(args, double *) = p->value[k];
     else
-        *va_arg(args, double *) = p->value;
+        *va_arg(args, double *) = p->value[0];
     va_end(args);
     return kOfxStatOK;
 }
@@ -402,24 +405,28 @@ static void make_images(int argc, char **argv) {
     }
 }
 
-// Every parameter at its default, then the name=value arguments.
+// Every parameter at its default, then the name=value arguments (RGB: name=r,g,b).
 static void set_values(int argc, char **argv) {
     for (int i = 0; i < param_count; ++i)
-        get_double((OfxPropertySetHandle)&params[i].props, kOfxParamPropDefault, 0,
-                   &params[i].value);
+        for (int k = 0; k < 3; ++k)
+            get_double((OfxPropertySetHandle)&params[i].props, kOfxParamPropDefault, k,
+                       &params[i].value[k]);
     for (int a = 3; a < argc; ++a) {
         char name[64];
-        double value;
-        if (sscanf(argv[a], "%63[^=]=%lf", name, &value) != 2)
+        double value[3];
+        const int n = sscanf(argv[a], "%63[^=]=%lf,%lf,%lf", name, &value[0], &value[1], &value[2]);
+        if (n < 2)
             continue;
         Param *p = NULL;
         for (int i = 0; i < param_count; ++i)
             if (strcmp(params[i].name, name) == 0)
                 p = &params[i];
-        if (p)
-            p->value = value;
-        else
+        if (!p) {
             printf("unknown parameter %s\n", name);
+            continue;
+        }
+        for (int k = 0; k < 3; ++k)
+            p->value[k] = value[k < n - 1 ? k : 0]; // one value: all three
     }
 }
 

@@ -203,6 +203,8 @@ static int series(const MsParam *p, double *v) {
     int n = 0;
     switch (p->type) {
     case MS_PARAM_TEXT:
+    case MS_PARAM_RGB: // colours: not swept (a gain per channel)
+    case MS_PARAM_RGB_PART:
         return 0;
     case MS_PARAM_CHOICE:
         for (int i = 0; i < p->entry_count && i < 8; ++i)
@@ -671,6 +673,17 @@ int main(int argc, char **argv) {
         {"Mosaic smooth large win", "MS_Mosaic", "smooth_colors=0.05", blur_windows},
         {"Mosaic half", "MS_Mosaic", "half", NULL},
         {"Mosaic smooth half", "MS_Mosaic", "smooth_colors=0.005 half", NULL},
+        {"Glow", "MS_Glow", "", NULL},
+        {"Glow small", "MS_Glow", "glow_width=0.005", NULL},
+        {"Glow wide", "MS_Glow", "glow_width=0.25", NULL},
+        {"Glow whole", "MS_Glow", "subpixel=0", NULL},
+        {"Glow transparent", "MS_Glow", "edge_mode=0", NULL},
+        {"Glow mask", "MS_Glow", "same", NULL},
+        {"Glow threshold", "MS_Glow", "show=1", NULL},
+        {"Glow half", "MS_Glow", "half", NULL},
+        {"Glow t1", "MS_Glow", "threshold=1", NULL},
+        {"Glow t0.99", "MS_Glow", "threshold=0.99", NULL},
+        {"Glow t1.5", "MS_Glow", "threshold=1.5", NULL},
     };
 
     printf("%d x %d, best of %d renders after the first. GPU APIs built:", width, height,

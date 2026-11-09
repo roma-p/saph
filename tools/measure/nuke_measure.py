@@ -51,7 +51,7 @@ EFFECTS = {
     "Distort": ("Distort.S_Distort_v1", "Distort_v1"),
     "EdgeBlur": ("BlurSharpen.S_EdgeBlur_v1", None),
     "RackDefocus": ("BlurSharpen.S_RackDefocus_v1", None),
-    "Glow": ("Lighting.S_Glow_v1", None),
+    "Glow": ("Lighting.S_Glow_v1", "Glow_v1"),
     "Glint": ("Lighting.S_Glint_v1", None),
     "Glare": ("Lighting.S_Glare_v1", None),
     "LensFlare": ("Lighting.S_LensFlare_v1", None),
@@ -62,6 +62,11 @@ EFFECTS = {
     "JpegDamage": ("Stylize.S_JpegDamage_v1", None),
     "PixelSort": ("Stylize.S_PixelSort_v1", None),
     "Mosaic": ("Stylize.S_Mosaic_v1", "Mosaic_v1"),
+}
+# MillSaph's input for each of the reference node's, where they differ (None: MillSaph has
+# none; that input of a job is left out on MillSaph's node).
+INPUTS = {
+    "Glow": {1: None, 2: 1},  # the reference's Background, Mask
 }
 HOME = os.path.expanduser("~/millsaph_measure")
 created = []
@@ -289,7 +294,9 @@ def jobs(path):
                 n = create(cls)
                 inputs = []
                 for i, image in enumerate(job.get("inputs", [])):
-                    if image is None:
+                    if vendor == "millsaph":
+                        i = INPUTS.get(job["effect"], {}).get(i, i)
+                    if image is None or i is None:
                         continue
                     r = reader(os.path.join(probes, image + ".exr"), frames)
                     inputs.append(r)

@@ -40,6 +40,7 @@ NODES = {
                          MILLSAPH + "EdgeAwareBlur_v1"),
     "MS_Distort": (SAPPHIRE + "Distort.S_Distort_v1", MILLSAPH + "Distort_v1"),
     "MS_Mosaic": (SAPPHIRE + "Stylize.S_Mosaic_v1", MILLSAPH + "Mosaic_v1"),
+    "MS_Glow": (SAPPHIRE + "Lighting.S_Glow_v1", MILLSAPH + "Glow_v1"),
 }
 PLUGIN_LOG = os.path.expanduser("~/millsaph.log")  # src/common/log.h
 # The test image, as nuke_time.py: gradients, a disc and a box with hard edges, a little noise.

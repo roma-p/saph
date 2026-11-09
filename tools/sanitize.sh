@@ -62,5 +62,10 @@ Mosaic pixel_frequency=17 pixel_rel_height=1.37 pixel_shift_x=0.003 pixel_shift_
 Mosaic !Mask smooth_colors=0.2 crop_left=0.9 crop_right=0.5 pixel_frequency=4
 Mosaic !Mask pixel_frequency=200 pixel_rel_height=0.1 crop_bottom=3 crop_top=3
 Mosaic smooth_colors=0.01 --half --pad 3
+Glow
+Glow !Mask glow_width=0.013 width_x=0.3 width_y=2.7 subpixel=1 threshold=0.2 threshold_add_color=0.1,0,0.3 color=1,0.5,0.25 combine=4 affect_alpha=0.5 glow_under_source=0.3 source_opacity=0.7 glow_from_alpha=0.4
+Glow invert_mask=1 edge_mode=0 combine=0 subpixel=0 glow_width=0.5
+Glow !Mask show=1 threshold=1.2
+Glow --half --pad 3
 CASES
 [ $failed = 0 ] && echo "all clean" || exit 1

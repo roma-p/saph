@@ -555,68 +555,32 @@ struct BlockSums {
 };
 
 // Running sums along whole rows, for windows too wide for a block's on-chip memory (the
-// "rows" versions): in GPU memory, each a whole stage. In chunks of `chunk` samples: the sum
-// inside the chunk up to each sample (each sample re-reads its chunk: every sample
-// independent), and per row the sum of the chunks before each chunk, compensated (shared.h).
-// Only differences of sums are used (ms::difference).
+// "rows" versions): in GPU memory, ms::LineSums (shared.h). Only differences of sums are
+// used (ms::difference).
 struct RowSums {
-    Func value, loc, before;
-    RDom kk;
-    int chunk;
+    Func value;
+    std::shared_ptr<ms::LineSums> sums;
     bool channels;
-
-    // The coordinates of index i of row y (and channel c).
-    std::vector<Expr> args(Expr i) const {
-        std::vector<Expr> a{i, y};
-        if (channels)
-            a.push_back(c);
-        return a;
-    }
 
     // `v`: sample i of row y (and channel c), for i in [0, length).
     RowSums(const std::string &name, Expr v, Var i, Expr length, int chunk, bool channels)
-        : value(name + "_value"), loc(name + "_loc"), before(name + "_before"),
-          chunk(chunk), channels(channels) {
-        RDom r(0, chunk, name + "_r");
-        Expr start = i - i % chunk;
-        kk = RDom(1, (length + chunk - 1) / chunk, name + "_kk");
-        Expr end = kk * chunk - 1; // the last sample of chunk kk - 1
-        value(args(i)) = v;
-        loc(args(i)) = sum(select(r <= i % chunk, value(args(start + r)), 0.0f));
-        before(args(i)) = Tuple(0.0f, 0.0f);
-        before(args(kk)) =
-            ms::kahan_add(before(args(kk - 1))[0], before(args(kk - 1))[1], loc(args(end)));
+        : value(name + "_value"), channels(channels) {
+        if (channels)
+            value(i, y, c) = v;
+        else
+            value(i, y) = v;
+        sums = std::make_shared<ms::LineSums>(name, value, length, false, true, chunk);
     }
 
-    // The running sum at sample j: the chunks before its chunk, and its chunk up to it.
-    ms::Compensated at(Expr j) const {
-        return {before(args(j / chunk))[0], before(args(j / chunk))[1], loc(args(j))};
-    }
+    // The running sum at sample j of row y.
+    ms::Compensated at(Expr j) const { return sums->at(j, y, channels ? Expr(c) : Expr()); }
     Expr upto(Expr j) const {
         ms::Compensated s = at(j);
         return (s.chunks - s.left_out) + s.inside;
     }
     Expr diff(Expr j, Expr k) const { return ms::difference(at(j), at(k)); }
 
-    // Each stage whole: the sums inside chunks one thread per sample, neighbouring threads on
-    // neighbouring samples; the chunks before, one thread per row. Channels as float4.
-    void schedule() {
-        Var i = loc.args()[0], io("io"), ii("ii"), yo("yo"), yi("yi");
-        Var bi = before.args()[0];
-        loc.compute_root();
-        before.compute_root();
-        if (channels) {
-            loc.bound(c, 0, 4).reorder_storage(c, i, y).reorder(c, i, y).vectorize(c);
-            before.bound(c, 0, 4).reorder_storage(c, bi, y).reorder(c, bi, y).vectorize(c);
-            before.update().reorder(c, kk.x, y).vectorize(c);
-        } else {
-            before.reorder(bi, y);
-            before.update().reorder(kk.x, y);
-        }
-        loc.gpu_tile(i, y, io, yo, ii, yi, 64, 4);
-        before.gpu_tile(y, yo, yi, 64);
-        before.update().gpu_tile(y, yo, yi, 64);
-    }
+    void schedule() { sums->schedule(); }
 };
 
 // The running sums of a GPU pipeline: per block (BlockSums), or per row (RowSums).

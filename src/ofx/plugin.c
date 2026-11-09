@@ -47,9 +47,11 @@ static void define_param(OfxParamSetHandle params, const MsParam *p) {
         [MS_PARAM_DOUBLE] = kOfxParamTypeDouble, [MS_PARAM_WIDTH] = kOfxParamTypeDouble,
         [MS_PARAM_HEIGHT] = kOfxParamTypeDouble, [MS_PARAM_ANGLE] = kOfxParamTypeDouble,
         [MS_PARAM_CHOICE] = kOfxParamTypeChoice, [MS_PARAM_BOOL] = kOfxParamTypeBoolean,
-        [MS_PARAM_TEXT] = kOfxParamTypeString,
+        [MS_PARAM_TEXT] = kOfxParamTypeString,   [MS_PARAM_RGB] = kOfxParamTypeRGB,
     };
     OfxPropertySetHandle props;
+    if (p->type == MS_PARAM_RGB_PART) // part of the MS_PARAM_RGB before
+        return;
     if (ms_param->paramDefine(params, types[p->type], p->name, &props) != kOfxStatOK)
         return;
     ms_prop->propSetString(props, kOfxPropLabel, 0, p->label);
@@ -64,6 +66,12 @@ static void define_param(OfxParamSetHandle params, const MsParam *p) {
         return;
     case MS_PARAM_BOOL:
         ms_prop->propSetInt(props, kOfxParamPropDefault, 0, (int)p->def);
+        return;
+    case MS_PARAM_RGB: // the defaults of red, green and blue: this entry and the next two
+        for (int k = 0; k < 3; ++k)
+            ms_prop->propSetDouble(props, kOfxParamPropDefault, k, p[k].def);
+        return;
+    case MS_PARAM_RGB_PART:
         return;
     case MS_PARAM_TEXT: // read-only, not saved, does not trigger renders
         ms_prop->propSetInt(props, kOfxParamPropEnabled, 0, 0);
@@ -123,6 +131,13 @@ static OfxStatus create_instance(const MsEffect *e, OfxImageEffectHandle effect)
 }
 
 // Parameter values at `time` (0 if the parameter does not exist).
+static void get_rgb(OfxParamSetHandle params, const char *name, OfxTime time, double *rgb) {
+    OfxParamHandle param;
+    rgb[0] = rgb[1] = rgb[2] = 0.0;
+    if (ms_param->paramGetHandle(params, name, &param, NULL) == kOfxStatOK)
+        ms_param->paramGetValueAtTime(param, time, &rgb[0], &rgb[1], &rgb[2]);
+}
+
 static double get_double(OfxParamSetHandle params, const char *name, OfxTime time) {
     OfxParamHandle param;
     double value = 0.0;
@@ -179,6 +194,11 @@ static int read_values(const MsEffect *e, OfxImageEffectHandle effect, OfxProper
             break;
         case MS_PARAM_TEXT:
             values[i] = 0.0;
+            break;
+        case MS_PARAM_RGB: // red, green and blue in this entry and the next two
+            get_rgb(params, p->name, *time, &values[i]);
+            break;
+        case MS_PARAM_RGB_PART: // read with the MS_PARAM_RGB before
             break;
         case MS_PARAM_WIDTH:
             values[i] = get_double(params, p->name, *time) * *px;

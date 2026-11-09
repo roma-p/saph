@@ -9,6 +9,7 @@ const MsEffect *const ms_effects[] = {
     &ms_edgeawareblur_effect,
     &ms_distort_effect,
     &ms_mosaic_effect,
+    &ms_glow_effect,
 };
 
 const int ms_effect_count = ARRAY_SIZE(ms_effects);

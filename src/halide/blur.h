@@ -27,10 +27,20 @@ struct Box {
     bool along_x;
     Boxes kind; // on the GPU
     Expr radius;
-    Func input;  // GPU windows: the mirrored input
-    Func chunks; // GPU prefix: the sum of each chunk of the line
-    Func before; // GPU prefix: the sum of the chunks before each chunk
-    RDom scan;   // GPU prefix: the chunks of before's update
+    Func input; // GPU windows: the mirrored input
+    // GPU prefix: the running sums of the lines.
+    std::shared_ptr<ms::LineSums> sums;
+};
+
+// A box beyond the plain one, for the prefix boxes (GPU) and the CPU's only (all fields
+// optional):
+//   r_max  the radius r may differ per channel (an Expr of the channel): its largest value,
+//          without the channel
+//   frac   between two radii: the mean over [i - r, i + r] and the one over
+//          [i - r - 1, i + r + 1] mixed by frac (0: the first)
+//   zero   != 0: the pixels outside the image are 0 instead of mirrored
+struct Shape {
+    Expr r_max, frac, zero;
 };
 
 // GPU sliding boxes: each thread slides the window along a run of SLIDE pixels (adds the
@@ -38,68 +48,70 @@ struct Box {
 // pixel instead of 2r + 1, for large radii.
 constexpr int SLIDE = 32;
 
-// GPU prefix boxes: each window is the difference of two running sums of the line, from the
-// mirrored pixel -r - 1 on: the same cost whatever the radius. A running sum is the sum of the
-// chunks (CHUNK pixels) before the pixel's chunk, kept per line, plus the pixels of its chunk
-// up to it, read again: every pixel independent, as the windows. In float (Metal has no
-// double): the line's first pixel is taken off every pixel first, to keep the sums small.
+// GPU prefix boxes: each window is the difference of two running sums of the line
+// (ms::LineSums, chunks of CHUNK pixels), from pixel -r - 1 on: the same cost whatever the
+// radius. In float (Metal has no double): the line's first pixel is taken off every pixel
+// first, to keep the sums small.
 constexpr int CHUNK = 16;
 
 inline Box box(Func in, Expr r, bool along_x, Expr width, Expr height, bool gpu, Boxes kind,
-               const std::string &name) {
+               const std::string &name, const Shape &shape = {}) {
     Var x = in.args()[0], y = in.args()[1], c = in.args()[2];
+    const bool mixed = shape.frac.defined();
     Func mirrored = BoundaryConditions::mirror_image(in, {{0, width}, {0, height}});
-    Box b{Func(name), Func(name + "_sum"), Func(name + "_first"), along_x, kind, r};
-    Expr n = cast<float>(2 * r + 1);
+    Func edge = mirrored;
+    if (shape.zero.defined()) {
+        Func zeros = BoundaryConditions::constant_exterior(in, 0.0f, {{0, width}, {0, height}});
+        edge = Func(name + "_edge");
+        edge(x, y, c) = select(shape.zero != 0, zeros(x, y, c), mirrored(x, y, c));
+    }
+    Expr r_max = shape.r_max.defined() ? shape.r_max : r;
+    Expr reach = mixed ? r_max + 1 : r_max; // the widest window's radius
+    Expr frac = mixed ? shape.frac : Expr(0.0f);
+    Box b{Func(name), Func(name + "_sum"), Func(name + "_first"), along_x, kind, r_max};
+    auto at = [&](Expr along, Expr other) {
+        return along_x ? edge(along, other, c) : edge(other, along, c);
+    };
+    Expr along = along_x ? Expr(x) : Expr(y), other = along_x ? Expr(y) : Expr(x);
+    Expr length = along_x ? width : height;
+    // The mean of the box from the window sums w0 (radius r) and w1 (r + 1).
+    auto mean = [&](std::function<Expr(Expr)> window) {
+        Expr w0 = window(r);
+        if (!mixed)
+            return w0 / cast<float>(2 * r + 1);
+        Expr w1 = window(r + 1);
+        return (1.0f - frac) * (w0 / cast<float>(2 * r + 1)) + frac * (w1 / cast<float>(2 * r + 3));
+    };
     if (gpu && kind == Boxes::prefix) {
-        b.chunks = Func(name + "_chunks");
-        b.before = Func(name + "_before");
-        // Along the line: the first coordinate; across it: o. The line starts at pixel -r - 1.
-        Var k("k"), o("o");
-        Expr start = -r - 1, length = along_x ? width : height;
-        auto at = [&](Expr along, Expr other) {
-            return along_x ? mirrored(along, other, c) : mirrored(other, along, c);
-        };
-        auto v = [&](Expr along, Expr other) { return at(along, other) - at(0, other); };
-        RDom j(0, CHUNK, name + "_j");
-        b.chunks(k, o, c) = sum(v(start + k * CHUNK + j, o));
-        // Chunks of the line: up to the last one a window of the image reaches.
-        RDom kk(1, (length + 2 * r + 1) / CHUNK + 1, name + "_kk");
-        // Compensated (shared.h).
-        b.before(k, o, c) = Tuple(0.0f, 0.0f);
-        b.before(kk, o, c) = ms::kahan_add(b.before(kk - 1, o, c)[0], b.before(kk - 1, o, c)[1],
-                                           b.chunks(kk - 1, o, c));
-        b.scan = kk;
-        // The running sum up to pixel `along`, included: the sum of the chunks before its
-        // chunk (with what its rounding left out), and its chunk up to it.
-        auto sums = [&](Expr along, Expr other) {
-            Expr from = along - start, chunk = from / CHUNK;
-            RDom i(0, CHUNK, name + "_i");
-            return ms::Compensated{
-                b.before(chunk, other, c)[0], b.before(chunk, other, c)[1],
-                sum(select(i <= from % CHUNK, v(start + chunk * CHUNK + i, other), 0.0f))};
-        };
-        Expr along = along_x ? Expr(x) : Expr(y), other = along_x ? Expr(y) : Expr(x);
-        Expr window = ms::difference(sums(along + r, other), sums(along - r - 1, other));
-        b.out(x, y, c) = select(r == 0, mirrored(x, y, c), window / n + at(0, other));
+        // The lines from pixel -reach - 1 (along: u from there; across: o), the line's first
+        // pixel taken off.
+        Var u("u"), o("o");
+        Expr start = -reach - 1;
+        Func line(name + "_line");
+        line(u, o, c) = at(start + u, o) - at(0, o);
+        // The sums inside chunks kept when each pixel reads two windows (between two radii),
+        // else summed by each pixel.
+        b.sums = std::make_shared<ms::LineSums>(name, line, length + 2 * reach + 1, !along_x, mixed,
+                                                CHUNK);
+        auto sum_to = [&](Expr p) { return b.sums->at(p - start, other, c); };
+        Expr m = mean(
+            [&](Expr rr) { return ms::difference(sum_to(along + rr), sum_to(along - rr - 1)); });
+        b.out(x, y, c) = select(r == 0 && frac == 0.0f, edge(x, y, c), m + at(0, other));
     } else if (gpu && kind == Boxes::sliding) {
         // run(i, run index, other coordinate, c): window sum of pixel run x SLIDE + i.
         Var i("i"), run("run"), o("o");
         RDom k(-r, 2 * r + 1, name + "_k");
         RDom j(1, SLIDE - 1, name + "_j");
-        auto at = [&](Expr along, Expr other) {
-            return along_x ? mirrored(along, other, c) : mirrored(other, along, c);
-        };
         b.first(run, o, c) = sum(at(run * SLIDE + k, o));
         b.running(i, run, o, c) = b.first(run, o, c);
         b.running(j, run, o, c) = b.running(j - 1, run, o, c) + at(run * SLIDE + j + r, o) -
                                   at(run * SLIDE + j - 1 - r, o);
-        Expr u = along_x ? Expr(x) : Expr(y), other = along_x ? Expr(y) : Expr(x);
         // Radius 0: the input itself (sliding adds and subtracts pixels: in float, not
         // exactly the pixel, and the Distort shift magnifies any difference of its lens).
         // Read mirrored: Halide's bounds for these boxes can reach past the image.
         b.out(x, y, c) =
-            select(r == 0, mirrored(x, y, c), b.running(u % SLIDE, u / SLIDE, other, c) / n);
+            select(r == 0, mirrored(x, y, c),
+                   b.running(along % SLIDE, along / SLIDE, other, c) / cast<float>(2 * r + 1));
     } else if (gpu) {
         // GPU: every pixel sums its own window: fully parallel. (A running sum per piece
         // of line was tried: barely faster here, less precise, as Metal has no double.)
@@ -108,24 +120,24 @@ inline Box box(Func in, Expr r, bool along_x, Expr width, Expr height, bool gpu,
         Expr ys = along_x ? Expr(y) : y + k - r;
         b.first(x, y, c) = 0.0f; // the window sum
         b.first(x, y, c) += mirrored(xs, ys, c);
-        b.out(x, y, c) = b.first(x, y, c) / n;
+        b.out(x, y, c) = b.first(x, y, c) / cast<float>(2 * r + 1);
         b.input = mirrored;
     } else {
-        // CPU: a running sum along the line (in double), then each
-        // window is the difference of two sums: the same cost whatever the radius.
-        Expr length = along_x ? width : height;
-        RDom k(-r - 1, length + 2 * r + 1, name + "_k");
+        // CPU: a running sum along the line (in double), then each window is the difference
+        // of two sums: the same cost whatever the radius.
+        RDom k(-reach - 1, length + 2 * reach + 1, name + "_k");
         Func &s = b.running;
         s(x, y, c) = cast<double>(0);
         if (along_x)
-            s(k, y, c) = s(k - 1, y, c) + cast<double>(mirrored(k, y, c));
+            s(k, y, c) = s(k - 1, y, c) + cast<double>(edge(k, y, c));
         else
-            s(x, k, c) = s(x, k - 1, c) + cast<double>(mirrored(x, k, c));
-        Expr window =
-            along_x ? s(x + r, y, c) - s(x - r - 1, y, c) : s(x, y + r, c) - s(x, y - r - 1, c);
+            s(x, k, c) = s(x, k - 1, c) + cast<double>(edge(x, k, c));
+        auto sum_to = [&](Expr u) { return along_x ? s(u, y, c) : s(x, u, c); };
+        Expr m =
+            mean([&](Expr rr) { return cast<float>(sum_to(along + rr) - sum_to(along - rr - 1)); });
         // Radius 0 (e.g. no blur at all): the input itself, without the running sum (see
         // schedule()).
-        b.out(x, y, c) = select(r == 0, mirrored(x, y, c), cast<float>(window) / n);
+        b.out(x, y, c) = select(r == 0 && frac == 0.0f, edge(x, y, c), m);
     }
     return b;
 }
@@ -161,30 +173,13 @@ inline void schedule(std::vector<Box> &boxes, bool gpu, int channels) {
         Var xo("xo"), yo("yo"), xi("xi"), yi("yi");
         const int lanes = channels > 1 ? 4 : 1; // RGB as float4 (a fourth channel unused)
         if (gpu && b.kind == Boxes::prefix) {
-            // The chunks: one thread each; before: one thread per line; the windows: as the
-            // other GPU boxes, RGB as float4.
-            auto rgb = [&](Func f) {
-                Var fc = f.args()[2];
-                f.bound(fc, 0, lanes).reorder_storage(fc, f.args()[0], f.args()[1]);
-                if (channels > 1)
-                    f.vectorize(fc);
-            };
-            Var k = b.chunks.args()[0], o = b.chunks.args()[1], kc = b.chunks.args()[2];
-            Var ko("ko"), oo("oo"), ki("ki"), oi("oi");
-            b.chunks.compute_root().reorder(kc, k, o);
-            if (b.along_x)
-                b.chunks.gpu_tile(k, o, ko, oo, ki, oi, 32, 4);
-            else
-                b.chunks.gpu_tile(o, k, oo, ko, oi, ki, 32, 4);
-            rgb(b.chunks);
-            Var bk = b.before.args()[0], bo = b.before.args()[1], bc = b.before.args()[2];
-            b.before.compute_root().reorder(bc, bk, bo).gpu_tile(bo, oo, oi, 64);
-            b.before.update().reorder(bc, b.scan.x, bo).gpu_tile(bo, oo, oi, 64);
-            rgb(b.before);
-            if (channels > 1)
-                b.before.update().vectorize(bc);
+            // The running sums (shared.h: along y, neighbouring threads of the windows are on
+            // neighbouring lines); the windows: as the other GPU boxes, RGB as float4.
+            b.sums->schedule(lanes);
             b.out.compute_root().gpu_tile(x, y, xo, yo, xi, yi, 16, 16);
-            rgb(b.out);
+            b.out.bound(c, 0, lanes).reorder_storage(c, x, y);
+            if (channels > 1)
+                b.out.vectorize(c);
         } else if (gpu && b.kind == Boxes::sliding) {
             // One thread per run of pixels: along x, runs of a row; along y, runs of a
             // column (neighbouring threads read neighbouring pixels). One channel.

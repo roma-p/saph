@@ -48,4 +48,5 @@ Distort              Distort !Mask !Lens
 Distort_CPU          Distort !Mask !Lens enable_gpu=0
 Mosaic               Mosaic !Mask
 Mosaic_Smooth        Mosaic !Mask smooth_colors=0.005
+Glow                 Glow !Mask
 CASES
