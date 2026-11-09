@@ -108,3 +108,4 @@ extern const MsEffect ms_test_effect;
 extern const MsEffect ms_bandpass_effect;
 extern const MsEffect ms_edgeawareblur_effect;
 extern const MsEffect ms_distort_effect;
+extern const MsEffect ms_mosaic_effect;

@@ -14,6 +14,7 @@ typedef struct {
     int soft_gpu;           // EdgeAwareBlur Soft: on the GPU (1) or the CPU (0)
     int bandpass_staged;    // BandPass: staged version where it fits (1), never (0)
     int bandpass_prefix;    // BandPass: prefix version from this box radius on (0: never)
+    int blur_prefix;        // RGBA blur (Mosaic's Smooth Colors): the same, for its blur
 } MsProfile;
 
 const MsProfile *ms_profile(MsApi api);

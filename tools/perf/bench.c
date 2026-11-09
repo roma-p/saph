@@ -76,6 +76,8 @@ static void rows(MsProfile *p) { p->rows_margin = 0; }
 static void blocks(MsProfile *p) { p->rows_margin = 100000; }
 static void soft_gpu(MsProfile *p) { p->soft_gpu = 1; }
 static void soft_cpu(MsProfile *p) { p->soft_gpu = 0; }
+static void blur_windows(MsProfile *p) { p->blur_prefix = 0; }
+static void blur_prefix(MsProfile *p) { p->blur_prefix = 1; }
 
 static MsProfile defaults[MS_API_COUNT]; // the effects' own profiles
 
@@ -659,6 +661,16 @@ int main(int argc, char **argv) {
         {"Distort lens pageable", "MS_Distort", "lens pageable", NULL},
         {"EAB Sharp pageable", "MS_EdgeAwareBlur", "blur_type=0 pageable", NULL},
         {"Distort enable_gpu=0", "MS_Distort", "enable_gpu=0", NULL},
+        {"Mosaic", "MS_Mosaic", "", NULL},
+        {"Mosaic 200", "MS_Mosaic", "pixel_frequency=200", NULL},
+        {"Mosaic 53", "MS_Mosaic", "pixel_frequency=53", NULL},
+        {"Mosaic mask", "MS_Mosaic", "same blur_mask=0.005", NULL},
+        {"Mosaic smooth", "MS_Mosaic", "smooth_colors=0.005", NULL},
+        {"Mosaic smooth prefix", "MS_Mosaic", "smooth_colors=0.005", blur_prefix},
+        {"Mosaic smooth large", "MS_Mosaic", "smooth_colors=0.05", NULL},
+        {"Mosaic smooth large win", "MS_Mosaic", "smooth_colors=0.05", blur_windows},
+        {"Mosaic half", "MS_Mosaic", "half", NULL},
+        {"Mosaic smooth half", "MS_Mosaic", "smooth_colors=0.005 half", NULL},
     };
 
     printf("%d x %d, best of %d renders after the first. GPU APIs built:", width, height,

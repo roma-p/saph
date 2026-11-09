@@ -61,7 +61,7 @@ EFFECTS = {
     "TVDamage": ("Stylize.S_TVDamage_v1", None),
     "JpegDamage": ("Stylize.S_JpegDamage_v1", None),
     "PixelSort": ("Stylize.S_PixelSort_v1", None),
-    "Mosaic": ("Stylize.S_Mosaic_v1", None),
+    "Mosaic": ("Stylize.S_Mosaic_v1", "Mosaic_v1"),
 }
 HOME = os.path.expanduser("~/millsaph_measure")
 created = []

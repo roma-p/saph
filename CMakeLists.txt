@@ -161,6 +161,11 @@ ms_kernel(to_half GENERATOR ms_to_half CPU GPU)
 ms_kernel(bandpass GENERATOR ms_bandpass CPU GPU)
 ms_kernel(bandpass_staged GENERATOR ms_bandpass PARAMS boxes=staged GPU)
 ms_kernel(bandpass_prefix GENERATOR ms_bandpass PARAMS boxes=prefix GPU) # large blurs
+# The 3-box blur of an RGBA image (MS_Mosaic's Smooth Colors); prefix: for large blurs.
+ms_kernel(blur GENERATOR ms_blur CPU GPU)
+ms_kernel(blur_prefix GENERATOR ms_blur PARAMS boxes=prefix GPU)
+# MS_Mosaic.
+ms_kernel(mosaic GENERATOR ms_mosaic CPU GPU)
 # MS_Distort.
 foreach(name distort_shift distort_levels distort_warp)
   ms_kernel(${name} GENERATOR ms_${name} CPU GPU)

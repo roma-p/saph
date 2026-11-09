@@ -45,9 +45,9 @@ it in its "Runs on" line.
 
 GPU versions: BandPass (large blurs at the same cost as small ones); EdgeAwareBlur Sharp,
 Softer and Soft, with their Edge Smooth (Soft where the profile says so: on an M1 Pro its
-CPU is faster); Distort (its Enable GPU off forces the CPU). EdgeAwareBlur without blur, or
+CPU is faster); Distort (its Enable GPU off forces the CPU); Mosaic, with its Smooth Colors. EdgeAwareBlur without blur, or
 with an Edge Threshold of 0, tells the host that it leaves the Source as it is: the host
-skips it. The GPU memory of a render's images is kept for the
+skips it, and so does Mosaic with a Mix With Source of 1. The GPU memory of a render's images is kept for the
 next renders, up to 1/16 of the machine's memory (at most 2 GB). Which version is faster
 depends on the GPU: `src/effects/profile.c` holds those choices per API (measured on an M1
 Pro; `tools/perf/` measures them on another machine).

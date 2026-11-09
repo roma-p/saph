@@ -57,5 +57,10 @@ EdgeAwareBlur --half --pad 3
 EdgeAwareBlur blur_type=1 --half
 Distort blur_mask=0.05 --half
 Distort enable_gpu=0 --half --pad 2
+Mosaic
+Mosaic pixel_frequency=17 pixel_rel_height=1.37 pixel_shift_x=0.003 pixel_shift_y=-0.01 smooth_colors=0.01 crop_left=0.1 crop_top=0.2 blur_mask=0.02 mask_use=1 invert_mask=1 mix_with_source=0.3
+Mosaic !Mask smooth_colors=0.2 crop_left=0.9 crop_right=0.5 pixel_frequency=4
+Mosaic !Mask pixel_frequency=200 pixel_rel_height=0.1 crop_bottom=3 crop_top=3
+Mosaic smooth_colors=0.01 --half --pad 3
 CASES
 [ $failed = 0 ] && echo "all clean" || exit 1

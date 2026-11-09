@@ -9,7 +9,8 @@
      .softer_gpu = 1,                                                                              \
      .soft_gpu = (soft),                                                                           \
      .bandpass_staged = 1,                                                                         \
-     .bandpass_prefix = 24}
+     .bandpass_prefix = 24,                                                                        \
+     .blur_prefix = 24}
 
 static MsProfile profiles[MS_API_COUNT] = {
     [MS_API_METAL] = MEASURED_ON_M1_PRO(0),
