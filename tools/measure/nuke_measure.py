@@ -70,6 +70,9 @@ INPUTS = {
     "Glint": {1: None, 2: 1},
 }
 HOME = os.path.expanduser("~/millsaph_measure")
+# Knobs set when the node is created rather than after (the reference's Glare and Lens Flare
+# read their style string there only).
+CREATION_KNOBS = ("style_",)
 created = []
 
 
@@ -80,13 +83,53 @@ def node_class(effect, vendor):
     return MILLSAPH + ms if ms else None
 
 
-def create(cls):
+def create(cls, at_creation=None):
+    if at_creation:
+        return create_with(cls, at_creation)
     try:
         n = nuke.createNode(cls, inpanel=False)
     except RuntimeError:  # Linux Nuke can list OFX classes in lower case
         n = nuke.createNode("OFX" + cls[3:].lower(), inpanel=False)
     created.append(n)
     return n
+
+
+def script_quote(text):
+    # A knob value as Nuke writes it in a script: in double quotes, escaped.
+    out = []
+    for ch in text:
+        if ch in '\\"{}[]$':
+            out.append("\\" + ch)
+        elif ch == "\n":
+            out.append("\\n")
+        elif ch == "\t":
+            out.append("\\t")
+        else:
+            out.append(ch)
+    return '"' + "".join(out) + '"'
+
+
+def create_with(cls, knobs):
+    # A node made from a script with these knobs set: what some plugins read only when their
+    # node is created (e.g. a style string), as when a script is loaded.
+    path = os.path.join(HOME, "_node.nk")
+    for name in (cls, "OFX" + cls[3:].lower()):
+        with open(path, "w") as f:
+            f.write("%s {\n" % name)
+            for k, v in knobs.items():
+                f.write(" %s %s\n" % (k, script_quote(v)))
+            f.write("}\n")
+        for x in nuke.selectedNodes():
+            x.setSelected(False)
+        try:
+            nuke.nodePaste(path)
+        except RuntimeError:
+            continue
+        sel = nuke.selectedNodes()
+        if sel:
+            created.append(sel[0])
+            return sel[0]
+    raise RuntimeError("cannot create %s" % cls)
 
 
 def drop(n):
@@ -302,7 +345,12 @@ def jobs(path):
             if not os.path.isdir(folder):
                 os.makedirs(folder)
             try:
-                n = create(cls)
+                # Text knobs (e.g. a style) set when the node is created.
+                at_creation = {}
+                for k, v in job.get("knobs", {}).items():
+                    if k in CREATION_KNOBS:
+                        at_creation[k] = v
+                n = create(cls, at_creation)
                 inputs = []
                 for i, image in enumerate(job.get("inputs", [])):
                     if vendor == "millsaph":
@@ -312,7 +360,10 @@ def jobs(path):
                     r = reader(os.path.join(probes, image + ".exr"), frames)
                     inputs.append(r)
                     n.setInput(i, r)
-                missing = [k for k, v in job.get("knobs", {}).items() if not set_knob(n, k, v)]
+                missing = []
+                for k, v in job.get("knobs", {}).items():
+                    if k not in at_creation and not set_knob(n, k, v):
+                        missing.append(k)
                 seq = ".####" if frames[0] != frames[1] else ""
                 render(n, os.path.join(folder, job["name"] + seq + ".exr"), frames)
                 say("%-10s %-32s ok%s" % (vendor, job["name"],
