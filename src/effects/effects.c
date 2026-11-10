@@ -12,6 +12,7 @@ const MsEffect *const ms_effects[] = {
     &ms_glow_effect,
     &ms_edgeblur_effect,
     &ms_rackdefocus_effect,
+    &ms_glint_effect,
 };
 
 const int ms_effect_count = ARRAY_SIZE(ms_effects);

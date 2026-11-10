@@ -45,7 +45,7 @@ it in its "Runs on" line.
 
 GPU versions: BandPass (large blurs at the same cost as small ones); EdgeAwareBlur Sharp,
 Softer and Soft, with their Edge Smooth (Soft where the profile says so: on an M1 Pro its
-CPU is faster); Distort (its Enable GPU off forces the CPU); Mosaic, with its Smooth Colors; Glow; EdgeBlur; RackDefocus (a convolution by FFT). EdgeAwareBlur without blur, or
+CPU is faster); Distort (its Enable GPU off forces the CPU); Mosaic, with its Smooth Colors; Glow; EdgeBlur; RackDefocus (a convolution by FFT); Glint. EdgeAwareBlur without blur, or
 with an Edge Threshold of 0, tells the host that it leaves the Source as it is: the host
 skips it, and so does Mosaic with a Mix With Source of 1, and Glow without glow (Brightness
 or Color 0) in Add, Screen or Difference, and EdgeBlur without blur (Blur Width under a pixel,

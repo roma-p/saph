@@ -4,8 +4,7 @@
 //   ms_glow_combine  the glow scaled by brightness x colour, combined with the Source
 //
 // The threshold of a pixel s (RGB): s mixed towards its alpha by Glow From Alpha, times the
-// Mask's RGB; per channel T = max(0, (s - t - add) / (1 - t)) (t >= 1: s where s - add > t,
-// else 0); the pixel is s x (T_r + T_g + T_b) / (s_r + s_g + s_b), at most s.
+// Mask's RGB; then threshold.h's.
 //
 // The blur: blur.h's blur3_subpixel.
 //
@@ -14,6 +13,7 @@
 #include "Halide.h"
 #include "blur.h"
 #include "shared.h"
+#include "threshold.h"
 
 using namespace Halide;
 
@@ -27,22 +27,11 @@ struct Threshold {
 
 // The threshold of the Source (see above), RGB (c = 3: 0).
 Func thresholded(Func source, Func mask, const Threshold &p) {
-    Func s("s"), v("v"), t("t"), out("thresholded");
+    Func s("s");
     Expr m = select(p.invert_mask != 0, 1.0f - mask(x, y, c), mask(x, y, c));
     s(x, y, c) = (source(x, y, c) + (source(x, y, 3) - source(x, y, c)) * p.from_alpha) *
                  select(p.has_mask != 0, m, 1.0f);
-    Expr add = select(c == 0, p.add_r, c == 1, p.add_g, p.add_b);
-    Expr vc = s(x, y, c) - add;
-    // (A threshold of 1 or more: the division unused, its divisor 1 rather than 0 or less:
-    // inf and NaN there made CUDA twice as slow.)
-    Expr divisor = select(p.threshold < 1.0f, 1.0f - p.threshold, 1.0f);
-    t(x, y, c) = select(p.threshold < 1.0f, max(0.0f, (vc - p.threshold) / divisor),
-                        select(vc > p.threshold, s(x, y, c), 0.0f));
-    Expr total_t = t(x, y, 0) + t(x, y, 1) + t(x, y, 2);
-    Expr total_s = s(x, y, 0) + s(x, y, 1) + s(x, y, 2);
-    out(x, y, c) =
-        select(c < 3 && total_s > 0.0f, min(s(x, y, c) * total_t / total_s, s(x, y, c)), 0.0f);
-    return out;
+    return ms::threshold_of(s, {p.threshold, p.add_r, p.add_g, p.add_b, Expr(0)});
 }
 
 } // namespace

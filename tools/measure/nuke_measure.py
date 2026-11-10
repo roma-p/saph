@@ -52,7 +52,7 @@ EFFECTS = {
     "EdgeBlur": ("BlurSharpen.S_EdgeBlur_v1", "EdgeBlur_v1"),
     "RackDefocus": ("BlurSharpen.S_RackDefocus_v1", "RackDefocus_v1"),
     "Glow": ("Lighting.S_Glow_v1", "Glow_v1"),
-    "Glint": ("Lighting.S_Glint_v1", None),
+    "Glint": ("Lighting.S_Glint_v1", "Glint_v1"),
     "Glare": ("Lighting.S_Glare_v1", None),
     "LensFlare": ("Lighting.S_LensFlare_v1", None),
     "Flicker": ("Time.S_Flicker_v1", None),
@@ -67,6 +67,7 @@ EFFECTS = {
 # none; that input of a job is left out on MillSaph's node).
 INPUTS = {
     "Glow": {1: None, 2: 1},  # the reference's Background, Mask
+    "Glint": {1: None, 2: 1},
 }
 HOME = os.path.expanduser("~/millsaph_measure")
 created = []

@@ -77,5 +77,10 @@ RackDefocus !Mask defocus_width=0.03 shape=5 roundness=-0.5 bokeh=-0.5 color_fri
 RackDefocus mask_use=1 invert_mask=1 blur_mask=0.02 edge_mode=1 rel_height=2
 RackDefocus !Mask defocus_width=0 gauss_blur=0.01
 RackDefocus --half --pad 3
+Glint
+Glint !Mask size=0.05 size_x=0.5 size_diag2=1.3 size_red=1 brightness_y=0.5 brightness_diag1=2 scale_colors=1,0.5,0.2 threshold=0.3 threshold_add_color=0.1,0,0.2 threshold_blur=0.004 blur_glint=0.003 hue_shift=0.3 affect_alpha=0.5 glint_from_alpha=0.3 glint_under_source=0.4 source_opacity=0.7 swap_diagonals=1
+Glint mask_type=1 invert_mask=1 threshold=0
+Glint mask_type=2 threshold=1.2 size=0.6
+Glint --half --pad 3
 CASES
 [ $failed = 0 ] && echo "all clean" || exit 1

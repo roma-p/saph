@@ -702,6 +702,14 @@ int main(int argc, char **argv) {
         {"RackDefocus boost", "MS_RackDefocus", "boost_highlights=1 hilight_threshold=0.5", NULL},
         {"RackDefocus mask", "MS_RackDefocus", "same", NULL},
         {"RackDefocus half", "MS_RackDefocus", "half", NULL},
+        {"Glint", "MS_Glint", "", NULL},
+        {"Glint long", "MS_Glint", "size=0.5", NULL},
+        {"Glint short", "MS_Glint", "size=0.02 threshold_blur=0", NULL},
+        {"Glint x only", "MS_Glint", "brightness_y=0 brightness_diag1=0 brightness_diag2=0", NULL},
+        {"Glint hue", "MS_Glint", "hue_shift=0.3 blur_glint=0.005", NULL},
+        {"Glint low", "MS_Glint", "threshold=0.2", NULL},
+        {"Glint mask", "MS_Glint", "same", NULL},
+        {"Glint half", "MS_Glint", "half", NULL},
     };
 
     printf("%d x %d, best of %d renders after the first. GPU APIs built:", width, height,

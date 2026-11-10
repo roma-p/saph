@@ -43,6 +43,7 @@ NODES = {
     "MS_Glow": (SAPPHIRE + "Lighting.S_Glow_v1", MILLSAPH + "Glow_v1"),
     "MS_EdgeBlur": (SAPPHIRE + "BlurSharpen.S_EdgeBlur_v1", MILLSAPH + "EdgeBlur_v1"),
     "MS_RackDefocus": (SAPPHIRE + "BlurSharpen.S_RackDefocus_v1", MILLSAPH + "RackDefocus_v1"),
+    "MS_Glint": (SAPPHIRE + "Lighting.S_Glint_v1", MILLSAPH + "Glint_v1"),
 }
 PLUGIN_LOG = os.path.expanduser("~/millsaph.log")  # src/common/log.h
 # The test image, as nuke_time.py: gradients, a disc and a box with hard edges, a little noise.

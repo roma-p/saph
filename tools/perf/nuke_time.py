@@ -36,6 +36,7 @@ EFFECTS = [
      [("", {})]),
     ("RackDefocus", SAPPHIRE + "BlurSharpen.S_RackDefocus_v1", MILLSAPH + "RackDefocus_v1",
      "brightness", [("", {})]),
+    ("Glint", SAPPHIRE + "Lighting.S_Glint_v1", MILLSAPH + "Glint_v1", "brightness", [("", {})]),
 ]
 # The photo-like image: gradients, a disc and a box with hard edges, a little noise.
 DISC = "pow(x/width-0.39,2)*256/81+pow(y/height-0.46,2)<0.077"

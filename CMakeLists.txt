@@ -173,6 +173,14 @@ ms_kernel(glow_combine GENERATOR ms_glow_combine CPU GPU)
 # MS_EdgeBlur: the edges of the Matte, then the Source blurred where they are.
 ms_kernel(edge_blur_edges GENERATOR ms_edge_blur_edges CPU GPU)
 ms_kernel(edge_blur GENERATOR ms_edge_blur CPU GPU)
+# MS_Glint: the thresholded Source, its rays one direction at a time, then combined.
+ms_kernel(glint_source GENERATOR ms_glint_source CPU GPU)
+ms_kernel(glint_ray_x GENERATOR ms_glint_ray PARAMS direction=0 CPU GPU)
+ms_kernel(glint_ray_y GENERATOR ms_glint_ray PARAMS direction=1 CPU GPU)
+ms_kernel(glint_ray_up GENERATOR ms_glint_ray PARAMS direction=2 CPU GPU)
+ms_kernel(glint_ray_down GENERATOR ms_glint_ray PARAMS direction=3 CPU GPU)
+ms_kernel(glint_combine GENERATOR ms_glint_combine CPU GPU)
+ms_kernel(glint_combine_blur GENERATOR ms_glint_combine PARAMS blurred=true CPU GPU)
 # The effects that convolve by FFT (src/effects/fft.c): one stage of a transform.
 ms_kernel(fft_stage GENERATOR ms_fft_stage CPU GPU)
 # MS_RackDefocus: the lens and the Source transformed, multiplied, transformed back.
