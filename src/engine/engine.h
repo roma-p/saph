@@ -46,6 +46,10 @@ void ms_image(MsImage *image, const float *pixels, ptrdiff_t row, int width, int
 void ms_image_rgba(MsImage *image, const void *pixels, ptrdiff_t row, int half, int width,
                    int height);
 
+// A one-channel image of unsigned 32-bit integers (`row` of them), e.g. labels between two
+// kernels (`pixels` NULL).
+void ms_image_uint(MsImage *image, const void *pixels, ptrdiff_t row, int width, int height);
+
 // The 16-bit floats themselves (`row` in halves), as two 32-bit integers per pixel (the
 // conversion kernels' images).
 void ms_image_half(MsImage *image, const void *pixels, ptrdiff_t row, int width, int height);

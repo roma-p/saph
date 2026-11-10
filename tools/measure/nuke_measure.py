@@ -53,7 +53,7 @@ EFFECTS = {
     "RackDefocus": ("BlurSharpen.S_RackDefocus_v1", "RackDefocus_v1"),
     "Glow": ("Lighting.S_Glow_v1", "Glow_v1"),
     "Glint": ("Lighting.S_Glint_v1", "Glint_v1"),
-    "Glare": ("Lighting.S_Glare_v1", None),
+    "Glare": ("Lighting.S_Glare_v1", "Glare_v1"),
     "LensFlare": ("Lighting.S_LensFlare_v1", None),
     "Flicker": ("Time.S_Flicker_v1", None),
     "FlickerMatch": ("Time.S_FlickerMatch_v1", None),
@@ -68,6 +68,7 @@ EFFECTS = {
 INPUTS = {
     "Glow": {1: None, 2: 1},  # the reference's Background, Mask
     "Glint": {1: None, 2: 1},
+    "Glare": {1: None, 2: 1},
 }
 HOME = os.path.expanduser("~/millsaph_measure")
 # Knobs set when the node is created rather than after (the reference's Glare and Lens Flare

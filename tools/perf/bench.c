@@ -711,6 +711,13 @@ int main(int argc, char **argv) {
         {"Glint low", "MS_Glint", "threshold=0.2", NULL},
         {"Glint mask", "MS_Glint", "same", NULL},
         {"Glint half", "MS_Glint", "half", NULL},
+        {"Glare", "MS_Glare", "", NULL},
+        {"Glare big", "MS_Glare", "size=0.3", NULL},
+        {"Glare low", "MS_Glare", "threshold=0.3", NULL},
+        {"Glare res half", "MS_Glare", "glare_res=1", NULL},
+        {"Glare hue blur", "MS_Glare", "hue_shift=0.3 saturation=0.5 blur_glare=0.005", NULL},
+        {"Glare mask", "MS_Glare", "same", NULL},
+        {"Glare half", "MS_Glare", "half", NULL},
     };
 
     printf("%d x %d, best of %d renders after the first. GPU APIs built:", width, height,

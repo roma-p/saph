@@ -181,6 +181,11 @@ ms_kernel(glint_ray_up GENERATOR ms_glint_ray PARAMS direction=2 CPU GPU)
 ms_kernel(glint_ray_down GENERATOR ms_glint_ray PARAMS direction=3 CPU GPU)
 ms_kernel(glint_combine GENERATOR ms_glint_combine CPU GPU)
 ms_kernel(glint_combine_blur GENERATOR ms_glint_combine PARAMS blurred=true CPU GPU)
+# MS_Glare: the style's kernel, the spots (connected regions), their impulses, the finish
+# (with Glint's ms_glint_source, the transforms and RackDefocus's product).
+foreach(name glare_kernel glare_label_init glare_label_round glare_spots glare_half glare_finish)
+  ms_kernel(${name} GENERATOR ms_${name} CPU GPU)
+endforeach()
 # The effects that convolve by FFT (src/effects/fft.c): one stage of a transform.
 ms_kernel(fft_stage GENERATOR ms_fft_stage CPU GPU)
 # MS_RackDefocus: the lens and the Source transformed, multiplied, transformed back.

@@ -52,4 +52,5 @@ Glow                 Glow !Mask
 EdgeBlur             EdgeBlur !Matte
 RackDefocus          RackDefocus !Mask
 Glint                Glint !Mask
+Glare                Glare !Mask
 CASES

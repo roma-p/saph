@@ -82,5 +82,10 @@ Glint !Mask size=0.05 size_x=0.5 size_diag2=1.3 size_red=1 brightness_y=0.5 brig
 Glint mask_type=1 invert_mask=1 threshold=0
 Glint mask_type=2 threshold=1.2 size=0.6
 Glint --half --pad 3
+Glare
+Glare !Mask size=0.05 rel_height=0.7 rotate=20 rays_num_scale=2 rays_length=1.5 rays_thickness=2 brightness=1.5 scale_colors=1,0.6,0.3 saturation=0.5 threshold=0.3 threshold_add_color=0.1,0,0.2 threshold_blur=0.004 blur_glare=0.003 hue_shift=0.3 affect_alpha=0.5 glare_from_alpha=0.3 glare_under_source=0.4 source_opacity=0.7
+Glare mask_type=1 invert_mask=1 threshold=0 glare_res=1
+Glare !Mask style_=@tools/glare_test_style.json
+Glare --half --pad 3
 CASES
 [ $failed = 0 ] && echo "all clean" || exit 1

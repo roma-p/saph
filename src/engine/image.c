@@ -37,6 +37,12 @@ void ms_image_rgba(MsImage *image, const void *pixels, ptrdiff_t row, int half, 
     image->half_row = row;
 }
 
+void ms_image_uint(MsImage *image, const void *pixels, ptrdiff_t row, int width, int height) {
+    ms_image(image, NULL, row, width, height, 1);
+    image->b.host = (uint8_t *)pixels;
+    image->b.type.code = halide_type_uint;
+}
+
 void ms_image_half(MsImage *image, const void *pixels, ptrdiff_t row, int width, int height) {
     // Two 32-bit integers per pixel (src/halide/convert_generator.cpp): rows of RGBA halves
     // are a whole number of them.

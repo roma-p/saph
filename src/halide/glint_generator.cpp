@@ -17,15 +17,15 @@
 // diagonals reach past the image on one side. Each box at most as wide as its line (the
 // image's width, height, or n).
 //
-// Hue Shift: the HSV hue turned (saturation and value kept), the colour then scaled back to
-// its luma (5 R + 8 G + 3 B) / 16. The screen: max(b + r (1 - b), r) with b at least 0 and
-// 1 - b at least 0.
+// Hue Shift: hue.h's. The screen: max(b + r (1 - b), r) with b at least 0 and 1 - b at
+// least 0.
 //
 // Images are packed RGBA floats (x, y, c), interleaved, bottom row first.
 
 #include "Halide.h"
 #include "blur.h"
 #include "shared.h"
+#include "hue.h"
 #include "threshold.h"
 
 using namespace Halide;
@@ -179,25 +179,8 @@ class GlintCombine : public Generator<GlintCombine> {
         // The rays, their hue turned.
         Func rays("rays"), turned("turned");
         rays(x, y, c) = select(has_rays != 0 && c < 3, 1.0f - total(x, y, c), 0.0f);
-        Expr r = rays(x, y, 0), g = rays(x, y, 1), b = rays(x, y, 2);
-        Expr mx = max(r, max(g, b)), mn = min(r, min(g, b)), d = mx - mn;
-        Expr safe = select(d > 0.0f, d, 1.0f);
-        // The hue in sixths: 0 red, 2 green, 4 blue.
-        Expr h6 = select(mx == r, (g - b) / safe, mx == g, (b - r) / safe + 2.0f,
-                         (r - g) / safe + 4.0f);
-        h6 = h6 + 6.0f * hue;
-        h6 = h6 - 6.0f * floor(h6 / 6.0f);
-        auto part = [&](float n) {
-            Expr k = n + h6;
-            k = k - 6.0f * floor(k / 6.0f);
-            return mx - d * clamp(min(k, 4.0f - k), 0.0f, 1.0f);
-        };
-        Expr nr = part(5.0f), ng = part(3.0f), nb = part(1.0f);
-        Expr l0 = 0.3125f * r + 0.5f * g + 0.1875f * b;
-        Expr l1 = 0.3125f * nr + 0.5f * ng + 0.1875f * nb;
-        Expr scale = select(l1 > 0.0f, l0 / l1, 0.0f);
-        Expr shifted = select(c == 0, nr, c == 1, ng, nb) * scale;
-        turned(x, y, c) = select(c >= 3 || d <= 0.0f || hue == 0.0f, rays(x, y, c), shifted);
+        turned(x, y, c) = ms::hue_shifted(rays(x, y, 0), rays(x, y, 1), rays(x, y, 2), c, hue,
+                                          rays(x, y, c));
         std::vector<ms_blur::Box> boxes;
         Func ray("ray");
         if (blurred)

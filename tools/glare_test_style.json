@@ -1,0 +1,11 @@
+{"elements": [
+ {"type": "container", "children": [
+  {"type": "blob", "size": 0.3, "brightness": 0.5, "radii": [0, 0.5, 1], "colors": [1, 1, 1, 1, 0.5, 0.2, 0, 0, 0]},
+  {"type": "spot", "size": 0.2, "brightness": 0.3, "radii": [0, 1], "colors": [1, 1, 1, 0, 0, 0]},
+  {"type": "ring", "size": 0.4, "brightness": 0.2, "radii": [0.9, 1], "colors": [1, 1, 1, 1, 1, 1]},
+  {"type": "rays", "size": 0.6, "brightness": 0.3, "ray_number": 6, "ray_width": 0.03, "stretch": 1.5},
+  {"type": "polar_flare", "size": 0.5, "brightness": 0.3, "angle_width": 90, "arc_edge_softness": 1, "repeats": 2, "n_sides": 5, "roundness": 0.3, "blur_gradient": 0.1, "fade_gradient": 0.3, "wave_brightness": 1, "wave_freq": 3, "wave_width": 0.5, "r_wave_min": 0.6, "r_wave_max": 1, "r_wave_freq": 3, "r_spikyness": 2, "radii": [0, 1], "colors": [1, 0.8, 0.5, 0.2, 0.4, 1]},
+  {"type": "fancy_spot", "size": 0.3, "brightness": 0.2, "angle_width": 360, "n_sides": 6, "blur_gradient": 0.1, "radii": [0, 0.8, 1], "colors": [1, 1, 1, 1, 1, 1, 0, 0, 0]},
+  {"type": "blob", "size": 0.2, "disabled": true}
+ ]}
+]}

@@ -121,3 +121,4 @@ extern const MsEffect ms_glow_effect;
 extern const MsEffect ms_edgeblur_effect;
 extern const MsEffect ms_rackdefocus_effect;
 extern const MsEffect ms_glint_effect;
+extern const MsEffect ms_glare_effect;

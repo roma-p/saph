@@ -90,7 +90,7 @@ page-locked memory of our own. Linux, CUDA only.
     tools/perf/perf.sh
 
 Renders every effect (BandPass, EdgeAwareBlur Sharp / Soft / Softer, Distort on the GPU and
-on the CPU, Mosaic with and without Smooth Colors, Glow, EdgeBlur, RackDefocus, Glint) at 3840 x 2160 with `tools/test_host.c`, 6 times each, and prints the best time
+on the CPU, Mosaic with and without Smooth Colors, Glow, EdgeBlur, RackDefocus, Glint, Glare) at 3840 x 2160 with `tools/test_host.c`, 6 times each, and prints the best time
 after the first render. The effects print the GPU API they really run on:
 
     [MillSaph] running on CUDA
@@ -112,7 +112,7 @@ cases compare the two.
        exec(open("<path to MillSaph>/tools/perf/nuke_time.py").read())
 
 It times BandPass, EdgeAwareBlur (each Blur Type), Distort, Mosaic (with and without Smooth
-Colors), Glow, EdgeBlur, RackDefocus and Glint, the reference plugin's node then
+Colors), Glow, EdgeBlur, RackDefocus, Glint and Glare, the reference plugin's node then
 MillSaph's, on the same 4K image with default settings. Results go to
 `~/millsaph_perf/timing.txt`, with a table of each effect's own time (Nuke's performance
 timers: the time spent in the node) and how many times faster MillSaph is, then MillSaph's own
