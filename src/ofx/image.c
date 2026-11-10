@@ -343,7 +343,7 @@ OfxStatus ms_render_with(OfxImageEffectHandle effect, OfxPropertySetHandle in_ar
         // The settings (WIDTH and HEIGHT in pixels): what a slow render was asked to do.
         used = 0;
         for (int i = 0; i < e->param_count && used < sizeof settings; ++i)
-            if (e->params[i].type != MS_PARAM_TEXT)
+            if (e->params[i].type != MS_PARAM_TEXT && e->params[i].type != MS_PARAM_STRING)
                 used += (size_t)snprintf(settings + used, sizeof settings - used, " %s=%g",
                                          e->params[i].name, r->values[i]);
         ms_log("render %d %s %dx%d on %s: fetch %.1f ms, copy in %.1f, effect %.1f (kernels "

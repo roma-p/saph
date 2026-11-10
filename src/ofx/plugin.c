@@ -48,6 +48,7 @@ static void define_param(OfxParamSetHandle params, const MsParam *p) {
         [MS_PARAM_HEIGHT] = kOfxParamTypeDouble, [MS_PARAM_ANGLE] = kOfxParamTypeDouble,
         [MS_PARAM_CHOICE] = kOfxParamTypeChoice, [MS_PARAM_BOOL] = kOfxParamTypeBoolean,
         [MS_PARAM_TEXT] = kOfxParamTypeString,   [MS_PARAM_RGB] = kOfxParamTypeRGB,
+        [MS_PARAM_STRING] = kOfxParamTypeString,
     };
     OfxPropertySetHandle props;
     if (p->type == MS_PARAM_RGB_PART) // part of the MS_PARAM_RGB before
@@ -77,6 +78,10 @@ static void define_param(OfxParamSetHandle params, const MsParam *p) {
         ms_prop->propSetInt(props, kOfxParamPropEnabled, 0, 0);
         ms_prop->propSetInt(props, kOfxParamPropEvaluateOnChange, 0, 0);
         ms_prop->propSetInt(props, kOfxParamPropPersistant, 0, 0);
+        return;
+    case MS_PARAM_STRING:
+        ms_prop->propSetString(props, kOfxParamPropStringMode, 0, kOfxParamStringIsMultiLine);
+        ms_prop->propSetString(props, kOfxParamPropDefault, 0, p->def_text ? p->def_text : "");
         return;
     case MS_PARAM_WIDTH:
         ms_prop->propSetString(props, kOfxParamPropDoubleType, 0, kOfxParamDoubleTypeNormalisedX);
@@ -175,10 +180,20 @@ static int clip_connected(OfxImageEffectHandle effect, const char *name) {
     return connected;
 }
 
+static const char *get_text(OfxParamSetHandle params, const char *name, OfxTime time) {
+    OfxParamHandle param;
+    char *value = NULL;
+    if (ms_param->paramGetHandle(params, name, &param, NULL) == kOfxStatOK)
+        ms_param->paramGetValueAtTime(param, time, &value);
+    return value;
+}
+
 // The parameter values at the time of `in_args` (WIDTH and HEIGHT in pixels of the frame
-// `px` x `py`) and which inputs are connected. Returns 0 when the host does not give them.
+// `px` x `py`; STRING ones in `texts`, the host's own strings) and which inputs are
+// connected. Returns 0 when the host does not give them.
 static int read_values(const MsEffect *e, OfxImageEffectHandle effect, OfxPropertySetHandle in_args,
-                       OfxTime *time, double *px, double *py, double *values, int *connected) {
+                       OfxTime *time, double *px, double *py, double *values, const char **texts,
+                       int *connected) {
     OfxParamSetHandle params;
     if (e->param_count > MS_MAX_PARAMS || e->clip_count > MS_MAX_CLIPS ||
         ms_prop->propGetDouble(in_args, kOfxPropTime, 0, time) != kOfxStatOK ||
@@ -187,6 +202,7 @@ static int read_values(const MsEffect *e, OfxImageEffectHandle effect, OfxProper
     frame_size(effect, in_args, px, py);
     for (int i = 0; i < e->param_count; ++i) {
         const MsParam *p = &e->params[i];
+        texts[i] = NULL;
         switch (p->type) {
         case MS_PARAM_CHOICE:
         case MS_PARAM_BOOL:
@@ -194,6 +210,10 @@ static int read_values(const MsEffect *e, OfxImageEffectHandle effect, OfxProper
             break;
         case MS_PARAM_TEXT:
             values[i] = 0.0;
+            break;
+        case MS_PARAM_STRING:
+            values[i] = 0.0;
+            texts[i] = get_text(params, p->name, *time);
             break;
         case MS_PARAM_RGB: // red, green and blue in this entry and the next two
             get_rgb(params, p->name, *time, &values[i]);
@@ -222,10 +242,15 @@ static OfxStatus render(const MsEffect *e, OfxImageEffectHandle effect,
     OfxTime time;
     double px, py; // WIDTH and HEIGHT values are fractions of these
     double values[MS_MAX_PARAMS];
+    const char *texts[MS_MAX_PARAMS];
     int connected[MS_MAX_CLIPS];
-    if (!read_values(e, effect, in_args, &time, &px, &py, values, connected))
+    if (!read_values(e, effect, in_args, &time, &px, &py, values, texts, connected))
         return kOfxStatFailed;
-    MsRender r = {.values = values, .connected = connected, .frame_width = px, .frame_height = py};
+    MsRender r = {.values = values,
+                  .connected = connected,
+                  .frame_width = px,
+                  .frame_height = py,
+                  .texts = texts};
     return ms_render_with(effect, in_args, e, &r);
 }
 
@@ -236,8 +261,10 @@ static OfxStatus is_identity(const MsEffect *e, OfxImageEffectHandle effect,
     OfxTime time;
     double px, py;
     double values[MS_MAX_PARAMS];
+    const char *texts[MS_MAX_PARAMS];
     int connected[MS_MAX_CLIPS];
-    if (!e->identity || !read_values(e, effect, in_args, &time, &px, &py, values, connected) ||
+    if (!e->identity ||
+        !read_values(e, effect, in_args, &time, &px, &py, values, texts, connected) ||
         !e->identity(values, connected))
         return kOfxStatReplyDefault;
     ms_prop->propSetString(out_args, kOfxPropName, 0, e->clips[0].clip);

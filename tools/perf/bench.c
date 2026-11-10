@@ -174,7 +174,7 @@ static double run_case(const Case *c, MsApi api, const float *source, float **bl
     MsRunInfo info;
     MsRender r = {values, connected, inputs,   width,      height,
                   width,  height,    half ? (void *)result : (void *)output,
-                  (ptrdiff_t)width * 4, err, sizeof err, half, &info};
+                  (ptrdiff_t)width * 4, err, sizeof err, half, &info, NULL};
     MsProfile profile = defaults[api];
     if (c->tweak)
         c->tweak(&profile);
@@ -205,6 +205,7 @@ static int series(const MsParam *p, double *v) {
     int n = 0;
     switch (p->type) {
     case MS_PARAM_TEXT:
+    case MS_PARAM_STRING:
     case MS_PARAM_RGB: // colours: not swept (a gain per channel)
     case MS_PARAM_RGB_PART:
         return 0;
@@ -254,7 +255,7 @@ static double timed(const MsEffect *e, const double *values, const int *connecte
                     char *err, size_t err_size) {
     MsRunInfo info;
     MsRender r = {values, connected, inputs,   width, height, width, height, output,
-                  (ptrdiff_t)width * 4, err, err_size, 0, &info};
+                  (ptrdiff_t)width * 4, err, err_size, 0, &info, NULL};
     ms_api_only(api);
     const double best = time_renders(e, &r, first);
     *used = info.api;

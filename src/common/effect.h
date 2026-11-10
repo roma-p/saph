@@ -33,6 +33,7 @@ typedef enum {
     MS_PARAM_CHOICE, // a popup menu: the value is the index of the chosen entry
     MS_PARAM_BOOL,   // a checkbox: 0 or 1
     MS_PARAM_TEXT,   // a read-only line of text, set by `text` when the effect is created
+    MS_PARAM_STRING, // an editable text (several lines), saved: MsRender.texts
     MS_PARAM_RGB,    // a colour: red here, green and blue in the next two entries
     // Green or blue of the MS_PARAM_RGB before (`def`: its default; no host parameter).
     MS_PARAM_RGB_PART,
@@ -50,6 +51,7 @@ typedef struct {
     const char *const *entries;      // CHOICE: the menu entries
     int entry_count;
     const char *(*text)(void); // TEXT: the line to show
+    const char *def_text;      // STRING: the default text
 } MsParam;
 
 // The most inputs and parameters of an effect (the hosts' code sizes arrays by them).
@@ -86,6 +88,9 @@ typedef struct {
     int half; // the inputs and the output in 16-bit floats (else floats): engine.h,
               // ms_image_rgba
     struct MsRunInfo *info; // what the effect's ms_run did (engine.h), or NULL
+    // One per parameter: the STRING parameters' texts (NULL for the others). NULL when the
+    // caller has none to give (the effects then take their default texts).
+    const char *const *texts;
 } MsRender;
 
 typedef struct {

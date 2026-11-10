@@ -5,7 +5,8 @@
 //   test_host <plugin.ofx> <effect id> [name=value ...] [!Clip ...] [--size WxH] [--frames N]
 //             [--save file] [--pad N]
 //
-//   name=value   sets a parameter (choices and checkboxes by number)
+//   name=value   sets a parameter (choices and checkboxes by number; a text: name=text, or
+//                name=@file for a file's contents)
 //   !Clip        leaves that input unconnected, e.g. !Mask
 //   --size WxH   renders W x H pixels (default 97 x 61) of a photo-like image (gradients,
 //                a disc, a box, a little noise) instead of the test pattern
@@ -166,8 +167,13 @@ typedef struct {
     char name[64];
     char type[64];
     PropSet props;
-    double value[3]; // RGB: 3, else the first
+    double value[3];  // RGB: 3, else the first
+    const char *text; // a string set by name=text or name=@file (NULL: the plugin's default)
 } Param;
+
+// The strings set on the command line (no allocation: nothing to free at the exit).
+static char text_pool[1 << 20];
+static size_t text_used;
 
 static Param params[MAX_PARAMS];
 static int param_count;
@@ -210,7 +216,9 @@ static OfxStatus param_get_value_at_time(OfxParamHandle handle, OfxTime time, ..
     const Param *p = (const Param *)handle;
     va_list args;
     va_start(args, time);
-    if (is_int(p))
+    if (strcmp(p->type, kOfxParamTypeString) == 0)
+        *va_arg(args, const char **) = p->text;
+    else if (is_int(p))
         *va_arg(args, int *) = (int)p->value[0];
     else if (strcmp(p->type, kOfxParamTypeRGB) == 0)
         for (int k = 0; k < 3; ++k)
@@ -414,6 +422,32 @@ static void set_values(int argc, char **argv) {
     for (int a = 3; a < argc; ++a) {
         char name[64];
         double value[3];
+        const char *eq = strchr(argv[a], '=');
+        Param *s = NULL;
+        for (int i = 0; eq && i < param_count; ++i)
+            if (strncmp(params[i].name, argv[a], (size_t)(eq - argv[a])) == 0 &&
+                params[i].name[eq - argv[a]] == 0 && strcmp(params[i].type, kOfxParamTypeString) == 0)
+                s = &params[i];
+        if (s) { // a string: name=text, or name=@file for the file's contents
+            char *text = text_pool + text_used;
+            size_t room = sizeof text_pool - text_used - 1, n = 0;
+            if (eq[1] == '@') {
+                FILE *f = fopen(eq + 2, "rb");
+                if (f) {
+                    n = fread(text, 1, room, f);
+                    fclose(f);
+                } else {
+                    printf("cannot read %s\n", eq + 2);
+                }
+            } else {
+                n = strlen(eq + 1) < room ? strlen(eq + 1) : room;
+                memcpy(text, eq + 1, n);
+            }
+            text[n] = 0;
+            text_used += n + 1;
+            s->text = text;
+            continue;
+        }
         const int n = sscanf(argv[a], "%63[^=]=%lf,%lf,%lf", name, &value[0], &value[1], &value[2]);
         if (n < 2)
             continue;
