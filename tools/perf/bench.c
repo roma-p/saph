@@ -693,6 +693,15 @@ int main(int argc, char **argv) {
         {"EdgeBlur matte", "MS_EdgeBlur", "matte matte_use=1", NULL},
         {"EdgeBlur same", "MS_EdgeBlur", "same", NULL},
         {"EdgeBlur half", "MS_EdgeBlur", "half", NULL},
+        {"RackDefocus", "MS_RackDefocus", "", NULL},
+        {"RackDefocus wide", "MS_RackDefocus", "defocus_width=0.05", NULL},
+        {"RackDefocus huge", "MS_RackDefocus", "defocus_width=0.25", NULL},
+        {"RackDefocus hexagon", "MS_RackDefocus", "shape=5 roundness=0.3 bokeh=0.5", NULL},
+        {"RackDefocus fringing", "MS_RackDefocus", "color_fringing=0.2 gauss_blur=0.002", NULL},
+        {"RackDefocus mono", "MS_RackDefocus", "mode=1 use_gamma=2", NULL},
+        {"RackDefocus boost", "MS_RackDefocus", "boost_highlights=1 hilight_threshold=0.5", NULL},
+        {"RackDefocus mask", "MS_RackDefocus", "same", NULL},
+        {"RackDefocus half", "MS_RackDefocus", "half", NULL},
     };
 
     printf("%d x %d, best of %d renders after the first. GPU APIs built:", width, height,

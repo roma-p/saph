@@ -11,6 +11,7 @@ const MsEffect *const ms_effects[] = {
     &ms_mosaic_effect,
     &ms_glow_effect,
     &ms_edgeblur_effect,
+    &ms_rackdefocus_effect,
 };
 
 const int ms_effect_count = ARRAY_SIZE(ms_effects);

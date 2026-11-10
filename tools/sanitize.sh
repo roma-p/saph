@@ -72,5 +72,10 @@ EdgeBlur !Matte blur_width=0.013 edge_width=0.021 edge_strength=2 edge_threshold
 EdgeBlur matte_use=1 subpixel=0 blur_width=0.5 edge_width=0.4
 EdgeBlur !Matte show=1
 EdgeBlur --half --pad 3
+RackDefocus
+RackDefocus !Mask defocus_width=0.03 shape=5 roundness=-0.5 bokeh=-0.5 color_fringing=0.3 gauss_blur=0.01 use_gamma=2 boost_highlights=1 hilight_threshold=0.5 mode=1 brightness=1.5 offset_darks=0.2 mix_with_source=0.3 edge_mode=0
+RackDefocus mask_use=1 invert_mask=1 blur_mask=0.02 edge_mode=1 rel_height=2
+RackDefocus !Mask defocus_width=0 gauss_blur=0.01
+RackDefocus --half --pad 3
 CASES
 [ $failed = 0 ] && echo "all clean" || exit 1

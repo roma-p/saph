@@ -42,6 +42,7 @@ NODES = {
     "MS_Mosaic": (SAPPHIRE + "Stylize.S_Mosaic_v1", MILLSAPH + "Mosaic_v1"),
     "MS_Glow": (SAPPHIRE + "Lighting.S_Glow_v1", MILLSAPH + "Glow_v1"),
     "MS_EdgeBlur": (SAPPHIRE + "BlurSharpen.S_EdgeBlur_v1", MILLSAPH + "EdgeBlur_v1"),
+    "MS_RackDefocus": (SAPPHIRE + "BlurSharpen.S_RackDefocus_v1", MILLSAPH + "RackDefocus_v1"),
 }
 PLUGIN_LOG = os.path.expanduser("~/millsaph.log")  # src/common/log.h
 # The test image, as nuke_time.py: gradients, a disc and a box with hard edges, a little noise.
@@ -112,6 +113,9 @@ def apply(n, setting, image):
                 missing.append("input " + clip)
             continue
         k = n.knob(name)
+        if k is None:  # the name in other letter case (e.g. one node's "Mode", the other's "mode")
+            same = [other for other in n.knobs() if other.lower() == name.lower()]
+            k = n.knob(same[0]) if same else None
         if k is None:
             missing.append(name)
             continue

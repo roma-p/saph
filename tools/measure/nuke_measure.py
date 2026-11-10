@@ -50,7 +50,7 @@ EFFECTS = {
     "EdgeAwareBlur": ("BlurSharpen.S_EdgeAwareBlur_v1", "EdgeAwareBlur_v1"),
     "Distort": ("Distort.S_Distort_v1", "Distort_v1"),
     "EdgeBlur": ("BlurSharpen.S_EdgeBlur_v1", "EdgeBlur_v1"),
-    "RackDefocus": ("BlurSharpen.S_RackDefocus_v1", None),
+    "RackDefocus": ("BlurSharpen.S_RackDefocus_v1", "RackDefocus_v1"),
     "Glow": ("Lighting.S_Glow_v1", "Glow_v1"),
     "Glint": ("Lighting.S_Glint_v1", None),
     "Glare": ("Lighting.S_Glare_v1", None),
@@ -186,8 +186,18 @@ def describe(names):
         print("%s: %s" % (effect, os.path.join(folder, effect + ".txt")))
 
 
-def set_knob(n, name, value):
+# A node's knob by name, else by the name in other letter case (e.g. one node's "Mode", the
+# other's "mode").
+def find_knob(n, name):
     k = n.knob(name)
+    if k is None:
+        same = [other for other in n.knobs() if other.lower() == name.lower()]
+        k = n.knob(same[0]) if same else None
+    return k
+
+
+def set_knob(n, name, value):
+    k = find_knob(n, name)
     if k is None:
         return False
     if k.Class() == "Enumeration_Knob" and isinstance(value, str):

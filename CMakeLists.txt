@@ -73,7 +73,8 @@ elseif(WIN32)
   target_compile_definitions(millsaph_core PUBLIC _USE_MATH_DEFINES _CRT_SECURE_NO_WARNINGS)
 else()
   set(platform Linux-x86-64)
-  target_link_libraries(millsaph_core PUBLIC ${CMAKE_DL_LIBS})
+  # libm: the kernels' CPU code calls it (sin, cos, sincos), the plugin needs it itself.
+  target_link_libraries(millsaph_core PUBLIC ${CMAKE_DL_LIBS} m)
 endif()
 
 # GPU APIs, in the order effects try them at render time (src/engine/run.c), then the CPU.
@@ -172,6 +173,12 @@ ms_kernel(glow_combine GENERATOR ms_glow_combine CPU GPU)
 # MS_EdgeBlur: the edges of the Matte, then the Source blurred where they are.
 ms_kernel(edge_blur_edges GENERATOR ms_edge_blur_edges CPU GPU)
 ms_kernel(edge_blur GENERATOR ms_edge_blur CPU GPU)
+# The effects that convolve by FFT (src/effects/fft.c): one stage of a transform.
+ms_kernel(fft_stage GENERATOR ms_fft_stage CPU GPU)
+# MS_RackDefocus: the lens and the Source transformed, multiplied, transformed back.
+foreach(name rack_defocus_prepare rack_defocus_kernel rack_defocus_multiply rack_defocus_finish)
+  ms_kernel(${name} GENERATOR ms_${name} CPU GPU)
+endforeach()
 # MS_Distort.
 foreach(name distort_shift distort_levels distort_warp)
   ms_kernel(${name} GENERATOR ms_${name} CPU GPU)

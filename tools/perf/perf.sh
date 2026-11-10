@@ -50,4 +50,5 @@ Mosaic               Mosaic !Mask
 Mosaic_Smooth        Mosaic !Mask smooth_colors=0.005
 Glow                 Glow !Mask
 EdgeBlur             EdgeBlur !Matte
+RackDefocus          RackDefocus !Mask
 CASES
