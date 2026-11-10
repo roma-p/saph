@@ -1,11 +1,12 @@
-// After Effects adapter: makes an After Effects effect of MS_BandPass, MS_EdgeAwareBlur
-// and MS_Distort (common/effect.h). SmartFX, 8, 16 and 32 bits per channel. Windows and
-// macOS (see CMakeLists.txt: it needs Adobe's After Effects SDK).
+// After Effects adapter: makes an After Effects effect of each MillSaph effect (but MS_Test;
+// common/effect.h). SmartFX, 8, 16 and 32 bits per channel. Windows and macOS (see
+// CMakeLists.txt: it needs Adobe's After Effects SDK).
 //
 // Each effect has its own entry point (EffectMain_<Name>) and PiPL resource (pipl.r).
 // Its After Effects parameters, by index:
 //   0             the effect's own layer: the Source
-//   1 ...         the effect's parameters, in table order (TEXT ones are left out)
+//   1 ...         the effect's parameters, in table order (TEXT and STRING ones are left
+//                 out: STRING ones keep their default text; an RGB colour is one parameter)
 //   then          one layer menu per other input (Mask, Lens...), "None" by default
 // WIDTH and HEIGHT parameters are shown as a percentage of the layer width / height.
 //
@@ -23,6 +24,7 @@
 
 #include "AE_Effect.h"
 #include "AE_EffectCB.h"
+#include "AE_EffectSuites.h"
 #include "AE_PluginData.h"
 
 #include "common/defines.h"
@@ -52,21 +54,27 @@ typedef struct {
 } AeEffect;
 
 static AeEffect effects[] = {
-    {&ms_bandpass_effect, {{0}}},
-    {&ms_edgeawareblur_effect, {{0}}},
-    {&ms_distort_effect, {{0}}},
+    {&ms_bandpass_effect, {{0}}}, {&ms_edgeawareblur_effect, {{0}}}, {&ms_distort_effect, {{0}}},
+    {&ms_mosaic_effect, {{0}}},   {&ms_glow_effect, {{0}}},          {&ms_edgeblur_effect, {{0}}},
+    {&ms_rackdefocus_effect, {{0}}}, {&ms_glint_effect, {{0}}},
 };
-enum { BANDPASS, EDGEAWAREBLUR, DISTORT };
+enum { BANDPASS, EDGEAWAREBLUR, DISTORT, MOSAIC, GLOW, EDGEBLUR, RACKDEFOCUS, GLINT };
 
 // ---------------------------------------------------------------- parameters
 
-// After Effects index of effect parameter i (0 for a TEXT one, which is left out).
+// 1 when parameter type `t` has an After Effects parameter (TEXT and STRING ones are left
+// out, and the green and blue of an RGB are in its colour).
+static int in_ae(MsParamType t) {
+    return t != MS_PARAM_TEXT && t != MS_PARAM_STRING && t != MS_PARAM_RGB_PART;
+}
+
+// After Effects index of effect parameter i (0 for one left out).
 static int param_index(const MsEffect *e, int i) {
-    if (e->params[i].type == MS_PARAM_TEXT)
+    if (!in_ae(e->params[i].type))
         return 0;
     int index = 1;
     for (int k = 0; k < i; ++k)
-        if (e->params[k].type != MS_PARAM_TEXT)
+        if (in_ae(e->params[k].type))
             ++index;
     return index;
 }
@@ -75,9 +83,13 @@ static int param_index(const MsEffect *e, int i) {
 static int layer_index(const MsEffect *e, int c) {
     int index = 1;
     for (int k = 0; k < e->param_count; ++k)
-        if (e->params[k].type != MS_PARAM_TEXT)
+        if (in_ae(e->params[k].type))
             ++index;
     return index + c - 1;
+}
+
+static A_u_char to_byte(double v) {
+    return (A_u_char)(v <= 0 ? 0 : v >= 1 ? 255 : v * 255 + 0.5);
 }
 
 static PF_Err add_param(PF_InData *in_data, PF_ParamDef *def) {
@@ -91,7 +103,7 @@ static PF_Err params_setup(AeEffect *ae, PF_InData *in_data, PF_OutData *out_dat
     PF_Err err = PF_Err_NONE;
     for (int i = 0; i < e->param_count && !err; ++i) {
         const MsParam *p = &e->params[i];
-        if (p->type == MS_PARAM_TEXT)
+        if (!in_ae(p->type))
             continue;
         PF_ParamDef def;
         memset(&def, 0, sizeof def);
@@ -115,6 +127,11 @@ static PF_Err params_setup(AeEffect *ae, PF_InData *in_data, PF_OutData *out_dat
         } else if (p->type == MS_PARAM_ANGLE) {
             def.param_type = PF_Param_ANGLE;
             def.u.ad.dephault = def.u.ad.value = (PF_Fixed)(p->def * 65536.0); // degrees, 16.16
+        } else if (p->type == MS_PARAM_RGB) { // red here, green and blue in the next two
+            def.param_type = PF_Param_COLOR;
+            def.u.cd.dephault = (PF_Pixel){255, to_byte(p[0].def), to_byte(p[1].def),
+                                           to_byte(p[2].def)};
+            def.u.cd.value = def.u.cd.dephault;
         } else {
             // DOUBLE, WIDTH, HEIGHT: a slider. WIDTH and HEIGHT in % of the layer.
             const int percent = p->type == MS_PARAM_WIDTH || p->type == MS_PARAM_HEIGHT;
@@ -149,13 +166,35 @@ static PF_Err params_setup(AeEffect *ae, PF_InData *in_data, PF_OutData *out_dat
     return err;
 }
 
+// A colour parameter's value in floats (the colour suite: in the effect's working space,
+// over and under range possible), else from its 8-bit value.
+static void read_color(PF_InData *in_data, const PF_ParamDef *def, double *rgb) {
+    const PF_ColorParamSuite1 *suite = NULL;
+    PF_PixelFloat c;
+    if (in_data->pica_basicP &&
+        in_data->pica_basicP->AcquireSuite(kPFColorParamSuite, kPFColorParamSuiteVersion1,
+                                           (const void **)&suite) == kSPNoError &&
+        suite) {
+        const PF_Err err = suite->PF_GetFloatingPointColorFromColorDef(in_data->effect_ref, def, &c);
+        in_data->pica_basicP->ReleaseSuite(kPFColorParamSuite, kPFColorParamSuiteVersion1);
+        if (!err) {
+            rgb[0] = c.red, rgb[1] = c.green, rgb[2] = c.blue;
+            return;
+        }
+    }
+    rgb[0] = def->u.cd.value.red / 255.0;
+    rgb[1] = def->u.cd.value.green / 255.0;
+    rgb[2] = def->u.cd.value.blue / 255.0;
+}
+
 // The parameter values at the current time, as the effect wants them (see MsRender).
 static PF_Err read_values(const MsEffect *e, PF_InData *in_data, double frame_width,
                           double frame_height, double *values) {
     for (int i = 0; i < e->param_count; ++i) {
         const MsParam *p = &e->params[i];
-        values[i] = 0.0;
-        if (p->type == MS_PARAM_TEXT)
+        if (p->type != MS_PARAM_RGB_PART) // read with the RGB before
+            values[i] = 0.0;
+        if (!in_ae(p->type))
             continue;
         PF_ParamDef def;
         memset(&def, 0, sizeof def);
@@ -173,6 +212,9 @@ static PF_Err read_values(const MsEffect *e, PF_InData *in_data, double frame_wi
             break;
         case MS_PARAM_ANGLE:
             values[i] = def.u.ad.value / 65536.0;
+            break;
+        case MS_PARAM_RGB:
+            read_color(in_data, &def, &values[i]);
             break;
         case MS_PARAM_WIDTH:
             values[i] = def.u.fs_d.value / 100.0 * frame_width;
@@ -335,7 +377,7 @@ static PF_Err render(const MsEffect *e, PF_InData *in_data, PF_OutData *out_data
                             area.width,   area.height,   frame_width,
                             frame_height, result,        (ptrdiff_t)area.width * 4,
                             message,      sizeof message, 0,
-                            NULL};
+                            NULL,         NULL};
         if (e->render(&r)) {
             unpack(result, area, output, depth);
         } else {
@@ -408,6 +450,11 @@ static PF_Err main_entry(AeEffect *ae, PF_Cmd cmd, PF_InData *in_data, PF_OutDat
 ENTRY(BandPass, BANDPASS)
 ENTRY(EdgeAwareBlur, EDGEAWAREBLUR)
 ENTRY(Distort, DISTORT)
+ENTRY(Mosaic, MOSAIC)
+ENTRY(Glow, GLOW)
+ENTRY(EdgeBlur, EDGEBLUR)
+ENTRY(RackDefocus, RACKDEFOCUS)
+ENTRY(Glint, GLINT)
 
 // One effect for PluginDataEntryFunction2: what the SDK's PF_REGISTER_EFFECT_EXT2 does
 // (Util/entry.h, C++ only), as an effect plug-in ('eFKT') with the reserved info it gives.
@@ -430,13 +477,19 @@ EXPORT PF_Err PluginDataEntryFunction2(PF_PluginDataPtr in_ptr, PF_PluginDataCB2
     (void)basic;
     (void)host_name;
     (void)host_version;
-    PF_Err err = register_effect(in_ptr, callback, "MS_BandPass", "MillSaph BandPass",
-                                 "EffectMain_BandPass");
-    if (!err)
-        err = register_effect(in_ptr, callback, "MS_EdgeAwareBlur", "MillSaph EdgeAwareBlur",
-                              "EffectMain_EdgeAwareBlur");
-    if (!err)
-        err = register_effect(in_ptr, callback, "MS_Distort", "MillSaph Distort",
-                              "EffectMain_Distort");
+    // name, match name (saved in projects: keep them), entry point; as in pipl.r
+    static const char *const list[][3] = {
+        {"MS_BandPass", "MillSaph BandPass", "EffectMain_BandPass"},
+        {"MS_EdgeAwareBlur", "MillSaph EdgeAwareBlur", "EffectMain_EdgeAwareBlur"},
+        {"MS_Distort", "MillSaph Distort", "EffectMain_Distort"},
+        {"MS_Mosaic", "MillSaph Mosaic", "EffectMain_Mosaic"},
+        {"MS_Glow", "MillSaph Glow", "EffectMain_Glow"},
+        {"MS_EdgeBlur", "MillSaph EdgeBlur", "EffectMain_EdgeBlur"},
+        {"MS_RackDefocus", "MillSaph RackDefocus", "EffectMain_RackDefocus"},
+        {"MS_Glint", "MillSaph Glint", "EffectMain_Glint"},
+    };
+    PF_Err err = PF_Err_NONE;
+    for (size_t i = 0; i < ARRAY_SIZE(list) && !err; ++i)
+        err = register_effect(in_ptr, callback, list[i][0], list[i][1], list[i][2]);
     return err;
 }

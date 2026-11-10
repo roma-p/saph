@@ -85,8 +85,8 @@ Copy the whole `MillSaph.ofx.bundle` folder to the OFX plugin folder, then resta
 
 ## After Effects (experimental)
 
-`build.sh` / `build.bat` also build the After Effects plugin (MS_BandPass,
-MS_EdgeAwareBlur, MS_Distort) with Adobe's After Effects SDK: its zips for macOS and Windows
+`build.sh` / `build.bat` also build the After Effects plugin (every effect but MS_Test) with
+Adobe's After Effects SDK: its zips for macOS and Windows
 (27.0, from developer.adobe.com, Adobe account needed) are in `third_party/`, and the build
 unzips the one for its system. A newer SDK: put its zip there, named as Adobe names it
 (`AfterEffectsSDK_<version>_mac.zip` / `_win.zip`); the newest is used.
@@ -97,7 +97,7 @@ unzips the one for its system. A newer SDK: put its zip there, named as Adobe na
   `C:\Program Files\Adobe\Common\Plug-ins\7.0\MediaCore\`.
 
 The effects are in the MillSaph category; widths are shown as a percentage of the layer
-width.
+width, colours with After Effects' colour picker (read in floats).
 
 Known limitations: built against the SDK (27.0 on macOS), but never run in After Effects.
 To check there, see the open points at the top of `src/ae/plugin.c` (straight or

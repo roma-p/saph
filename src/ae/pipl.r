@@ -35,3 +35,8 @@ resource 'PiPL' (ID) {                                                          
 MS_EFFECT(16000, "MS_BandPass", "MillSaph BandPass", "EffectMain_BandPass")
 MS_EFFECT(16001, "MS_EdgeAwareBlur", "MillSaph EdgeAwareBlur", "EffectMain_EdgeAwareBlur")
 MS_EFFECT(16002, "MS_Distort", "MillSaph Distort", "EffectMain_Distort")
+MS_EFFECT(16003, "MS_Mosaic", "MillSaph Mosaic", "EffectMain_Mosaic")
+MS_EFFECT(16004, "MS_Glow", "MillSaph Glow", "EffectMain_Glow")
+MS_EFFECT(16005, "MS_EdgeBlur", "MillSaph EdgeBlur", "EffectMain_EdgeBlur")
+MS_EFFECT(16006, "MS_RackDefocus", "MillSaph RackDefocus", "EffectMain_RackDefocus")
+MS_EFFECT(16007, "MS_Glint", "MillSaph Glint", "EffectMain_Glint")
