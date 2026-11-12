@@ -284,4 +284,6 @@ const MsEffect ms_glow_effect = {
     ARRAY_SIZE(params),
     render,
     identity,
+    0,
+    NULL,
 };

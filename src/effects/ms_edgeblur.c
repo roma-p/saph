@@ -165,4 +165,6 @@ const MsEffect ms_edgeblur_effect = {
     ARRAY_SIZE(params),
     render,
     identity,
+    0,
+    NULL,
 };

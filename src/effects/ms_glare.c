@@ -311,10 +311,14 @@ static int render(const MsRender *r) {
     const size_t text_length = strlen(style);
     MsJson *nodes = malloc((text_length + 1) * sizeof(MsJson));
     float(*rows)[GLARE_FIELDS] = calloc(GLARE_MAX_ELEMENTS, sizeof *rows);
-    const MsGlareGlobals globals = {size,              v[REL_HEIGHT],  v[ROTATE],
-                                    v[RAYS_NUM_SCALE], v[RAYS_LENGTH], v[RAYS_THICKNESS]};
+    const MsGlareGlobals globals = {.size = size,
+                                    .rel_height = v[REL_HEIGHT],
+                                    .rotate = v[ROTATE],
+                                    .rays_num_scale = v[RAYS_NUM_SCALE],
+                                    .rays_length = v[RAYS_LENGTH],
+                                    .rays_thickness = v[RAYS_THICKNESS]};
     j.count = nodes && rows ? ms_glare_style(style, nodes, (int)text_length + 1, &globals, rows,
-                                             GLARE_MAX_ELEMENTS)
+                                             GLARE_MAX_ELEMENTS, NULL)
                             : -1;
     free(nodes);
     if (j.count < 0) {
@@ -415,4 +419,6 @@ const MsEffect ms_glare_effect = {
     ARRAY_SIZE(params),
     render,
     identity,
+    0,
+    NULL,
 };

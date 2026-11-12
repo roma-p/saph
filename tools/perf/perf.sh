@@ -53,4 +53,7 @@ EdgeBlur             EdgeBlur !Matte
 RackDefocus          RackDefocus !Mask
 Glint                Glint !Mask
 Glare                Glare !Mask
+LensFlare            LensFlare !Occlusion
+LensFlare_Atmosphere LensFlare !Occlusion atmosphere_amp=1
+LensFlare_Glow       LensFlare diffraction_glow=1
 CASES

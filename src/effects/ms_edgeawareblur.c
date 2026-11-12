@@ -463,4 +463,6 @@ const MsEffect ms_edgeawareblur_effect = {
     ARRAY_SIZE(params),
     render,
     identity,
+    0,
+    NULL,
 };

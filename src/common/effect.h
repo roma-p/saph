@@ -37,6 +37,11 @@ typedef enum {
     MS_PARAM_RGB,    // a colour: red here, green and blue in the next two entries
     // Green or blue of the MS_PARAM_RGB before (`def`: its default; no host parameter).
     MS_PARAM_RGB_PART,
+    // A position on the image: x here, y in the next entry (MS_PARAM_POINT_Y). `def`: a
+    // fraction of the frame width (y: of the frame height, from the bottom); the effect gets
+    // pixels of the render, y up.
+    MS_PARAM_POINT,
+    MS_PARAM_POINT_Y,
 } MsParamType;
 
 // One parameter. Unset fields are 0, so tables use designated initializers.
@@ -91,6 +96,7 @@ typedef struct {
     // One per parameter: the STRING parameters' texts (NULL for the others). NULL when the
     // caller has none to give (the effects then take their default texts).
     const char *const *texts;
+    double time; // the frame rendered (the host's time, in frames)
 } MsRender;
 
 typedef struct {
@@ -105,11 +111,19 @@ typedef struct {
     // Optional: 1 when these settings leave the Source as it is (hosts then use it without
     // rendering). `values` and `connected` as in MsRender.
     int (*identity)(const double *values, const int *connected);
+    // 1 when the result changes from frame to frame with the same settings and inputs (the
+    // hosts then render every frame).
+    int frame_varying;
+    // Optional: frees what the effect keeps from render to render (the plugin is unloaded).
+    void (*release)(void);
 } MsEffect;
 
 // Every effect, in menu order (see effects/effects.c).
 extern const MsEffect *const ms_effects[];
 extern const int ms_effect_count;
+
+// Calls every effect's release (the plugin is unloaded).
+void ms_effects_release(void);
 
 // The effects.
 extern const MsEffect ms_test_effect;
@@ -122,3 +136,4 @@ extern const MsEffect ms_edgeblur_effect;
 extern const MsEffect ms_rackdefocus_effect;
 extern const MsEffect ms_glint_effect;
 extern const MsEffect ms_glare_effect;
+extern const MsEffect ms_lensflare_effect;

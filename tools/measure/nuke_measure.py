@@ -54,7 +54,7 @@ EFFECTS = {
     "Glow": ("Lighting.S_Glow_v1", "Glow_v1"),
     "Glint": ("Lighting.S_Glint_v1", "Glint_v1"),
     "Glare": ("Lighting.S_Glare_v1", "Glare_v1"),
-    "LensFlare": ("Lighting.S_LensFlare_v1", None),
+    "LensFlare": ("Lighting.S_LensFlare_v1", "LensFlare_v1"),
     "Flicker": ("Time.S_Flicker_v1", None),
     "FlickerMatch": ("Time.S_FlickerMatch_v1", None),
     "FlickerMatchColor": ("Time.S_FlickerMatchColor_v1", None),
@@ -73,7 +73,7 @@ INPUTS = {
 HOME = os.path.expanduser("~/millsaph_measure")
 # Knobs set when the node is created rather than after (the reference's Glare and Lens Flare
 # read their style string there only).
-CREATION_KNOBS = ("style_",)
+CREATION_KNOBS = ("style_", "lens_")
 created = []
 
 

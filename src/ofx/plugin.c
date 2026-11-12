@@ -48,10 +48,10 @@ static void define_param(OfxParamSetHandle params, const MsParam *p) {
         [MS_PARAM_HEIGHT] = kOfxParamTypeDouble, [MS_PARAM_ANGLE] = kOfxParamTypeDouble,
         [MS_PARAM_CHOICE] = kOfxParamTypeChoice, [MS_PARAM_BOOL] = kOfxParamTypeBoolean,
         [MS_PARAM_TEXT] = kOfxParamTypeString,   [MS_PARAM_RGB] = kOfxParamTypeRGB,
-        [MS_PARAM_STRING] = kOfxParamTypeString,
+        [MS_PARAM_STRING] = kOfxParamTypeString, [MS_PARAM_POINT] = kOfxParamTypeDouble2D,
     };
     OfxPropertySetHandle props;
-    if (p->type == MS_PARAM_RGB_PART) // part of the MS_PARAM_RGB before
+    if (p->type == MS_PARAM_RGB_PART || p->type == MS_PARAM_POINT_Y) // part of the one before
         return;
     if (ms_param->paramDefine(params, types[p->type], p->name, &props) != kOfxStatOK)
         return;
@@ -73,6 +73,14 @@ static void define_param(OfxParamSetHandle params, const MsParam *p) {
             ms_prop->propSetDouble(props, kOfxParamPropDefault, k, p[k].def);
         return;
     case MS_PARAM_RGB_PART:
+    case MS_PARAM_POINT_Y:
+        return;
+    case MS_PARAM_POINT: // absolute, its default in fractions of the frame
+        ms_prop->propSetString(props, kOfxParamPropDoubleType, 0, kOfxParamDoubleTypeXYAbsolute);
+        ms_prop->propSetString(props, kOfxParamPropDefaultCoordinateSystem, 0,
+                               kOfxParamCoordinatesNormalised);
+        ms_prop->propSetDouble(props, kOfxParamPropDefault, 0, p[0].def);
+        ms_prop->propSetDouble(props, kOfxParamPropDefault, 1, p[1].def);
         return;
     case MS_PARAM_TEXT: // read-only, not saved, does not trigger renders
         ms_prop->propSetInt(props, kOfxParamPropEnabled, 0, 0);
@@ -143,6 +151,13 @@ static void get_rgb(OfxParamSetHandle params, const char *name, OfxTime time, do
         ms_param->paramGetValueAtTime(param, time, &rgb[0], &rgb[1], &rgb[2]);
 }
 
+static void get_point(OfxParamSetHandle params, const char *name, OfxTime time, double *xy) {
+    OfxParamHandle param;
+    xy[0] = xy[1] = 0.0;
+    if (ms_param->paramGetHandle(params, name, &param, NULL) == kOfxStatOK)
+        ms_param->paramGetValueAtTime(param, time, &xy[0], &xy[1]);
+}
+
 static double get_double(OfxParamSetHandle params, const char *name, OfxTime time) {
     OfxParamHandle param;
     double value = 0.0;
@@ -161,9 +176,10 @@ static int get_int(OfxParamSetHandle params, const char *name, OfxTime time) {
 
 // The project frame in pixels of this render: project size x render scale.
 static void frame_size(OfxImageEffectHandle effect, OfxPropertySetHandle in_args, double *width,
-                       double *height) {
+                       double *height, double *scale) {
     OfxPropertySetHandle props;
-    double scale[2] = {1.0, 1.0}, extent[2] = {0.0, 0.0};
+    double extent[2] = {0.0, 0.0};
+    scale[0] = scale[1] = 1.0;
     ms_prop->propGetDoubleN(in_args, kOfxImageEffectPropRenderScale, 2, scale);
     if (ms_effect->getPropertySet(effect, &props) == kOfxStatOK)
         ms_prop->propGetDoubleN(props, kOfxImageEffectPropProjectExtent, 2, extent);
@@ -199,7 +215,8 @@ static int read_values(const MsEffect *e, OfxImageEffectHandle effect, OfxProper
         ms_prop->propGetDouble(in_args, kOfxPropTime, 0, time) != kOfxStatOK ||
         ms_effect->getParamSet(effect, &params) != kOfxStatOK)
         return 0;
-    frame_size(effect, in_args, px, py);
+    double scale[2];
+    frame_size(effect, in_args, px, py, scale);
     for (int i = 0; i < e->param_count; ++i) {
         const MsParam *p = &e->params[i];
         texts[i] = NULL;
@@ -219,6 +236,12 @@ static int read_values(const MsEffect *e, OfxImageEffectHandle effect, OfxProper
             get_rgb(params, p->name, *time, &values[i]);
             break;
         case MS_PARAM_RGB_PART: // read with the MS_PARAM_RGB before
+        case MS_PARAM_POINT_Y:  // with the MS_PARAM_POINT before
+            break;
+        case MS_PARAM_POINT: // canonical coordinates: x the render scale
+            get_point(params, p->name, *time, &values[i]);
+            values[i] *= scale[0];
+            values[i + 1] *= scale[1];
             break;
         case MS_PARAM_WIDTH:
             values[i] = get_double(params, p->name, *time) * *px;
@@ -250,7 +273,8 @@ static OfxStatus render(const MsEffect *e, OfxImageEffectHandle effect,
                   .connected = connected,
                   .frame_width = px,
                   .frame_height = py,
-                  .texts = texts};
+                  .texts = texts,
+                  .time = time};
     return ms_render_with(effect, in_args, e, &r);
 }
 
@@ -289,6 +313,11 @@ static OfxStatus main_entry(const MsEffect *e, const char *action, const void *h
         return render(e, effect, in_args);
     if (strcmp(action, kOfxImageEffectActionIsIdentity) == 0)
         return is_identity(e, effect, in_args, out_args);
+    // An effect that changes over time by itself: the host renders every frame.
+    if (strcmp(action, kOfxImageEffectActionGetClipPreferences) == 0 && e->frame_varying) {
+        ms_prop->propSetInt(out_args, kOfxImageEffectFrameVarying, 0, 1);
+        return kOfxStatOK;
+    }
     return kOfxStatReplyDefault;
 }
 

@@ -198,4 +198,6 @@ const MsEffect ms_bandpass_effect = {
     ARRAY_SIZE(params),
     render,
     NULL,
+    0,
+    NULL,
 };

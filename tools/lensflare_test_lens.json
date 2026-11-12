@@ -1,0 +1,172 @@
+{
+ "value": {
+  "images": [
+   {
+    "channel_bytes": 1,
+    "elnum": 3,
+    "filename": "test_rgb.png",
+    "needs_image_loaded": false,
+    "pixels": "ACVKb5S53gMoTXKXvOEGK1B1mr/kCS5TeJ3C5wwxVnugxeoPNFl+o8jtEjdcgabL",
+    "xdim": 4,
+    "ydim": 4
+   },
+   {
+    "channel_bytes": 1,
+    "elnum": 1,
+    "filename": "test_grey.png",
+    "needs_image_loaded": false,
+    "pixels": "AID/QMAg",
+    "xdim": 3,
+    "ydim": 2
+   }
+  ],
+  "elements": [
+   {
+    "type": "texture",
+    "center": 0.7,
+    "size": 0.4,
+    "colors": [
+     1,
+     0.8,
+     0.6
+    ],
+    "rotate": 20,
+    "stretch": 1.5,
+    "image": {
+     "save_index": 0
+    }
+   },
+   {
+    "type": "fancy_spot",
+    "center": 0.3,
+    "size": 0.3,
+    "brightness": 0.5,
+    "radii": [
+     0,
+     1
+    ],
+    "colors": [
+     1,
+     1,
+     1,
+     0.5,
+     0.5,
+     1
+    ],
+    "image": {
+     "save_index": 1
+    },
+    "image_offset_rotate": 45,
+    "image_scale_size": 0.7,
+    "image_offset_x": 0.1,
+    "rotate_to_pivot": 1
+   },
+   {
+    "type": "polar_flare",
+    "center": -0.5,
+    "size": 0.3,
+    "brightness": 0.5,
+    "radii": [
+     0,
+     1
+    ],
+    "colors": [
+     1,
+     1,
+     1,
+     1,
+     0.5,
+     0.2
+    ],
+    "image": {
+     "save_index": 0
+    },
+    "image_absolute_position_p": 1,
+    "image_absolute_size_p": 1,
+    "noise_brightness": 1,
+    "blur_theta_map": 0.1,
+    "r_noise_min": 0.6,
+    "wave_brightness": 1,
+    "wave_freq": 5,
+    "wave_width": 0.6
+   },
+   {
+    "type": "texture",
+    "center": 0.1,
+    "size": 0.2,
+    "image": {
+     "save_index": 7
+    }
+   },
+   {
+    "type": "blob",
+    "center": 1,
+    "size": 1.2,
+    "brightness": 0.2,
+    "image": {
+     "generate": "dirt",
+     "seed": 2,
+     "amount": 0.6,
+     "texels": 64
+    },
+    "image_absolute_position_p": 1,
+    "image_absolute_size_p": 1
+   },
+   {
+    "type": "texture",
+    "center": 1.2,
+    "size": 0.3,
+    "rotate_to_pivot": 1,
+    "image": {
+     "generate": "glint",
+     "seed": 3,
+     "texels": 32
+    }
+   },
+   {
+    "type": "rays",
+    "center": 1,
+    "size": 0.8,
+    "brightness": 0.3,
+    "ray_number": 8,
+    "ray_width": 0.03,
+    "image": {
+     "generate": "ramp",
+     "texels": 16
+    }
+   },
+   {
+    "type": "fancy_spot",
+    "center": -1,
+    "size": 0.25,
+    "brightness": 0.3,
+    "radii": [
+     0,
+     1
+    ],
+    "colors": [
+     1,
+     1,
+     1,
+     1,
+     1,
+     1
+    ],
+    "image": {
+     "generate": "iris",
+     "sides": 7,
+     "detail": 0.2,
+     "texels": 48
+    }
+   },
+   {
+    "type": "blob",
+    "center": 0.4,
+    "size": 0.2,
+    "image": {
+     "generate": "nothing"
+    }
+   }
+  ]
+ }
+}

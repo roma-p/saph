@@ -38,7 +38,8 @@
 #endif
 
 // These must match AE_Effect_Version and AE_Effect_Global_OutFlags(_2) in pipl.r, or
-// After Effects warns when it loads the plugin.
+// After Effects warns when it loads the plugin. The effects that change over time by
+// themselves (MsEffect.frame_varying) add PF_OutFlag_NON_PARAM_VARY (0x4).
 #define VERSION PF_VERSION(1, 0, 0, PF_Stage_DEVELOP, 1) // 524289
 #define OUT_FLAGS PF_OutFlag_DEEP_COLOR_AWARE            // 0x02000000
 #define OUT_FLAGS_2                                                                                \
@@ -57,15 +58,17 @@ static AeEffect effects[] = {
     {&ms_bandpass_effect, {{0}}}, {&ms_edgeawareblur_effect, {{0}}}, {&ms_distort_effect, {{0}}},
     {&ms_mosaic_effect, {{0}}},   {&ms_glow_effect, {{0}}},          {&ms_edgeblur_effect, {{0}}},
     {&ms_rackdefocus_effect, {{0}}}, {&ms_glint_effect, {{0}}},     {&ms_glare_effect, {{0}}},
+    {&ms_lensflare_effect, {{0}}},
 };
-enum { BANDPASS, EDGEAWAREBLUR, DISTORT, MOSAIC, GLOW, EDGEBLUR, RACKDEFOCUS, GLINT, GLARE };
+enum { BANDPASS, EDGEAWAREBLUR, DISTORT, MOSAIC, GLOW, EDGEBLUR, RACKDEFOCUS, GLINT, GLARE, LENSFLARE };
 
 // ---------------------------------------------------------------- parameters
 
 // 1 when parameter type `t` has an After Effects parameter (TEXT and STRING ones are left
 // out, and the green and blue of an RGB are in its colour).
 static int in_ae(MsParamType t) {
-    return t != MS_PARAM_TEXT && t != MS_PARAM_STRING && t != MS_PARAM_RGB_PART;
+    return t != MS_PARAM_TEXT && t != MS_PARAM_STRING && t != MS_PARAM_RGB_PART &&
+           t != MS_PARAM_POINT_Y;
 }
 
 // After Effects index of effect parameter i (0 for one left out).
@@ -127,6 +130,11 @@ static PF_Err params_setup(AeEffect *ae, PF_InData *in_data, PF_OutData *out_dat
         } else if (p->type == MS_PARAM_ANGLE) {
             def.param_type = PF_Param_ANGLE;
             def.u.ad.dephault = def.u.ad.value = (PF_Fixed)(p->def * 65536.0); // degrees, 16.16
+        } else if (p->type == MS_PARAM_POINT) { // x here, y in the next entry
+            // percentages of the layer, from its top-left corner
+            def.param_type = PF_Param_POINT;
+            def.u.td.x_dephault = (PF_Fixed)(p[0].def * 100.0 * 65536.0);
+            def.u.td.y_dephault = (PF_Fixed)((1.0 - p[1].def) * 100.0 * 65536.0);
         } else if (p->type == MS_PARAM_RGB) { // red here, green and blue in the next two
             def.param_type = PF_Param_COLOR;
             def.u.cd.dephault = (PF_Pixel){255, to_byte(p[0].def), to_byte(p[1].def),
@@ -192,7 +200,7 @@ static PF_Err read_values(const MsEffect *e, PF_InData *in_data, double frame_wi
                           double frame_height, double *values) {
     for (int i = 0; i < e->param_count; ++i) {
         const MsParam *p = &e->params[i];
-        if (p->type != MS_PARAM_RGB_PART) // read with the RGB before
+        if (p->type != MS_PARAM_RGB_PART && p->type != MS_PARAM_POINT_Y) // with the one before
             values[i] = 0.0;
         if (!in_ae(p->type))
             continue;
@@ -215,6 +223,10 @@ static PF_Err read_values(const MsEffect *e, PF_InData *in_data, double frame_wi
             break;
         case MS_PARAM_RGB:
             read_color(in_data, &def, &values[i]);
+            break;
+        case MS_PARAM_POINT: // layer pixels from the top-left corner, at full size
+            values[i] = def.u.td.x_value / 65536.0 * frame_width / in_data->width;
+            values[i + 1] = frame_height - def.u.td.y_value / 65536.0 * frame_height / in_data->height;
             break;
         case MS_PARAM_WIDTH:
             values[i] = def.u.fs_d.value / 100.0 * frame_width;
@@ -373,11 +385,14 @@ static PF_Err render(const MsEffect *e, PF_InData *in_data, PF_OutData *out_data
     if (ok)
         err = read_values(e, in_data, frame_width, frame_height, values);
     if (ok && !err) {
+        // The time in frames (AE: in time_scale units, a frame time_step long).
+        const double frame =
+            in_data->time_step ? (double)in_data->current_time / in_data->time_step : 0.0;
         const MsRender r = {values,       connected,     inputs,
                             area.width,   area.height,   frame_width,
                             frame_height, result,        (ptrdiff_t)area.width * 4,
                             message,      sizeof message, 0,
-                            NULL,         NULL};
+                            NULL,         NULL,         frame};
         if (e->render(&r)) {
             unpack(result, area, output, depth);
         } else {
@@ -422,10 +437,11 @@ static PF_Err main_entry(AeEffect *ae, PF_Cmd cmd, PF_InData *in_data, PF_OutDat
         return PF_Err_NONE;
     case PF_Cmd_GLOBAL_SETUP:
         out_data->my_version = VERSION;
-        out_data->out_flags = OUT_FLAGS;
+        out_data->out_flags = OUT_FLAGS | (e->frame_varying ? PF_OutFlag_NON_PARAM_VARY : 0);
         out_data->out_flags2 = OUT_FLAGS_2;
         return PF_Err_NONE;
     case PF_Cmd_GLOBAL_SETDOWN:
+        ms_effects_release();
         ms_engine_shutdown();
         return PF_Err_NONE;
     case PF_Cmd_PARAMS_SETUP:
@@ -456,6 +472,7 @@ ENTRY(EdgeBlur, EDGEBLUR)
 ENTRY(RackDefocus, RACKDEFOCUS)
 ENTRY(Glint, GLINT)
 ENTRY(Glare, GLARE)
+ENTRY(LensFlare, LENSFLARE)
 
 // One effect for PluginDataEntryFunction2: what the SDK's PF_REGISTER_EFFECT_EXT2 does
 // (Util/entry.h, C++ only), as an effect plug-in ('eFKT') with the reserved info it gives.
@@ -489,6 +506,7 @@ EXPORT PF_Err PluginDataEntryFunction2(PF_PluginDataPtr in_ptr, PF_PluginDataCB2
         {"MS_RackDefocus", "MillSaph RackDefocus", "EffectMain_RackDefocus"},
         {"MS_Glint", "MillSaph Glint", "EffectMain_Glint"},
         {"MS_Glare", "MillSaph Glare", "EffectMain_Glare"},
+        {"MS_LensFlare", "MillSaph LensFlare", "EffectMain_LensFlare"},
     };
     PF_Err err = PF_Err_NONE;
     for (size_t i = 0; i < ARRAY_SIZE(list) && !err; ++i)

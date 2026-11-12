@@ -347,4 +347,6 @@ const MsEffect ms_rackdefocus_effect = {
     ARRAY_SIZE(params),
     render,
     identity,
+    0,
+    NULL,
 };

@@ -97,9 +97,9 @@ static void set_values(const MsEffect *e, const char *settings, double *values) 
                 values[i] = v;
     }
     for (int i = 0; i < e->param_count; ++i) {
-        if (e->params[i].type == MS_PARAM_WIDTH)
+        if (e->params[i].type == MS_PARAM_WIDTH || e->params[i].type == MS_PARAM_POINT)
             values[i] *= width;
-        else if (e->params[i].type == MS_PARAM_HEIGHT)
+        else if (e->params[i].type == MS_PARAM_HEIGHT || e->params[i].type == MS_PARAM_POINT_Y)
             values[i] *= height;
     }
 }
@@ -174,7 +174,7 @@ static double run_case(const Case *c, MsApi api, const float *source, float **bl
     MsRunInfo info;
     MsRender r = {values, connected, inputs,   width,      height,
                   width,  height,    half ? (void *)result : (void *)output,
-                  (ptrdiff_t)width * 4, err, sizeof err, half, &info, NULL};
+                  (ptrdiff_t)width * 4, err, sizeof err, half, &info, NULL, 0};
     MsProfile profile = defaults[api];
     if (c->tweak)
         c->tweak(&profile);
@@ -206,6 +206,8 @@ static int series(const MsParam *p, double *v) {
     switch (p->type) {
     case MS_PARAM_TEXT:
     case MS_PARAM_STRING:
+    case MS_PARAM_POINT: // positions: not swept
+    case MS_PARAM_POINT_Y:
     case MS_PARAM_RGB: // colours: not swept (a gain per channel)
     case MS_PARAM_RGB_PART:
         return 0;
@@ -244,7 +246,9 @@ static int series(const MsParam *p, double *v) {
 }
 
 static double in_pixels(const MsParam *p, double v) {
-    return p->type == MS_PARAM_WIDTH ? v * width : p->type == MS_PARAM_HEIGHT ? v * height : v;
+    const int x = p->type == MS_PARAM_WIDTH || p->type == MS_PARAM_POINT;
+    const int y = p->type == MS_PARAM_HEIGHT || p->type == MS_PARAM_POINT_Y;
+    return x ? v * width : y ? v * height : v;
 }
 
 // Renders `renders` times on `api` (MS_API_COUNT: the first that takes it, as in a host).
@@ -255,7 +259,7 @@ static double timed(const MsEffect *e, const double *values, const int *connecte
                     char *err, size_t err_size) {
     MsRunInfo info;
     MsRender r = {values, connected, inputs,   width, height, width, height, output,
-                  (ptrdiff_t)width * 4, err, err_size, 0, &info, NULL};
+                  (ptrdiff_t)width * 4, err, err_size, 0, &info, NULL, 0};
     ms_api_only(api);
     const double best = time_renders(e, &r, first);
     *used = info.api;
@@ -718,6 +722,16 @@ int main(int argc, char **argv) {
         {"Glare hue blur", "MS_Glare", "hue_shift=0.3 saturation=0.5 blur_glare=0.005", NULL},
         {"Glare mask", "MS_Glare", "same", NULL},
         {"Glare half", "MS_Glare", "half", NULL},
+        {"LensFlare", "MS_LensFlare", "", NULL},
+        {"LensFlare big", "MS_LensFlare", "scale_widths=0.6", NULL},
+        {"LensFlare centre", "MS_LensFlare", "hotspot=0.45 hotspot_y=0.55", NULL},
+        {"LensFlare hue blur", "MS_LensFlare", "hue_shift=0.3 saturation=0.5 blur_flare=0.005",
+         NULL},
+        {"LensFlare add tint", "MS_LensFlare", "combine=1 tint_bg_whites=1 affect_alpha=0.5", NULL},
+        {"LensFlare occluded", "MS_LensFlare", "same", NULL},
+        {"LensFlare atmosphere", "MS_LensFlare", "atmosphere_amp=1 atmosphere_detail=1", NULL},
+        {"LensFlare glow", "MS_LensFlare", "same diffraction_glow=1 glow_width=0.2", NULL},
+        {"LensFlare half", "MS_LensFlare", "half", NULL},
     };
 
     printf("%d x %d, best of %d renders after the first. GPU APIs built:", width, height,

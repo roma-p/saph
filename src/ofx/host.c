@@ -1,5 +1,6 @@
 #include "ofx/host.h"
 #include "common/defines.h"
+#include "common/effect.h"
 #include "engine/engine.h"
 
 static const OfxHost *ofx_host; // given by setHost
@@ -30,6 +31,7 @@ OfxStatus ms_unload(void) {
         return kOfxStatOK;
     --loaded_count;
     if (loaded_count == 0) {
+        ms_effects_release();
         ms_engine_shutdown();
     }
     return kOfxStatOK;

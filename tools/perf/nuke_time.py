@@ -38,6 +38,8 @@ EFFECTS = [
      "brightness", [("", {})]),
     ("Glint", SAPPHIRE + "Lighting.S_Glint_v1", MILLSAPH + "Glint_v1", "brightness", [("", {})]),
     ("Glare", SAPPHIRE + "Lighting.S_Glare_v1", MILLSAPH + "Glare_v1", "brightness", [("", {})]),
+    ("LensFlare", SAPPHIRE + "Lighting.S_LensFlare_v1", MILLSAPH + "LensFlare_v1", "brightness",
+     [("", {})]),
 ]
 # The photo-like image: gradients, a disc and a box with hard edges, a little noise.
 DISC = "pow(x/width-0.39,2)*256/81+pow(y/height-0.46,2)<0.077"
@@ -56,6 +58,22 @@ if not [f for f in nuke.formats() if f.name() == "MS_UHD"]:
     nuke.addFormat("3840 2160 1 MS_UHD")
 nuke.root()["format"].setValue("MS_UHD")
 created = []
+
+# MillSaph's node gets the reference node's style text (its own default differs), so both
+# draw the same elements.
+styles = {}
+
+
+def same_style(n, vendor):
+    for name in ("style_", "lens_"):
+        k = n.knob(name)
+        if k is None:
+            continue
+        if vendor == "Sapphire":
+            styles[name] = k.value()
+        elif name in styles:
+            k.setValue(styles[name])
+
 
 def write(node, path):
     w = nuke.nodes.Write(inputs=[node], file=path, file_type="exr", datatype="32 bit float",
@@ -111,6 +129,7 @@ try:
                 say("%s %s not available: %s" % (vendor, label, ex)); continue
             created.append(n)
             n.setInput(0, r)
+            same_style(n, vendor)
             gpu = [(k.name(), k.value()) for k in n.allKnobs()
                    if "gpu" in k.name().lower() or "device" in k.name().lower()]
             say("%s %s  gpu settings: %s" % (vendor, label, gpu or "none"))

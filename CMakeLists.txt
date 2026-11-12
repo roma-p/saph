@@ -186,6 +186,13 @@ ms_kernel(glint_combine_blur GENERATOR ms_glint_combine PARAMS blurred=true CPU 
 foreach(name glare_kernel glare_label_init glare_label_round glare_spots glare_half glare_finish)
   ms_kernel(${name} GENERATOR ms_${name} CPU GPU)
 endforeach()
+# MS_LensFlare: the occlusion at the hotspot, the elements drawn along the axis, the
+# Diffraction Glow, the finish.
+foreach(name lensflare_occlusion lensflare_draw lensflare_glow lensflare_finish)
+  ms_kernel(${name} GENERATOR ms_${name} CPU GPU)
+endforeach()
+# (its own textures, generated on the CPU before the rest)
+ms_kernel(lensflare_texture GENERATOR ms_lensflare_texture CPU)
 # The effects that convolve by FFT (src/effects/fft.c): one stage of a transform.
 ms_kernel(fft_stage GENERATOR ms_fft_stage CPU GPU)
 # MS_RackDefocus: the lens and the Source transformed, multiplied, transformed back.

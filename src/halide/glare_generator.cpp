@@ -25,6 +25,7 @@
 
 #include "Halide.h"
 #include "blur.h"
+#include "glare_elements.h"
 #include "glare_layout.h"
 #include "hue.h"
 #include "shared.h"
@@ -35,28 +36,8 @@ namespace {
 
 Var x("x"), y("y"), c("c"), e("e");
 
-const float PI = 3.14159265358979f;
 // The label of a pixel in no spot (the largest).
 Expr none() { return Internal::UIntImm::make(UInt(32), 0xffffffffu); }
-
-Expr smoothstep(Expr t) {
-    t = clamp(t, 0.0f, 1.0f);
-    return t * t * (3.0f - 2.0f * t);
-}
-
-// erf(x), Abramowitz and Stegun 7.1.26 (error 1.5e-7).
-Expr erf_approx(Expr v) {
-    Expr a = abs(v);
-    Expr t = 1.0f / (1.0f + 0.3275911f * a);
-    Expr p = ((((1.061405429f * t - 1.453152027f) * t + 1.421413741f) * t - 0.284496736f) * t +
-              0.254829592f) *
-             t;
-    Expr r = 1.0f - p * exp(-a * a);
-    return select(v < 0.0f, -r, r);
-}
-
-// A band's edge at distance d (pixels) outside it.
-Expr band_edge(Expr d) { return 1.0f - smoothstep((d + 0.35f) / 2.2f); }
 
 // The schedule of a whole-image stage: float4 pixels, tiles of threads.
 void tiles(Func f, bool gpu) {
@@ -82,132 +63,15 @@ class GlareKernel : public Generator<GlareKernel> {
         // The offset from the centre, wrapped around (pixel (0, 0) is the centre).
         Expr dxi = select(x < (nx + 1) / 2, x, x - nx), dyi = select(y < (ny + 1) / 2, y, y - ny);
         Expr dx = cast<float>(dxi), dy = cast<float>(dyi);
-        // Fields read clamped: Halide's bounds of the computed ones (stops) would be unbounded.
-        auto field = [&](Expr i, Expr el) {
+        ms_glare::Field field = [&](Expr i, Expr el) {
             return rows(clamp(i, 0, GLARE_FIELDS - 1), clamp(el, 0, GLARE_MAX_ELEMENTS - 1));
         };
-        auto f = [&](int i) { return field(i, e); };
-        Expr kind = f(GLARE_KIND);
-        Expr rot = f(GLARE_ROTATE);
-        Expr sx = dx / f(GLARE_SCALE_X), sy = dy / f(GLARE_SCALE_Y);
-        Expr ex = sx * cos(rot) + sy * sin(rot), ey = -sx * sin(rot) + sy * cos(rot);
-        Expr r0 = sqrt(ex * ex + ey * ey);
-        Expr th = atan2(ey, ex);
-        // The angles of sectors and waves, and the rays' width: without the stretch.
-        Expr ax = dx / f(GLARE_ANGLE_X), ay = dy / f(GLARE_ANGLE_Y);
-        Expr aex = ax * cos(rot) + ay * sin(rot), aey = -ax * sin(rot) + ay * cos(rot);
-        Expr angle = atan2(aey, aex);
-        Expr gain = select(c == 0, f(GLARE_GAIN_R), c == 1, f(GLARE_GAIN_G), f(GLARE_GAIN_B));
-
-        // FALLOFF: (1 - t)^1.965 exp(-0.475 t), inside its circle.
-        Expr tb = r0 / f(GLARE_FALLOFF_R);
-        Expr clip_r = sqrt(dx * dx + dy * dy) / f(GLARE_CLIP_SCALE);
-        Expr falloff = pow(max(1.0f - tb, 0.0f), 1.965f) * exp(-0.475f * tb) *
-                       band_edge(clip_r - f(GLARE_CLIP_R));
-
-        // STOPS: the radius through the polygon and the radius waves first.
-        Expr start = f(GLARE_START);
-        Expr sides = f(GLARE_SIDES);
-        Expr seg = 2.0f * PI / max(sides, 3.0f);
-        Expr phase = th - start;
-        Expr phi = phase - seg * floor(phase / seg) - seg / 2.0f;
-        Expr edge = cos(PI / max(sides, 3.0f)) / cos(phi);
-        edge = edge + (1.0f - edge) * f(GLARE_ROUNDNESS);
-        Expr r1 = select(sides >= 3.0f, r0 / edge, r0);
-        Expr lo = f(GLARE_RW_MIN), hi = f(GLARE_RW_MAX);
-        // (their frequency across the sector's width; a whole turn: per turn)
-        Expr whole = phase - 2.0f * PI * floor(phase / (2.0f * PI));
-        Expr wave_c =
-            0.5f + 0.5f * cos(f(GLARE_RW_FREQ) * whole * (2.0f * PI / f(GLARE_WIDTH)));
-        Expr r = select(lo != 1.0f || hi != 1.0f,
-                        r1 / (lo + (hi - lo) * pow(max(wave_c, 0.0f), f(GLARE_RW_SPIKE))), r1);
-        Expr R = f(GLARE_R);
-        Expr t = r / R;
-        // The colour: linear between the stops (held beyond them), in its band.
-        Expr stops = f(GLARE_STOP_COUNT);
-        auto radius = [&](Expr k) { return field(GLARE_STOP_RADII + k, e); };
-        auto colour = [&](Expr k) { return field(GLARE_STOP_COLORS + 3 * k + c, e); };
-        Expr last = cast<int>(stops) - 1;
-        RDom k(0, GLARE_MAX_STOPS - 1, "k");
-        k.where(k < last);
-        Expr ka = radius(k), kb = radius(k + 1);
-        Expr inside = t >= ka && t < kb && kb > ka;
-        Expr between = sum(select(inside, colour(k) + (colour(k + 1) - colour(k)) *
-                                                          ((t - ka) / select(kb > ka, kb - ka, 1.0f)),
-                                  0.0f));
-        Expr held = select(t < radius(0), colour(0), t >= radius(last), colour(last), between);
-        auto edge_of = [&](Expr d) {
-            return select(f(GLARE_CRISP) != 0.0f, clamp(0.57f - d, 0.0f, 1.0f), band_edge(d));
-        };
-        Expr outer = edge_of(r - radius(last) * R);
-        Expr inner = select(radius(0) > 0.0f, edge_of(radius(0) * R - r), 1.0f);
-        // Blur Gradient: that profile (0 outside the band) blurred by a gaussian of sigma: its
-        // jumps through Phi, its slope changes through x Phi(x / sigma) + sigma phi(x / sigma).
-        Expr sigma = f(GLARE_SIGMA), sig = select(sigma > 0.0f, sigma, 1.0f);
-        auto Phi = [&](Expr d) { return 0.5f * (1.0f + erf_approx(d / (sig * 1.41421356f))); };
-        auto ramp = [&](Expr d) {
-            return d * Phi(d) + sig * exp(-0.5f * (d / sig) * (d / sig)) * 0.39894228f;
-        };
-        auto knot = [&](Expr i) { return radius(i) * R; };
-        auto slope = [&](Expr i) { // of the segment from stop i to i + 1
-            Expr gap = knot(i + 1) - knot(i);
-            Expr rise = (colour(i + 1) - colour(i)) / select(gap > 0.0f, gap, 1.0f);
-            return select(i >= 0 && gap > 0.0f, rise, 0.0f);
-        };
-        RDom q(0, GLARE_MAX_STOPS - 1, "q");
-        q.where(q < last);
-        Expr bends = sum((slope(q) - slope(q - 1)) * ramp(r - knot(q)));
-        Expr blurred = select(radius(0) > 0.0f, colour(0) * Phi(r - knot(0)), colour(0)) + bends -
-                       slope(last - 1) * ramp(r - knot(last)) - colour(last) * Phi(r - knot(last));
-        Expr disc = select(r <= radius(0) * R, colour(0), 0.0f); // one stop
-        Expr col = select(stops < 2.0f, disc, sigma > 0.0f, blurred, held * outer * inner);
-        col = col * (1.0f - f(GLARE_FADE) * clamp(t, 0.0f, 1.0f));
-        // Sectors: the angular window (repeated), soft edges.
-        Expr width = f(GLARE_WIDTH), soft = f(GLARE_SOFTNESS);
-        Expr aphase = angle - start;
-        Expr turn = aphase - 2.0f * PI * floor(aphase / (2.0f * PI));
-        Expr u = turn / width;
-        Expr v = u * f(GLARE_REPEATS) - floor(u * f(GLARE_REPEATS));
-        // Sharp edges (no softness): the start edge itself left out, the end edge over one
-        // pixel of arc.
-        Expr past = (turn - width) * r0;
-        Expr sharp = select(u <= 1e-5f, 0.0f, u <= 1.0f, 1.0f, clamp(0.57f - past, 0.0f, 1.0f));
-        Expr window = select(soft > 0.0f,
-                             smoothstep(min(v, 1.0f - v) / (0.5f * soft)) *
-                                 select(u <= 1.0f, 1.0f, 0.0f),
-                             sharp);
-        window = select(width >= 2.0f * PI - 1e-5f && soft == 0.0f, 1.0f, window);
-        Expr wave = f(GLARE_WAVE), ww = f(GLARE_WAVE_WIDTH);
-        Expr ph = (u - 0.5f) * f(GLARE_WAVE_FREQ) + 0.5f;
-        ph = ph - floor(ph) - 0.5f;
-        Expr pulse = 1.0f - smoothstep(abs(ph) / (0.5f * select(ww > 0.0f, ww, 1.0f)));
-        Expr waves = select(wave == 0.0f, 1.0f, ww >= 1.0f, 1.0f + wave, 1.0f + wave * pulse);
-        Expr gradient = col * select(f(GLARE_SECTOR) != 0.0f, window, 1.0f) * f(GLARE_BOOST) * waves;
-
-        // RAYS: lines through the centre, 1 - d / L along (stretched), 1 - smoothstep(d / w)
-        // across (not stretched); cut at L unstretched.
-        Expr L = f(GLARE_R), w = f(GLARE_RAY_WIDTH), lines = f(GLARE_LINES);
-        RDom j(0, GLARE_MAX_LINES, "j");
-        j.where(cast<float>(j) < lines);
-        Expr ang = rot + cast<float>(j) * PI / select(lines > 0.0f, lines, 1.0f);
-        Expr along = sx * cos(ang) + sy * sin(ang), across = -ax * sin(ang) + ay * cos(ang);
-        Expr safe_w = select(w > 0.0f, w, 1.0f); // no width: no rays
-        Expr ray = select(w > 0.0f,
-                          sum(max(1.0f - abs(along) / L, 0.0f) *
-                              (1.0f - smoothstep(abs(across) / safe_w))),
-                          0.0f) *
-                   band_edge(clip_r - f(GLARE_CLIP_R));
-
         Func element("element");
-        element(x, y, c, e) = select(kind == GLARE_FALLOFF, falloff,
-                                     kind == GLARE_RAYS, ray, gradient) * gain;
-        // The sum of the elements, each where it reaches (its radius x its stretch, x 1.6
-        // for the radius waves and blurred edges).
+        element(x, y, c, e) = ms_glare::element_value(field, dx, dy, c, e);
+        // The sum of the elements, each where it reaches.
         Func sum_of("sum_of");
         RDom el(0, count, "el");
-        Expr reach = field(GLARE_R, el) * 1.6f *
-                         max(field(GLARE_SCALE_X, el), field(GLARE_SCALE_Y, el)) +
-                     4.0f * field(GLARE_SIGMA, el) + 4.0f;
+        Expr reach = ms_glare::element_reach(field, el);
         el.where(cast<float>(dxi * dxi + dyi * dyi) <= reach * reach);
         sum_of(x, y, c) = 0.0f;
         sum_of(x, y, c) += element(x, y, c, el);

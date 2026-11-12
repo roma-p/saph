@@ -87,5 +87,11 @@ Glare !Mask size=0.05 rel_height=0.7 rotate=20 rays_num_scale=2 rays_length=1.5 
 Glare mask_type=1 invert_mask=1 threshold=0 glare_res=1
 Glare !Mask style_=@tools/glare_test_style.json
 Glare --half --pad 3
+LensFlare
+LensFlare !Occlusion scale_widths=0.3 rel_heights=0.7 blur_flare=0.003 hotspot=10,55 pivot=58,24 brightness=1.5 color=1,0.7,0.5 gamma=2 saturation=0.5 hue_shift=0.3 rays_brightness=2 rays_rotate=20 rays_num_scale=2 rays_length=1.5 rays_thickness=2 hotspot_bright=0.5 hotspot_color=1,0.5,0.2 other_brightness=2 other_color=0.2,1,0.5 other_width=1.5 bg_brightness=0.6 combine=1 tint_bg_whites=1 affect_alpha=0.5 atmosphere_amp=2 atmosphere_freq=3 atmosphere_detail=1 atmosphere_seed=2 atmosphere_speed=-1
+LensFlare occlusion_from=1 invert_occlusion=1 occlusion_softness=0.05 combine=2 hotspot=48,30 diffraction_glow=2 glow_radius=0.1 glow_width=0.1 glow_color=1,0.5,0.2 occlusion_scale_brightness=2 occlusion_scale_widths=1.5
+LensFlare !Occlusion lens_=@tools/glare_test_style.json hotspot=-20,80 edge_width=0.3 center_radius=0.4
+LensFlare !Occlusion lens_=@tools/lensflare_test_lens.json hotspot=12,50
+LensFlare --half --pad 3
 CASES
 [ $failed = 0 ] && echo "all clean" || exit 1

@@ -223,6 +223,9 @@ static OfxStatus param_get_value_at_time(OfxParamHandle handle, OfxTime time, ..
     else if (strcmp(p->type, kOfxParamTypeRGB) == 0)
         for (int k = 0; k < 3; ++k)
             *va_arg(args, double *) = p->value[k];
+    else if (strcmp(p->type, kOfxParamTypeDouble2D) == 0)
+        for (int k = 0; k < 2; ++k)
+            *va_arg(args, double *) = p->value[k];
     else
         *va_arg(args, double *) = p->value[0];
     va_end(args);
@@ -413,12 +416,20 @@ static void make_images(int argc, char **argv) {
     }
 }
 
-// Every parameter at its default, then the name=value arguments (RGB: name=r,g,b).
+// Every parameter at its default, then the name=value arguments (RGB: name=r,g,b; a
+// position: name=x,y in pixels).
 static void set_values(int argc, char **argv) {
-    for (int i = 0; i < param_count; ++i)
+    for (int i = 0; i < param_count; ++i) {
+        OfxPropertySetHandle props = (OfxPropertySetHandle)&params[i].props;
         for (int k = 0; k < 3; ++k)
-            get_double((OfxPropertySetHandle)&params[i].props, kOfxParamPropDefault, k,
-                       &params[i].value[k]);
+            get_double(props, kOfxParamPropDefault, k, &params[i].value[k]);
+        char *system = NULL; // a default in fractions of the image: in pixels
+        if (get_string(props, kOfxParamPropDefaultCoordinateSystem, 0, &system) == kOfxStatOK &&
+            system && strcmp(system, kOfxParamCoordinatesNormalised) == 0) {
+            params[i].value[0] *= width;
+            params[i].value[1] *= height;
+        }
+    }
     for (int a = 3; a < argc; ++a) {
         char name[64];
         double value[3];

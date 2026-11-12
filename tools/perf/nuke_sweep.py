@@ -45,6 +45,7 @@ NODES = {
     "MS_RackDefocus": (SAPPHIRE + "BlurSharpen.S_RackDefocus_v1", MILLSAPH + "RackDefocus_v1"),
     "MS_Glint": (SAPPHIRE + "Lighting.S_Glint_v1", MILLSAPH + "Glint_v1"),
     "MS_Glare": (SAPPHIRE + "Lighting.S_Glare_v1", MILLSAPH + "Glare_v1"),
+    "MS_LensFlare": (SAPPHIRE + "Lighting.S_LensFlare_v1", MILLSAPH + "LensFlare_v1"),
 }
 PLUGIN_LOG = os.path.expanduser("~/millsaph.log")  # src/common/log.h
 # The test image, as nuke_time.py: gradients, a disc and a box with hard edges, a little noise.
@@ -70,6 +71,22 @@ created = []
 def create(cls):
     try: return nuke.createNode(cls, inpanel=False)
     except RuntimeError: return nuke.createNode("OFX" + cls[3:].lower(), inpanel=False)  # Linux
+
+# MillSaph's node gets the reference node's style text (its own default differs), so both
+# draw the same elements.
+styles = {}
+
+
+def same_style(n, vendor):
+    for name in ("style_", "lens_"):
+        k = n.knob(name)
+        if k is None:
+            continue
+        if vendor == "Sapphire":
+            styles[name] = k.value()
+        elif name in styles:
+            k.setValue(styles[name])
+
 
 def write(node, path):
     w = nuke.nodes.Write(inputs=[node], file=path, file_type="exr", datatype="32 bit float",
@@ -287,6 +304,7 @@ try:
                 times.append(None); notes.append("%s: no node" % vendor); continue
             created.append(n)
             n.setInput(0, src)
+            same_style(n, vendor)
             try:
                 missing = apply(n, row["setting"], src)
                 if missing:

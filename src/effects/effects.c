@@ -14,6 +14,13 @@ const MsEffect *const ms_effects[] = {
     &ms_rackdefocus_effect,
     &ms_glint_effect,
     &ms_glare_effect,
+    &ms_lensflare_effect,
 };
 
 const int ms_effect_count = ARRAY_SIZE(ms_effects);
+
+void ms_effects_release(void) {
+    for (int i = 0; i < ms_effect_count; ++i)
+        if (ms_effects[i]->release)
+            ms_effects[i]->release();
+}

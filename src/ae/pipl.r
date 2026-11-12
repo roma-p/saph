@@ -2,7 +2,8 @@
 // CMakeLists.txt, through the C preprocessor first (MS_EFFECT), then on Windows Adobe's
 // PiPLtool, on macOS Apple's Rez (after the SDK's AE_General.r, which defines the PiPL
 // type). One resource per effect; the version and the flags must equal VERSION, OUT_FLAGS
-// and OUT_FLAGS_2 in plugin.c.
+// (FLAGS: with PF_OutFlag_NON_PARAM_VARY, 0x4, for the effects that change over time by
+// themselves) and OUT_FLAGS_2 in plugin.c.
 
 #include "AEConfig.h"
 #include "AE_EffectVers.h"
@@ -13,7 +14,7 @@
 #define MS_CODE(ENTRY) CodeWin64X86 { ENTRY },
 #endif
 
-#define MS_EFFECT(ID, NAME, MATCH_NAME, ENTRY)                                                     \
+#define MS_EFFECT(ID, NAME, MATCH_NAME, ENTRY, FLAGS)                                              \
 resource 'PiPL' (ID) {                                                                             \
     {                                                                                              \
         Kind { AEEffect },                                                                         \
@@ -24,7 +25,7 @@ resource 'PiPL' (ID) {                                                          
         AE_Effect_Spec_Version { PF_PLUG_IN_VERSION, PF_PLUG_IN_SUBVERS },                         \
         AE_Effect_Version { 524289 },                                                              \
         AE_Effect_Info_Flags { 0 },                                                                \
-        AE_Effect_Global_OutFlags { 0x02000000 },                                                  \
+        AE_Effect_Global_OutFlags { FLAGS },                                                       \
         AE_Effect_Global_OutFlags_2 { 0x08001400 },                                                \
         AE_Effect_Match_Name { MATCH_NAME },                                                       \
         AE_Reserved_Info { 0 },                                                                    \
@@ -32,12 +33,13 @@ resource 'PiPL' (ID) {                                                          
     }                                                                                              \
 };
 
-MS_EFFECT(16000, "MS_BandPass", "MillSaph BandPass", "EffectMain_BandPass")
-MS_EFFECT(16001, "MS_EdgeAwareBlur", "MillSaph EdgeAwareBlur", "EffectMain_EdgeAwareBlur")
-MS_EFFECT(16002, "MS_Distort", "MillSaph Distort", "EffectMain_Distort")
-MS_EFFECT(16003, "MS_Mosaic", "MillSaph Mosaic", "EffectMain_Mosaic")
-MS_EFFECT(16004, "MS_Glow", "MillSaph Glow", "EffectMain_Glow")
-MS_EFFECT(16005, "MS_EdgeBlur", "MillSaph EdgeBlur", "EffectMain_EdgeBlur")
-MS_EFFECT(16006, "MS_RackDefocus", "MillSaph RackDefocus", "EffectMain_RackDefocus")
-MS_EFFECT(16007, "MS_Glint", "MillSaph Glint", "EffectMain_Glint")
-MS_EFFECT(16008, "MS_Glare", "MillSaph Glare", "EffectMain_Glare")
+MS_EFFECT(16000, "MS_BandPass", "MillSaph BandPass", "EffectMain_BandPass", 0x02000000)
+MS_EFFECT(16001, "MS_EdgeAwareBlur", "MillSaph EdgeAwareBlur", "EffectMain_EdgeAwareBlur", 0x02000000)
+MS_EFFECT(16002, "MS_Distort", "MillSaph Distort", "EffectMain_Distort", 0x02000000)
+MS_EFFECT(16003, "MS_Mosaic", "MillSaph Mosaic", "EffectMain_Mosaic", 0x02000000)
+MS_EFFECT(16004, "MS_Glow", "MillSaph Glow", "EffectMain_Glow", 0x02000000)
+MS_EFFECT(16005, "MS_EdgeBlur", "MillSaph EdgeBlur", "EffectMain_EdgeBlur", 0x02000000)
+MS_EFFECT(16006, "MS_RackDefocus", "MillSaph RackDefocus", "EffectMain_RackDefocus", 0x02000000)
+MS_EFFECT(16007, "MS_Glint", "MillSaph Glint", "EffectMain_Glint", 0x02000000)
+MS_EFFECT(16008, "MS_Glare", "MillSaph Glare", "EffectMain_Glare", 0x02000000)
+MS_EFFECT(16009, "MS_LensFlare", "MillSaph LensFlare", "EffectMain_LensFlare", 0x02000004)
