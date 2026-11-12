@@ -1,0 +1,364 @@
+{
+ "value": {
+  "metadata": {
+   "preset-name": "Zoom Lens Ghosts",
+   "author": "MillSaph"
+  },
+  "elements": [
+   {
+    "type": "blob",
+    "center": 1,
+    "size": 0.6,
+    "brightness": 0.28,
+    "colors": [
+     1,
+     0.95,
+     0.9
+    ],
+    "name": "Glow"
+   },
+   {
+    "type": "blob",
+    "center": 1,
+    "size": 0.18,
+    "brightness": 0.9,
+    "colors": [
+     1,
+     1,
+     1
+    ],
+    "name": "Core"
+   },
+   {
+    "type": "rays",
+    "center": 1,
+    "size": 0.7,
+    "brightness": 0.15,
+    "ray_number": 8,
+    "ray_width": 0.02,
+    "color": [
+     1,
+     0.95,
+     0.9
+    ],
+    "name": "Star"
+   },
+   {
+    "type": "fancy_spot",
+    "center": 0.7,
+    "size": 0.07,
+    "brightness": 0.05,
+    "n_sides": 7,
+    "roundness": 0.15,
+    "blur_gradient": 0.15,
+    "radii": [
+     0,
+     0.8,
+     1
+    ],
+    "colors": [
+     0.5,
+     1,
+     0.6,
+     0.5,
+     1,
+     0.6,
+     0.3,
+     0.6,
+     0.36
+    ]
+   },
+   {
+    "type": "fancy_spot",
+    "center": 0.48,
+    "size": 0.09450000000000001,
+    "brightness": 0.05,
+    "n_sides": 7,
+    "roundness": 0.15,
+    "blur_gradient": 0.15,
+    "radii": [
+     0,
+     0.8,
+     1
+    ],
+    "colors": [
+     1,
+     0.5,
+     0.8,
+     1,
+     0.5,
+     0.8,
+     0.6,
+     0.3,
+     0.48
+    ]
+   },
+   {
+    "type": "fancy_spot",
+    "center": 0.25999999999999995,
+    "size": 0.11900000000000001,
+    "brightness": 0.05,
+    "n_sides": 7,
+    "roundness": 0.15,
+    "blur_gradient": 0.15,
+    "radii": [
+     0,
+     0.8,
+     1
+    ],
+    "colors": [
+     0.5,
+     0.7,
+     1,
+     0.5,
+     0.7,
+     1,
+     0.3,
+     0.42,
+     0.6
+    ]
+   },
+   {
+    "type": "fancy_spot",
+    "center": 0.039999999999999925,
+    "size": 0.07,
+    "brightness": 0.05,
+    "n_sides": 7,
+    "roundness": 0.15,
+    "blur_gradient": 0.15,
+    "radii": [
+     0,
+     0.8,
+     1
+    ],
+    "colors": [
+     1,
+     0.9,
+     0.4,
+     1,
+     0.9,
+     0.4,
+     0.6,
+     0.54,
+     0.24
+    ]
+   },
+   {
+    "type": "fancy_spot",
+    "center": -0.18000000000000005,
+    "size": 0.09450000000000001,
+    "brightness": 0.05,
+    "n_sides": 7,
+    "roundness": 0.15,
+    "blur_gradient": 0.15,
+    "radii": [
+     0,
+     0.8,
+     1
+    ],
+    "colors": [
+     0.5,
+     1,
+     0.6,
+     0.5,
+     1,
+     0.6,
+     0.3,
+     0.6,
+     0.36
+    ]
+   },
+   {
+    "type": "fancy_spot",
+    "center": -0.40000000000000013,
+    "size": 0.11900000000000001,
+    "brightness": 0.05,
+    "n_sides": 7,
+    "roundness": 0.15,
+    "blur_gradient": 0.15,
+    "radii": [
+     0,
+     0.8,
+     1
+    ],
+    "colors": [
+     1,
+     0.5,
+     0.8,
+     1,
+     0.5,
+     0.8,
+     0.6,
+     0.3,
+     0.48
+    ]
+   },
+   {
+    "type": "fancy_spot",
+    "center": -0.6200000000000001,
+    "size": 0.07,
+    "brightness": 0.05,
+    "n_sides": 7,
+    "roundness": 0.15,
+    "blur_gradient": 0.15,
+    "radii": [
+     0,
+     0.8,
+     1
+    ],
+    "colors": [
+     0.5,
+     0.7,
+     1,
+     0.5,
+     0.7,
+     1,
+     0.3,
+     0.42,
+     0.6
+    ]
+   },
+   {
+    "type": "fancy_spot",
+    "center": -0.8400000000000001,
+    "size": 0.09450000000000001,
+    "brightness": 0.05,
+    "n_sides": 7,
+    "roundness": 0.15,
+    "blur_gradient": 0.15,
+    "radii": [
+     0,
+     0.8,
+     1
+    ],
+    "colors": [
+     1,
+     0.9,
+     0.4,
+     1,
+     0.9,
+     0.4,
+     0.6,
+     0.54,
+     0.24
+    ]
+   },
+   {
+    "type": "fancy_spot",
+    "center": -1.06,
+    "size": 0.11900000000000001,
+    "brightness": 0.05,
+    "n_sides": 7,
+    "roundness": 0.15,
+    "blur_gradient": 0.15,
+    "radii": [
+     0,
+     0.8,
+     1
+    ],
+    "colors": [
+     0.5,
+     1,
+     0.6,
+     0.5,
+     1,
+     0.6,
+     0.3,
+     0.6,
+     0.36
+    ]
+   },
+   {
+    "type": "fancy_spot",
+    "center": -1.28,
+    "size": 0.07,
+    "brightness": 0.05,
+    "n_sides": 7,
+    "roundness": 0.15,
+    "blur_gradient": 0.15,
+    "radii": [
+     0,
+     0.8,
+     1
+    ],
+    "colors": [
+     1,
+     0.5,
+     0.8,
+     1,
+     0.5,
+     0.8,
+     0.6,
+     0.3,
+     0.48
+    ]
+   },
+   {
+    "type": "ring",
+    "center": -1.4,
+    "size": 0.25,
+    "brightness": 0.025,
+    "radii": [
+     0.88,
+     0.94,
+     1
+    ],
+    "colors": [
+     0,
+     0,
+     0,
+     0.6,
+     0.9,
+     1,
+     0,
+     0,
+     0
+    ]
+   },
+   {
+    "type": "ring",
+    "center": -1.7,
+    "size": 0.375,
+    "brightness": 0.025,
+    "radii": [
+     0.88,
+     0.94,
+     1
+    ],
+    "colors": [
+     0,
+     0,
+     0,
+     1,
+     0.8,
+     0.6,
+     0,
+     0,
+     0
+    ]
+   },
+   {
+    "type": "ring",
+    "center": -2.0,
+    "size": 0.25,
+    "brightness": 0.025,
+    "radii": [
+     0.88,
+     0.94,
+     1
+    ],
+    "colors": [
+     0,
+     0,
+     0,
+     0.6,
+     0.9,
+     1,
+     0,
+     0,
+     0
+    ]
+   }
+  ]
+ }
+}

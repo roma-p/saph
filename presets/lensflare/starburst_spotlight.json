@@ -1,0 +1,157 @@
+{
+ "value": {
+  "metadata": {
+   "preset-name": "Starburst Spotlight",
+   "author": "MillSaph"
+  },
+  "elements": [
+   {
+    "type": "blob",
+    "center": 1,
+    "size": 0.7,
+    "brightness": 0.3,
+    "colors": [
+     1,
+     0.97,
+     0.9
+    ],
+    "name": "Glow"
+   },
+   {
+    "type": "blob",
+    "center": 1,
+    "size": 0.22,
+    "brightness": 1.0,
+    "colors": [
+     1,
+     1,
+     1
+    ],
+    "name": "Core"
+   },
+   {
+    "type": "rays",
+    "center": 1,
+    "size": 1.6,
+    "brightness": 0.3,
+    "ray_number": 6,
+    "ray_width": 0.02,
+    "color": [
+     1,
+     0.97,
+     0.92
+    ],
+    "name": "Main star"
+   },
+   {
+    "type": "rays",
+    "center": 1,
+    "size": 1.0,
+    "brightness": 0.15,
+    "ray_number": 36,
+    "ray_width": 0.006,
+    "color": [
+     1,
+     0.95,
+     0.9
+    ],
+    "name": "Fine rays",
+    "radius_range": [
+     0.4,
+     1
+    ],
+    "jitter_angles": 0.5,
+    "rand_seed": 3
+   },
+   {
+    "type": "ring",
+    "center": 1,
+    "size": 0.6,
+    "brightness": 0.05,
+    "radii": [
+     0.94,
+     0.97,
+     1
+    ],
+    "colors": [
+     0,
+     0,
+     0,
+     1,
+     0.9,
+     0.8,
+     0,
+     0,
+     0
+    ],
+    "name": "Hot ring"
+   },
+   {
+    "type": "spot",
+    "center": 0.4,
+    "size": 0.1,
+    "brightness": 0.04,
+    "radii": [
+     0,
+     0.75,
+     1
+    ],
+    "colors": [
+     0.9,
+     0.9,
+     1,
+     0.9,
+     0.9,
+     1,
+     0.45,
+     0.45,
+     0.5
+    ]
+   },
+   {
+    "type": "spot",
+    "center": -0.19999999999999996,
+    "size": 0.13,
+    "brightness": 0.04,
+    "radii": [
+     0,
+     0.75,
+     1
+    ],
+    "colors": [
+     0.9,
+     0.9,
+     1,
+     0.9,
+     0.9,
+     1,
+     0.45,
+     0.45,
+     0.5
+    ]
+   },
+   {
+    "type": "spot",
+    "center": -0.7999999999999999,
+    "size": 0.16000000000000003,
+    "brightness": 0.04,
+    "radii": [
+     0,
+     0.75,
+     1
+    ],
+    "colors": [
+     0.9,
+     0.9,
+     1,
+     0.9,
+     0.9,
+     1,
+     0.45,
+     0.45,
+     0.5
+    ]
+   }
+  ]
+ }
+}

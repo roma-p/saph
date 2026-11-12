@@ -1,0 +1,159 @@
+{
+ "value": {
+  "metadata": {
+   "preset-name": "Iris Bokeh",
+   "author": "MillSaph"
+  },
+  "elements": [
+   {
+    "type": "blob",
+    "center": 1,
+    "size": 0.55,
+    "brightness": 0.28,
+    "colors": [
+     1,
+     0.95,
+     0.9
+    ],
+    "name": "Glow"
+   },
+   {
+    "type": "blob",
+    "center": 1,
+    "size": 0.18,
+    "brightness": 0.9,
+    "colors": [
+     1,
+     1,
+     1
+    ],
+    "name": "Core"
+   },
+   {
+    "type": "fancy_spot",
+    "center": 0.55,
+    "size": 0.16,
+    "brightness": 0.06,
+    "radii": [
+     0,
+     1
+    ],
+    "colors": [
+     1,
+     1,
+     1,
+     0.8,
+     0.85,
+     1
+    ],
+    "image": {
+     "generate": "iris",
+     "sides": 7,
+     "seed": 0,
+     "detail": 0.15,
+     "amount": 0.3
+    }
+   },
+   {
+    "type": "fancy_spot",
+    "center": 0.2,
+    "size": 0.1,
+    "brightness": 0.05,
+    "radii": [
+     0,
+     1
+    ],
+    "colors": [
+     1,
+     1,
+     1,
+     0.8,
+     0.85,
+     1
+    ],
+    "image": {
+     "generate": "iris",
+     "sides": 7,
+     "seed": 1,
+     "detail": 0.15,
+     "amount": 0.3
+    }
+   },
+   {
+    "type": "fancy_spot",
+    "center": -0.4,
+    "size": 0.24,
+    "brightness": 0.04,
+    "radii": [
+     0,
+     1
+    ],
+    "colors": [
+     1,
+     1,
+     1,
+     0.8,
+     0.85,
+     1
+    ],
+    "image": {
+     "generate": "iris",
+     "sides": 7,
+     "seed": 2,
+     "detail": 0.15,
+     "amount": 0.3
+    }
+   },
+   {
+    "type": "fancy_spot",
+    "center": -0.9,
+    "size": 0.18,
+    "brightness": 0.045,
+    "radii": [
+     0,
+     1
+    ],
+    "colors": [
+     1,
+     1,
+     1,
+     0.8,
+     0.85,
+     1
+    ],
+    "image": {
+     "generate": "iris",
+     "sides": 7,
+     "seed": 3,
+     "detail": 0.15,
+     "amount": 0.3
+    }
+   },
+   {
+    "type": "fancy_spot",
+    "center": -1.4,
+    "size": 0.32,
+    "brightness": 0.025,
+    "radii": [
+     0,
+     1
+    ],
+    "colors": [
+     1,
+     1,
+     1,
+     0.8,
+     0.85,
+     1
+    ],
+    "image": {
+     "generate": "iris",
+     "sides": 7,
+     "seed": 4,
+     "detail": 0.15,
+     "amount": 0.3
+    }
+   }
+  ]
+ }
+}

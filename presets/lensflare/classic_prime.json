@@ -1,0 +1,181 @@
+{
+ "value": {
+  "metadata": {
+   "preset-name": "Classic Prime",
+   "author": "MillSaph"
+  },
+  "elements": [
+   {
+    "type": "blob",
+    "center": 1,
+    "size": 0.7,
+    "brightness": 0.3,
+    "colors": [
+     1,
+     0.85,
+     0.7
+    ],
+    "name": "Glow"
+   },
+   {
+    "type": "blob",
+    "center": 1,
+    "size": 0.25,
+    "brightness": 0.9,
+    "colors": [
+     1,
+     0.97,
+     0.92
+    ],
+    "name": "Core"
+   },
+   {
+    "type": "rays",
+    "center": 1,
+    "size": 0.9,
+    "brightness": 0.2,
+    "ray_number": 12,
+    "ray_width": 0.015,
+    "color": [
+     1,
+     0.92,
+     0.85
+    ],
+    "name": "Star"
+   },
+   {
+    "type": "spot",
+    "center": 0.55,
+    "size": 0.1,
+    "brightness": 0.07,
+    "radii": [
+     0,
+     0.75,
+     1
+    ],
+    "colors": [
+     0.6,
+     0.8,
+     1,
+     0.6,
+     0.8,
+     1,
+     0.3,
+     0.4,
+     0.5
+    ]
+   },
+   {
+    "type": "spot",
+    "center": 0.10000000000000003,
+    "size": 0.13,
+    "brightness": 0.07,
+    "radii": [
+     0,
+     0.75,
+     1
+    ],
+    "colors": [
+     0.6,
+     1,
+     0.7,
+     0.6,
+     1,
+     0.7,
+     0.3,
+     0.5,
+     0.35
+    ]
+   },
+   {
+    "type": "spot",
+    "center": -0.35,
+    "size": 0.16000000000000003,
+    "brightness": 0.07,
+    "radii": [
+     0,
+     0.75,
+     1
+    ],
+    "colors": [
+     1,
+     0.7,
+     0.5,
+     1,
+     0.7,
+     0.5,
+     0.5,
+     0.35,
+     0.25
+    ]
+   },
+   {
+    "type": "spot",
+    "center": -0.8,
+    "size": 0.1,
+    "brightness": 0.07,
+    "radii": [
+     0,
+     0.75,
+     1
+    ],
+    "colors": [
+     0.6,
+     0.8,
+     1,
+     0.6,
+     0.8,
+     1,
+     0.3,
+     0.4,
+     0.5
+    ]
+   },
+   {
+    "type": "spot",
+    "center": -1.25,
+    "size": 0.13,
+    "brightness": 0.07,
+    "radii": [
+     0,
+     0.75,
+     1
+    ],
+    "colors": [
+     0.6,
+     1,
+     0.7,
+     0.6,
+     1,
+     0.7,
+     0.3,
+     0.5,
+     0.35
+    ]
+   },
+   {
+    "type": "ring",
+    "center": -1.5,
+    "size": 0.7,
+    "brightness": 0.03,
+    "radii": [
+     0.88,
+     0.94,
+     1
+    ],
+    "colors": [
+     0,
+     0,
+     0,
+     0.8,
+     0.9,
+     1,
+     0,
+     0,
+     0
+    ],
+    "name": "Halo"
+   }
+  ]
+ }
+}

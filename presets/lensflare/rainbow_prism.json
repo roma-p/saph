@@ -1,0 +1,110 @@
+{
+ "value": {
+  "metadata": {
+   "preset-name": "Rainbow Prism",
+   "author": "MillSaph"
+  },
+  "elements": [
+   {
+    "type": "blob",
+    "center": 1,
+    "size": 0.6,
+    "brightness": 0.28,
+    "colors": [
+     1,
+     1,
+     1
+    ],
+    "name": "Glow"
+   },
+   {
+    "type": "blob",
+    "center": 1,
+    "size": 0.2,
+    "brightness": 0.9,
+    "colors": [
+     1,
+     1,
+     1
+    ],
+    "name": "Core"
+   },
+   {
+    "type": "rays",
+    "center": 1,
+    "size": 1.3,
+    "brightness": 0.35,
+    "ray_number": 16,
+    "ray_width": 0.025,
+    "color": [
+     1,
+     1,
+     1
+    ],
+    "name": "Rainbow rays",
+    "image": {
+     "generate": "ramp"
+    }
+   },
+   {
+    "type": "texture",
+    "name": "Prism glint",
+    "center": 1.25,
+    "size": 0.35,
+    "colors": [
+     0.6,
+     0.6,
+     0.6
+    ],
+    "rotate_to_pivot": 1,
+    "image": {
+     "generate": "glint",
+     "seed": 2
+    }
+   },
+   {
+    "type": "texture",
+    "name": "Prism glint 2",
+    "center": 0.3,
+    "size": 0.25,
+    "colors": [
+     0.4,
+     0.4,
+     0.4
+    ],
+    "rotate_to_pivot": 1,
+    "image": {
+     "generate": "glint",
+     "seed": 5
+    }
+   },
+   {
+    "type": "ring",
+    "center": -0.8,
+    "size": 0.5,
+    "brightness": 0.06,
+    "radii": [
+     0.8,
+     0.9,
+     1
+    ],
+    "colors": [
+     0,
+     0,
+     0,
+     1,
+     1,
+     1,
+     0,
+     0,
+     0
+    ],
+    "name": "Rainbow ring",
+    "image": {
+     "generate": "ramp",
+     "amount": 1
+    }
+   }
+  ]
+ }
+}

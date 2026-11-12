@@ -1,0 +1,190 @@
+{
+ "value": {
+  "metadata": {
+   "preset-name": "Polar Shimmer",
+   "author": "MillSaph"
+  },
+  "elements": [
+   {
+    "type": "blob",
+    "center": 1,
+    "size": 0.6,
+    "brightness": 0.28,
+    "colors": [
+     0.85,
+     0.9,
+     1
+    ],
+    "name": "Glow"
+   },
+   {
+    "type": "blob",
+    "center": 1,
+    "size": 0.2,
+    "brightness": 0.9,
+    "colors": [
+     1,
+     1,
+     1
+    ],
+    "name": "Core"
+   },
+   {
+    "type": "polar_flare",
+    "name": "Shimmer",
+    "center": 1,
+    "size": 0.8,
+    "brightness": 0.35,
+    "radii": [
+     0,
+     0.5,
+     0.9
+    ],
+    "colors": [
+     0.8,
+     0.9,
+     1,
+     0.4,
+     0.5,
+     0.8,
+     0,
+     0,
+     0
+    ],
+    "noise_brightness": 1,
+    "noise_width": 0.35,
+    "noise_softness": 1,
+    "noise_freq": 90,
+    "blur_theta_map": 0.05,
+    "rand_seed": 4
+   },
+   {
+    "type": "polar_flare",
+    "name": "Waves",
+    "center": 1,
+    "size": 0.5,
+    "brightness": 0.3,
+    "radii": [
+     0,
+     0.6,
+     1
+    ],
+    "colors": [
+     1,
+     1,
+     1,
+     0.6,
+     0.7,
+     1,
+     0,
+     0,
+     0
+    ],
+    "wave_brightness": 1,
+    "wave_freq": 10,
+    "wave_width": 0.4,
+    "wave_softness": 0.6
+   },
+   {
+    "type": "fancy_spot",
+    "center": 0.45,
+    "size": 0.1,
+    "brightness": 0.05,
+    "n_sides": 8,
+    "roundness": 0.15,
+    "blur_gradient": 0.15,
+    "radii": [
+     0,
+     0.8,
+     1
+    ],
+    "colors": [
+     0.6,
+     0.8,
+     1,
+     0.6,
+     0.8,
+     1,
+     0.36,
+     0.48,
+     0.6
+    ]
+   },
+   {
+    "type": "fancy_spot",
+    "center": 0.0,
+    "size": 0.135,
+    "brightness": 0.05,
+    "n_sides": 8,
+    "roundness": 0.15,
+    "blur_gradient": 0.15,
+    "radii": [
+     0,
+     0.8,
+     1
+    ],
+    "colors": [
+     0.8,
+     0.6,
+     1,
+     0.8,
+     0.6,
+     1,
+     0.48,
+     0.36,
+     0.6
+    ]
+   },
+   {
+    "type": "fancy_spot",
+    "center": -0.45,
+    "size": 0.17,
+    "brightness": 0.05,
+    "n_sides": 8,
+    "roundness": 0.15,
+    "blur_gradient": 0.15,
+    "radii": [
+     0,
+     0.8,
+     1
+    ],
+    "colors": [
+     0.6,
+     0.8,
+     1,
+     0.6,
+     0.8,
+     1,
+     0.36,
+     0.48,
+     0.6
+    ]
+   },
+   {
+    "type": "fancy_spot",
+    "center": -0.9000000000000001,
+    "size": 0.1,
+    "brightness": 0.05,
+    "n_sides": 8,
+    "roundness": 0.15,
+    "blur_gradient": 0.15,
+    "radii": [
+     0,
+     0.8,
+     1
+    ],
+    "colors": [
+     0.8,
+     0.6,
+     1,
+     0.8,
+     0.6,
+     1,
+     0.48,
+     0.36,
+     0.6
+    ]
+   }
+  ]
+ }
+}

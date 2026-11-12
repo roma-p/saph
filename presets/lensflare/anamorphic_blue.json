@@ -1,0 +1,220 @@
+{
+ "value": {
+  "metadata": {
+   "preset-name": "Anamorphic Blue",
+   "author": "MillSaph"
+  },
+  "elements": [
+   {
+    "type": "blob",
+    "center": 1,
+    "size": 0.6,
+    "brightness": 0.3,
+    "colors": [
+     0.7,
+     0.85,
+     1
+    ],
+    "name": "Glow"
+   },
+   {
+    "type": "blob",
+    "center": 1,
+    "size": 0.2,
+    "brightness": 1.0,
+    "colors": [
+     0.9,
+     0.95,
+     1
+    ],
+    "name": "Core"
+   },
+   {
+    "type": "blob",
+    "center": 1,
+    "size": 3.0,
+    "brightness": 0.5,
+    "colors": [
+     0.35,
+     0.6,
+     1
+    ],
+    "rel_width": 4.0,
+    "rel_height": 0.04,
+    "name": "Streak"
+   },
+   {
+    "type": "blob",
+    "center": 1,
+    "size": 1.5,
+    "brightness": 0.35,
+    "colors": [
+     0.6,
+     0.8,
+     1
+    ],
+    "rel_width": 4.0,
+    "rel_height": 0.015,
+    "name": "Thin streak"
+   },
+   {
+    "type": "ring",
+    "center": 0.4,
+    "size": 0.09,
+    "brightness": 0.06,
+    "radii": [
+     0.88,
+     0.94,
+     1
+    ],
+    "colors": [
+     0,
+     0,
+     0,
+     0.4,
+     0.6,
+     1,
+     0,
+     0,
+     0
+    ],
+    "rel_width": 1.6,
+    "rel_height": 0.6
+   },
+   {
+    "type": "ring",
+    "center": 0.050000000000000044,
+    "size": 0.135,
+    "brightness": 0.06,
+    "radii": [
+     0.88,
+     0.94,
+     1
+    ],
+    "colors": [
+     0,
+     0,
+     0,
+     0.5,
+     0.8,
+     1,
+     0,
+     0,
+     0
+    ],
+    "rel_width": 1.6,
+    "rel_height": 0.6
+   },
+   {
+    "type": "ring",
+    "center": -0.29999999999999993,
+    "size": 0.09,
+    "brightness": 0.06,
+    "radii": [
+     0.88,
+     0.94,
+     1
+    ],
+    "colors": [
+     0,
+     0,
+     0,
+     0.4,
+     0.6,
+     1,
+     0,
+     0,
+     0
+    ],
+    "rel_width": 1.6,
+    "rel_height": 0.6
+   },
+   {
+    "type": "ring",
+    "center": -0.6499999999999998,
+    "size": 0.135,
+    "brightness": 0.06,
+    "radii": [
+     0.88,
+     0.94,
+     1
+    ],
+    "colors": [
+     0,
+     0,
+     0,
+     0.5,
+     0.8,
+     1,
+     0,
+     0,
+     0
+    ],
+    "rel_width": 1.6,
+    "rel_height": 0.6
+   },
+   {
+    "type": "ring",
+    "center": -0.9999999999999999,
+    "size": 0.09,
+    "brightness": 0.06,
+    "radii": [
+     0.88,
+     0.94,
+     1
+    ],
+    "colors": [
+     0,
+     0,
+     0,
+     0.4,
+     0.6,
+     1,
+     0,
+     0,
+     0
+    ],
+    "rel_width": 1.6,
+    "rel_height": 0.6
+   },
+   {
+    "type": "ring",
+    "center": -1.35,
+    "size": 0.135,
+    "brightness": 0.06,
+    "radii": [
+     0.88,
+     0.94,
+     1
+    ],
+    "colors": [
+     0,
+     0,
+     0,
+     0.5,
+     0.8,
+     1,
+     0,
+     0,
+     0
+    ],
+    "rel_width": 1.6,
+    "rel_height": 0.6
+   },
+   {
+    "type": "blob",
+    "center": -1.2,
+    "size": 0.5,
+    "brightness": 0.05,
+    "colors": [
+     0.3,
+     0.5,
+     1
+    ],
+    "rel_width": 2.5,
+    "rel_height": 0.5,
+    "name": "Wide ghost"
+   }
+  ]
+ }
+}

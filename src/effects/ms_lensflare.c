@@ -13,7 +13,8 @@
 //     changing over time (MillSaph's own noise)
 //   - the finish: Brightness x Color, Hue Shift, Saturation, Blur Flare; screened over (or
 //     added to) the Source x Bg Brightness, or alone; Tint Bg Whites, Affect Alpha
-// Scale Widths, Blur Flare and the triggers' sizes are "normalised" values, so hosts show
+// The Preset menu picks one of MillSaph's own lenses (presets/lensflare) instead of the Lens
+// text. Scale Widths, Blur Flare and the triggers' sizes are "normalised" values, so hosts show
 // them in pixels; Hotspot and Pivot are positions.
 
 #include <math.h>
@@ -26,6 +27,7 @@
 #include "common/mutex.h"
 #include "effects/glare_style.h"
 #include "engine/engine.h"
+#include "lensflare_presets.h" // (generated from presets/lensflare)
 
 // Inputs: clip, label in the host, value where there is no image, optional, mask.
 static const MsClip clips[] = {
@@ -71,6 +73,7 @@ static const char default_lens[] =
     "]}\n";
 
 enum {
+    PRESET,
     LENS,
     SCALE_WIDTHS,
     REL_HEIGHTS,
@@ -171,6 +174,12 @@ enum {
             .display_min = 0.01,                                                                   \
             .display_max = 5.0}
 static const MsParam params[] = {
+    [PRESET] = {.type = MS_PARAM_CHOICE,
+                .name = "preset",
+                .label = "Preset",
+                .hint = "The lens: the Lens text, or one of MillSaph's presets.",
+                .entries = ms_lensflare_preset_menu,
+                .entry_count = ARRAY_SIZE(ms_lensflare_preset_menu)},
     [LENS] = {.type = MS_PARAM_STRING,
               .name = "lens_",
               .label = "Lens",
@@ -518,7 +527,12 @@ static double trigger(double d, double radius, double falloff) {
 static int render(const MsRender *r) {
     const double *v = r->values;
     const int w = r->width, h = r->height;
-    const char *lens = r->texts && r->texts[LENS] ? r->texts[LENS] : params[LENS].def_text;
+    // the lens: a preset, else the Lens text (hosts without it: the default lens)
+    const int preset = (int)v[PRESET];
+    const char *lens = preset > 0 && preset <= MS_LENSFLARE_PRESETS
+                           ? ms_lensflare_preset_texts[preset - 1]
+                       : r->texts && r->texts[LENS] ? r->texts[LENS]
+                                                    : params[LENS].def_text;
     Job j = {.from = r->connected[OCCLUSION] ? (int)v[OCCLUSION_FROM] : 0,
              .invert = (int)v[INVERT_OCCLUSION],
              .hue = (float)(v[HUE_SHIFT] - floor(v[HUE_SHIFT])),

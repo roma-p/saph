@@ -92,6 +92,7 @@ LensFlare !Occlusion scale_widths=0.3 rel_heights=0.7 blur_flare=0.003 hotspot=1
 LensFlare occlusion_from=1 invert_occlusion=1 occlusion_softness=0.05 combine=2 hotspot=48,30 diffraction_glow=2 glow_radius=0.1 glow_width=0.1 glow_color=1,0.5,0.2 occlusion_scale_brightness=2 occlusion_scale_widths=1.5
 LensFlare !Occlusion lens_=@tools/glare_test_style.json hotspot=-20,80 edge_width=0.3 center_radius=0.4
 LensFlare !Occlusion lens_=@tools/lensflare_test_lens.json hotspot=12,50
+LensFlare !Occlusion preset=12 hotspot=30,40
 LensFlare --half --pad 3
 CASES
 [ $failed = 0 ] && echo "all clean" || exit 1
