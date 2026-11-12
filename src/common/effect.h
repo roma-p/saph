@@ -6,6 +6,10 @@
 
 #include <stddef.h>
 
+#ifdef __cplusplus // (the lens editor, src/editor)
+extern "C" {
+#endif
+
 #define MS_GROUP "MillSaph"
 
 #define MS_ID(name) "com.xiaoluo.millsaph." name
@@ -42,7 +46,19 @@ typedef enum {
     // pixels of the render, y up.
     MS_PARAM_POINT,
     MS_PARAM_POINT_Y,
+    MS_PARAM_BUTTON, // a push button: MsParam.press runs when it is pressed
 } MsParamType;
+
+// What a button's press can do with the effect's parameters in the host (the host's own
+// thread, while the user waits): read and set them by name (POINT: x, its _y entry: y).
+typedef struct MsHost MsHost;
+struct MsHost {
+    const char *(*get_text)(MsHost *host, const char *name); // STRING (NULL: none)
+    int (*set_text)(MsHost *host, const char *name, const char *text); // 1: done
+    double (*get_value)(MsHost *host, const char *name); // DOUBLE, WIDTH, CHOICE, BOOL...
+    int (*set_value)(MsHost *host, const char *name, double value);
+    void *data; // the host's
+};
 
 // One parameter. Unset fields are 0, so tables use designated initializers.
 typedef struct {
@@ -57,6 +73,8 @@ typedef struct {
     int entry_count;
     const char *(*text)(void); // TEXT: the line to show
     const char *def_text;      // STRING: the default text
+    // BUTTON: what pressing it does; returns 0 with the reason in err (shown by the host)
+    int (*press)(MsHost *host, char *err, size_t err_size);
 } MsParam;
 
 // The most inputs and parameters of an effect (the hosts' code sizes arrays by them).
@@ -116,6 +134,9 @@ typedef struct {
     int frame_varying;
     // Optional: frees what the effect keeps from render to render (the plugin is unloaded).
     void (*release)(void);
+    // Optional: a viewer overlay, a line between these two POINT parameters (the hosts' own
+    // handles for them where they have some, else the overlay's).
+    const char *overlay[2];
 } MsEffect;
 
 // Every effect, in menu order (see effects/effects.c).
@@ -137,3 +158,7 @@ extern const MsEffect ms_rackdefocus_effect;
 extern const MsEffect ms_glint_effect;
 extern const MsEffect ms_glare_effect;
 extern const MsEffect ms_lensflare_effect;
+
+#ifdef __cplusplus
+}
+#endif

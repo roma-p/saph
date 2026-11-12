@@ -316,4 +316,5 @@ const MsEffect ms_glint_effect = {
     NULL,
     0,
     NULL,
+    {NULL, NULL},
 };

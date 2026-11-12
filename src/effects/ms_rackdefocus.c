@@ -349,4 +349,5 @@ const MsEffect ms_rackdefocus_effect = {
     identity,
     0,
     NULL,
+    {NULL, NULL},
 };

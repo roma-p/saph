@@ -33,6 +33,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # Debug build that stops at memory errors and undefined behaviour (tools/sanitize.sh).
 option(MILLSAPH_SANITIZE "Build with AddressSanitizer and UndefinedBehaviorSanitizer" OFF)
+option(MILLSAPH_EDITOR "Build the Lens Flare editor (src/editor; Dear ImGui, GLFW)" ON)
 if(MILLSAPH_SANITIZE)
   set(CMAKE_BUILD_TYPE Debug)
   add_compile_options(-fsanitize=address,undefined -fno-omit-frame-pointer -fno-sanitize-recover=undefined)
@@ -286,6 +287,9 @@ file(GLOB ofx_sources CONFIGURE_DEPENDS src/ofx/*.c)
 add_library(MillSaph MODULE ${ofx_sources})
 target_include_directories(MillSaph PRIVATE ${third_party}/openfx/include)
 target_link_libraries(MillSaph PRIVATE millsaph_core)
+# (overlays drawn with OpenGL where the host has no Draw Suite)
+find_package(OpenGL REQUIRED)
+target_link_libraries(MillSaph PRIVATE OpenGL::GL)
 millsaph_warnings(MillSaph)
 
 set(bundle ${CMAKE_BINARY_DIR}/MillSaph.ofx.bundle)
@@ -305,6 +309,33 @@ endif()
 # ---------------------------------------------------------------- benchmark
 
 # Every effect on every API of this machine (tools/perf/bench.c, run by tools/perf/collect.sh).
+# MillSaph's lens editor (src/editor): MS_LensFlare's Edit Lens runs it, so it is built next
+# to the plugin's binary in the bundle. Dear ImGui with its GLFW and OpenGL 3 backends, GLFW
+# built here (X11 on Linux).
+if(MILLSAPH_EDITOR)
+  enable_language(CXX)
+  set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
+  set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+  set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+  set(GLFW_INSTALL OFF CACHE BOOL "" FORCE)
+  set(GLFW_BUILD_WAYLAND OFF CACHE BOOL "" FORCE)
+  add_subdirectory(${third_party}/glfw ${CMAKE_BINARY_DIR}/glfw EXCLUDE_FROM_ALL)
+  set(imgui ${third_party}/imgui)
+  add_executable(millsaph_lens_editor src/editor/main.cpp src/editor/lens.cpp src/editor/preview.cpp
+    ${imgui}/imgui.cpp ${imgui}/imgui_draw.cpp ${imgui}/imgui_tables.cpp ${imgui}/imgui_widgets.cpp
+    ${imgui}/backends/imgui_impl_glfw.cpp ${imgui}/backends/imgui_impl_opengl3.cpp)
+  set_target_properties(millsaph_lens_editor PROPERTIES CXX_STANDARD 17
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/MillSaph.ofx.bundle/Contents/${platform}
+    RUNTIME_OUTPUT_DIRECTORY_RELEASE ${CMAKE_BINARY_DIR}/MillSaph.ofx.bundle/Contents/${platform})
+  target_include_directories(millsaph_lens_editor PRIVATE ${imgui} ${imgui}/backends ${third_party}/json)
+  find_package(OpenGL REQUIRED)
+  target_link_libraries(millsaph_lens_editor PRIVATE millsaph_core glfw OpenGL::GL)
+  if(NOT WIN32 AND NOT APPLE)
+    target_link_libraries(millsaph_lens_editor PRIVATE m)
+  endif()
+  add_dependencies(MillSaph millsaph_lens_editor)
+endif()
+
 add_executable(millsaph_bench tools/perf/bench.c tools/perf/images.c tools/perf/transfer.c)
 target_link_libraries(millsaph_bench PRIVATE millsaph_core)
 if(NOT WIN32)

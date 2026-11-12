@@ -407,4 +407,5 @@ const MsEffect ms_distort_effect = {
     NULL,
     0,
     NULL,
+    {NULL, NULL},
 };

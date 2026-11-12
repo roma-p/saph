@@ -25,6 +25,7 @@
 #include "common/defines.h"
 #include "common/effect.h"
 #include "common/mutex.h"
+#include "common/process.h"
 #include "effects/glare_style.h"
 #include "engine/engine.h"
 #include "lensflare_presets.h" // (generated from presets/lensflare)
@@ -74,6 +75,7 @@ static const char default_lens[] =
 
 enum {
     PRESET,
+    EDIT_LENS,
     LENS,
     SCALE_WIDTHS,
     REL_HEIGHTS,
@@ -173,6 +175,8 @@ enum {
             .max = MS_UNBOUNDED,                                                                   \
             .display_min = 0.01,                                                                   \
             .display_max = 5.0}
+static int edit_lens(MsHost *host, char *err, size_t err_size); // (the Edit Lens button)
+
 static const MsParam params[] = {
     [PRESET] = {.type = MS_PARAM_CHOICE,
                 .name = "preset",
@@ -180,6 +184,12 @@ static const MsParam params[] = {
                 .hint = "The lens: the Lens text, or one of MillSaph's presets.",
                 .entries = ms_lensflare_preset_menu,
                 .entry_count = ARRAY_SIZE(ms_lensflare_preset_menu)},
+    [EDIT_LENS] = {.type = MS_PARAM_BUTTON,
+                   .name = "edit_lens",
+                   .label = "Edit Lens",
+                   .hint = "Opens MillSaph's lens editor on the lens in use; what it saves "
+                           "becomes the Lens text.",
+                   .press = edit_lens},
     [LENS] = {.type = MS_PARAM_STRING,
               .name = "lens_",
               .label = "Lens",
@@ -518,6 +528,63 @@ static void release(void) {
     ms_mutex_unlock(&texture_lock);
 }
 
+// Edit Lens: the lens in use (the preset, else the Lens text) into a file, MillSaph's lens
+// editor (millsaph_lens_editor, next to the plugin) run on it and waited for; when it saves
+// (exit code 0), its lens becomes the Lens text and the Preset menu goes back to it.
+static int edit_lens(MsHost *host, char *err, size_t err_size) {
+    char dir[1024], editor[1200], in[1024], out[1024];
+#ifdef _WIN32
+    const char *exe = "millsaph_lens_editor.exe";
+#else
+    const char *exe = "millsaph_lens_editor";
+#endif
+    if (!ms_module_dir(dir, sizeof dir)) {
+        snprintf(err, err_size, "cannot find where the plugin is");
+        return 0;
+    }
+    snprintf(editor, sizeof editor, "%s%s", dir, exe);
+    if (!ms_temp_file(".json", in, sizeof in) || !ms_temp_file(".json", out, sizeof out)) {
+        snprintf(err, err_size, "cannot make a temporary file");
+        return 0;
+    }
+    const int preset = (int)host->get_value(host, params[PRESET].name);
+    const char *text = host->get_text(host, params[LENS].name);
+    const char *lens = preset > 0 && preset <= MS_LENSFLARE_PRESETS
+                           ? ms_lensflare_preset_texts[preset - 1]
+                       : text ? text
+                              : params[LENS].def_text;
+    FILE *f = fopen(in, "wb");
+    int ok = f && fputs(lens, f) >= 0;
+    if (f)
+        fclose(f);
+    const char *argv[] = {editor, "--in", in, "--out", out, NULL};
+    const int code = ok ? ms_run_program(argv) : -1;
+    char *edited = NULL;
+    if (code == 0) { // saved: the file's text
+        f = fopen(out, "rb");
+        long size = -1;
+        if (f && fseek(f, 0, SEEK_END) == 0 && (size = ftell(f)) >= 0 && fseek(f, 0, SEEK_SET) == 0)
+            edited = malloc((size_t)size + 1);
+        if (edited && fread(edited, 1, (size_t)size, f) == (size_t)size)
+            edited[size] = 0;
+        else {
+            free(edited);
+            edited = NULL;
+        }
+        if (f)
+            fclose(f);
+        ok = edited && host->set_text(host, params[LENS].name, edited) &&
+             host->set_value(host, params[PRESET].name, 0.0);
+    }
+    free(edited);
+    remove(in);
+    remove(out);
+    if (!ok || code < 0)
+        snprintf(err, err_size, code < 0 ? "cannot run the lens editor (%s)"
+                                         : "cannot set the edited lens", editor);
+    return ok && code >= 0;
+}
+
 // A trigger's weight at distance d from where it acts most (radius: how far it reaches).
 static double trigger(double d, double radius, double falloff) {
     const double t = 1.0 - fmax(d, 0.0) / (1.034 * radius);
@@ -750,4 +817,5 @@ const MsEffect ms_lensflare_effect = {
     identity,
     1, // the Atmosphere changes over time
     release,
+    {"hotspot", "pivot"}, // the axis in the viewer
 };

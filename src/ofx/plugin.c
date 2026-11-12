@@ -14,6 +14,8 @@
 
 #define MAX_EFFECTS 16 // number of entry points below
 
+static OfxPluginEntryPoint *ms_overlay_entry(int index); // (below)
+
 static OfxStatus describe(const MsEffect *e, OfxImageEffectHandle effect) {
     OfxPropertySetHandle props;
     ms_effect->getPropertySet(effect, &props);
@@ -35,6 +37,13 @@ static OfxStatus describe(const MsEffect *e, OfxImageEffectHandle effect) {
     ms_prop->propSetString(props, kOfxImageEffectPropSupportedPixelDepths, 1, kOfxBitDepthHalf);
     ms_prop->propSetInt(props, kOfxImageEffectPropSupportsMultipleClipDepths, 0, 0);
 
+    // A viewer overlay (ofx/overlay.c)
+    if (e->overlay[0] && e->overlay[1])
+        for (int i = 0; i < ms_effect_count && i < MAX_EFFECTS; ++i)
+            if (ms_effects[i] == e)
+                ms_prop->propSetPointer(props, kOfxImageEffectPluginPropOverlayInteractV1, 0,
+                                        (void *)ms_overlay_entry(i));
+
     // Whole frames, no tiling.
     ms_prop->propSetInt(props, kOfxImageEffectPropSupportsTiles, 0, 0);
     ms_prop->propSetString(props, kOfxImageEffectPluginRenderThreadSafety, 0,
@@ -49,6 +58,7 @@ static void define_param(OfxParamSetHandle params, const MsParam *p) {
         [MS_PARAM_CHOICE] = kOfxParamTypeChoice, [MS_PARAM_BOOL] = kOfxParamTypeBoolean,
         [MS_PARAM_TEXT] = kOfxParamTypeString,   [MS_PARAM_RGB] = kOfxParamTypeRGB,
         [MS_PARAM_STRING] = kOfxParamTypeString, [MS_PARAM_POINT] = kOfxParamTypeDouble2D,
+        [MS_PARAM_BUTTON] = kOfxParamTypePushButton,
     };
     OfxPropertySetHandle props;
     if (p->type == MS_PARAM_RGB_PART || p->type == MS_PARAM_POINT_Y) // part of the one before
@@ -75,8 +85,9 @@ static void define_param(OfxParamSetHandle params, const MsParam *p) {
     case MS_PARAM_RGB_PART:
     case MS_PARAM_POINT_Y:
         return;
-    case MS_PARAM_POINT: // absolute, its default in fractions of the frame
+    case MS_PARAM_POINT: // absolute, its default in fractions of the frame; the host's handle
         ms_prop->propSetString(props, kOfxParamPropDoubleType, 0, kOfxParamDoubleTypeXYAbsolute);
+        ms_prop->propSetInt(props, kOfxParamPropUseHostOverlayHandle, 0, 1);
         ms_prop->propSetString(props, kOfxParamPropDefaultCoordinateSystem, 0,
                                kOfxParamCoordinatesNormalised);
         ms_prop->propSetDouble(props, kOfxParamPropDefault, 0, p[0].def);
@@ -90,6 +101,8 @@ static void define_param(OfxParamSetHandle params, const MsParam *p) {
     case MS_PARAM_STRING:
         ms_prop->propSetString(props, kOfxParamPropStringMode, 0, kOfxParamStringIsMultiLine);
         ms_prop->propSetString(props, kOfxParamPropDefault, 0, p->def_text ? p->def_text : "");
+        return;
+    case MS_PARAM_BUTTON:
         return;
     case MS_PARAM_WIDTH:
         ms_prop->propSetString(props, kOfxParamPropDoubleType, 0, kOfxParamDoubleTypeNormalisedX);
@@ -238,6 +251,9 @@ static int read_values(const MsEffect *e, OfxImageEffectHandle effect, OfxProper
         case MS_PARAM_RGB_PART: // read with the MS_PARAM_RGB before
         case MS_PARAM_POINT_Y:  // with the MS_PARAM_POINT before
             break;
+        case MS_PARAM_BUTTON:
+            values[i] = 0.0;
+            break;
         case MS_PARAM_POINT: // canonical coordinates: x the render scale
             get_point(params, p->name, *time, &values[i]);
             values[i] *= scale[0];
@@ -296,6 +312,95 @@ static OfxStatus is_identity(const MsEffect *e, OfxImageEffectHandle effect,
     return kOfxStatOK;
 }
 
+// MsHost on the parameters of one instance (a button's press, see MsHost).
+static OfxParamHandle param_named(MsHost *host, const char *name) {
+    OfxParamSetHandle params;
+    OfxParamHandle param;
+    if (ms_effect->getParamSet((OfxImageEffectHandle)host->data, &params) != kOfxStatOK ||
+        ms_param->paramGetHandle(params, name, &param, NULL) != kOfxStatOK)
+        return NULL;
+    return param;
+}
+
+static const char *host_get_text(MsHost *host, const char *name) {
+    OfxParamHandle param = param_named(host, name);
+    char *value = NULL;
+    if (param)
+        ms_param->paramGetValue(param, &value);
+    return value;
+}
+
+static int host_set_text(MsHost *host, const char *name, const char *text) {
+    OfxParamHandle param = param_named(host, name);
+    return param && ms_param->paramSetValue(param, text) == kOfxStatOK;
+}
+
+// (a POINT's y: its name with "_y", the host's second value)
+static double host_get_value(MsHost *host, const char *name, int *ok) {
+    char base[64];
+    size_t n = strlen(name);
+    const int y = n > 2 && strcmp(name + n - 2, "_y") == 0 && n - 2 < sizeof base;
+    if (y) {
+        memcpy(base, name, n - 2);
+        base[n - 2] = 0;
+    }
+    OfxParamHandle param = param_named(host, y ? base : name);
+    OfxPropertySetHandle props;
+    char *type = NULL;
+    *ok = param && ms_param->paramGetPropertySet(param, &props) == kOfxStatOK &&
+          ms_prop->propGetString(props, kOfxParamPropType, 0, &type) == kOfxStatOK;
+    if (!*ok)
+        return 0.0;
+    if (strcmp(type, kOfxParamTypeChoice) == 0 || strcmp(type, kOfxParamTypeBoolean) == 0 ||
+        strcmp(type, kOfxParamTypeInteger) == 0) {
+        int v = 0;
+        ms_param->paramGetValue(param, &v);
+        return v;
+    }
+    double v[3] = {0, 0, 0};
+    ms_param->paramGetValue(param, &v[0], &v[1], &v[2]);
+    return v[y];
+}
+
+static double host_value(MsHost *host, const char *name) {
+    int ok;
+    return host_get_value(host, name, &ok);
+}
+
+static int host_set_value(MsHost *host, const char *name, double value) {
+    OfxParamHandle param = param_named(host, name);
+    OfxPropertySetHandle props;
+    char *type = NULL;
+    if (!param || ms_param->paramGetPropertySet(param, &props) != kOfxStatOK ||
+        ms_prop->propGetString(props, kOfxParamPropType, 0, &type) != kOfxStatOK)
+        return 0;
+    if (strcmp(type, kOfxParamTypeChoice) == 0 || strcmp(type, kOfxParamTypeBoolean) == 0 ||
+        strcmp(type, kOfxParamTypeInteger) == 0)
+        return ms_param->paramSetValue(param, (int)value) == kOfxStatOK;
+    return ms_param->paramSetValue(param, value) == kOfxStatOK;
+}
+
+// A parameter changed: a button pressed runs its press (errors shown by the host).
+static OfxStatus instance_changed(const MsEffect *e, OfxImageEffectHandle effect,
+                                  OfxPropertySetHandle in_args) {
+    char *name = NULL, *type = NULL;
+    if (ms_prop->propGetString(in_args, kOfxPropType, 0, &type) != kOfxStatOK ||
+        strcmp(type, kOfxTypeParameter) != 0 ||
+        ms_prop->propGetString(in_args, kOfxPropName, 0, &name) != kOfxStatOK)
+        return kOfxStatReplyDefault;
+    for (int i = 0; i < e->param_count; ++i) {
+        const MsParam *p = &e->params[i];
+        if (p->type != MS_PARAM_BUTTON || !p->press || strcmp(p->name, name) != 0)
+            continue;
+        MsHost host = {host_get_text, host_set_text, host_value, host_set_value, effect};
+        char err[512] = "";
+        if (!p->press(&host, err, sizeof err) && ms_message)
+            ms_message->message(effect, kOfxMessageError, NULL, "%s: %s", e->label, err);
+        return kOfxStatOK;
+    }
+    return kOfxStatReplyDefault;
+}
+
 static OfxStatus main_entry(const MsEffect *e, const char *action, const void *handle,
                             OfxPropertySetHandle in_args, OfxPropertySetHandle out_args) {
     OfxImageEffectHandle effect = (OfxImageEffectHandle)handle;
@@ -313,6 +418,8 @@ static OfxStatus main_entry(const MsEffect *e, const char *action, const void *h
         return render(e, effect, in_args);
     if (strcmp(action, kOfxImageEffectActionIsIdentity) == 0)
         return is_identity(e, effect, in_args, out_args);
+    if (strcmp(action, kOfxActionInstanceChanged) == 0)
+        return instance_changed(e, effect, in_args);
     // An effect that changes over time by itself: the host renders every frame.
     if (strcmp(action, kOfxImageEffectActionGetClipPreferences) == 0 && e->frame_varying) {
         ms_prop->propSetInt(out_args, kOfxImageEffectFrameVarying, 0, 1);
@@ -332,11 +439,27 @@ static OfxStatus main_entry(const MsEffect *e, const char *action, const void *h
 ENTRY(0) ENTRY(1) ENTRY(2) ENTRY(3) ENTRY(4) ENTRY(5) ENTRY(6) ENTRY(7)
 ENTRY(8) ENTRY(9) ENTRY(10) ENTRY(11) ENTRY(12) ENTRY(13) ENTRY(14) ENTRY(15)
 
+// The same for the overlays' interacts.
+#define OVERLAY(i)                                                                                 \
+    static OfxStatus overlay_##i(const char *action, const void *handle,                           \
+                                 OfxPropertySetHandle in_args, OfxPropertySetHandle out_args) {    \
+        return ms_overlay_main(ms_effects[i], action, handle, in_args, out_args);                  \
+    }
+OVERLAY(0) OVERLAY(1) OVERLAY(2) OVERLAY(3) OVERLAY(4) OVERLAY(5) OVERLAY(6) OVERLAY(7)
+OVERLAY(8) OVERLAY(9) OVERLAY(10) OVERLAY(11) OVERLAY(12) OVERLAY(13) OVERLAY(14) OVERLAY(15)
+
+static OfxPluginEntryPoint *const overlays[MAX_EFFECTS] = {
+    overlay_0, overlay_1, overlay_2,  overlay_3,  overlay_4,  overlay_5,  overlay_6,  overlay_7,
+    overlay_8, overlay_9, overlay_10, overlay_11, overlay_12, overlay_13, overlay_14, overlay_15,
+};
+
 static OfxPluginEntryPoint *const entries[MAX_EFFECTS] = {
     entry_0, entry_1, entry_2,  entry_3,  entry_4,  entry_5,  entry_6,  entry_7,
     entry_8, entry_9, entry_10, entry_11, entry_12, entry_13, entry_14, entry_15,
 };
 // clang-format on
+
+static OfxPluginEntryPoint *ms_overlay_entry(int index) { return overlays[index]; }
 
 static OfxPlugin plugins[MAX_EFFECTS];
 

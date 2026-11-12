@@ -167,4 +167,5 @@ const MsEffect ms_edgeblur_effect = {
     identity,
     0,
     NULL,
+    {NULL, NULL},
 };

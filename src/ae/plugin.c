@@ -64,11 +64,11 @@ enum { BANDPASS, EDGEAWAREBLUR, DISTORT, MOSAIC, GLOW, EDGEBLUR, RACKDEFOCUS, GL
 
 // ---------------------------------------------------------------- parameters
 
-// 1 when parameter type `t` has an After Effects parameter (TEXT and STRING ones are left
-// out, and the green and blue of an RGB are in its colour).
+// 1 when parameter type `t` has an After Effects parameter (TEXT, STRING and BUTTON ones
+// are left out for now, and the green and blue of an RGB are in its colour).
 static int in_ae(MsParamType t) {
     return t != MS_PARAM_TEXT && t != MS_PARAM_STRING && t != MS_PARAM_RGB_PART &&
-           t != MS_PARAM_POINT_Y;
+           t != MS_PARAM_POINT_Y && t != MS_PARAM_BUTTON;
 }
 
 // After Effects index of effect parameter i (0 for one left out).
