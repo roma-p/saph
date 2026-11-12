@@ -132,7 +132,12 @@ enum {
     ATMOSPHERE_FREQ,
     ATMOSPHERE_DETAIL,
     ATMOSPHERE_SEED,
-    ATMOSPHERE_SPEED
+    ATMOSPHERE_SPEED,
+    FLICKER_AMP,
+    FLICKER_SPEED,
+    FLICKER_RANDOMNESS,
+    ENABLE_MOTION_BLUR,
+    SHUTTER_ANGLE
 };
 #define RELATIVE(id, n, l, h, d)                                                                   \
     [id] = {.type = MS_PARAM_DOUBLE,                                                               \
@@ -392,16 +397,54 @@ static const MsParam params[] = {
                           .max = MS_UNBOUNDED,
                           .display_min = -5.0,
                           .display_max = 5.0},
+    [FLICKER_AMP] = {.type = MS_PARAM_DOUBLE,
+                     .name = "flicker_amp",
+                     .label = "Flicker Amp",
+                     .hint = "How much the flare's brightness flickers over time (0: none).",
+                     .min = 0.0,
+                     .max = MS_UNBOUNDED,
+                     .display_max = 2.0},
+    [FLICKER_SPEED] = {.type = MS_PARAM_DOUBLE,
+                       .name = "flicker_speed",
+                       .label = "Flicker Speed",
+                       .hint = "How fast it flickers (0: still).",
+                       .def = 1.0,
+                       .min = 0.0,
+                       .max = MS_UNBOUNDED,
+                       .display_max = 5.0},
+    FRACTION(FLICKER_RANDOMNESS, "flicker_randomness", "Flicker Randomness",
+             "How rarely it flickers: 0 all the time, 1 never; between, only the strongest "
+             "flickers.",
+             0.6),
+    [ENABLE_MOTION_BLUR] = {.type = MS_PARAM_BOOL,
+                            .name = "enable_motion_blur",
+                            .label = "Enable Motion Blur",
+                            .hint = "Blurs the flare along its elements' motion when the hotspot "
+                                    "or the pivot moves (animated)."},
+    [SHUTTER_ANGLE] = {.type = MS_PARAM_DOUBLE,
+                       .name = "shutter_angle",
+                       .label = "Shutter Angle",
+                       .hint = "How long the shutter is open, in degrees of a frame (360: a "
+                               "whole frame), centred on the frame.",
+                       .def = 180.0,
+                       .min = 0.0,
+                       .max = 360.0,
+                       .display_max = 360.0},
 };
+
+// The Motion Blur's samples: about one every this many pixels of travel, at most this many.
+#define MOTION_SPACING 3.0
+#define MOTION_SAMPLES 16
 
 // One render: images and settings of the kernels.
 typedef struct {
-    MsImage *source, *occluder, *rows, *texels, *visible, *flare, *glowed, *output;
+    MsImage *source, *occluder, *rows, *noise_rows, *texels, *visible, *flare, *glowed, *output;
     int from, invert, count, blur, combine, tint;
     int sizes[GLARE_DRAW_LISTS]; // the rows drawn, by how (GLARE_DRAW_*): list k's size
     int spot[2], square; // the occlusion's square: its centre pixel, its half side
     float gain[3], hue, saturation, blur_frac, bg, affect_alpha;
     float occluded_bright, occluded_width; // Occlusion Scale Brightness, Widths, minus 1
+    float flicker_amp, flicker_z, flicker_dead, flicker_scale; // (ms_lensflare_finish)
     // the Atmosphere (draw)
     float amp, freq, persistence, z;
     int octaves;
@@ -420,7 +463,7 @@ static int run(MsApi api, void *user) {
                            MS_IMAGE("visible", j->visible));
     if (status == 0)
         status = MS_KERNEL(MS_K_LENSFLARE_DRAW, api, MS_IMAGE("rows", j->rows),
-                           MS_INT("plain", j->sizes[0]),
+                           MS_IMAGE("noise_rows", j->noise_rows), MS_INT("plain", j->sizes[0]),
                            MS_INT("shadowed", j->sizes[1]), MS_INT("special", j->sizes[2]),
                            MS_INT("special_shadowed", j->sizes[3]),
                            MS_IMAGE("texels", j->texels),
@@ -451,7 +494,10 @@ static int run(MsApi api, void *user) {
                      MS_FLOAT("hue", j->hue), MS_FLOAT("saturation", j->saturation),
                      MS_INT("blur", j->blur), MS_FLOAT("blur_frac", j->blur_frac),
                      MS_FLOAT("bg", j->bg), MS_INT("combine", j->combine), MS_INT("tint", j->tint),
-                     MS_FLOAT("affect_alpha", j->affect_alpha), MS_IMAGE("output", j->output));
+                     MS_FLOAT("affect_alpha", j->affect_alpha),
+                     MS_FLOAT("flicker_amp", j->flicker_amp), MS_FLOAT("flicker_z", j->flicker_z),
+                     MS_FLOAT("flicker_dead", j->flicker_dead),
+                     MS_FLOAT("flicker_scale", j->flicker_scale), MS_IMAGE("output", j->output));
 }
 
 // A width in pixels: whole pixels and the fraction past them.
@@ -591,6 +637,47 @@ static double trigger(double d, double radius, double falloff) {
     return radius > 0 && t > 0 ? 0.977 * pow(t, falloff) : 0.0;
 }
 
+// The rows' settings from the values `v` (at the frame, or at a time of the motion blur) on
+// a frame of fw x fh pixels.
+static void lens_globals(const double *v, double fw, double fh, MsGlareGlobals *g) {
+    // The triggers: by the hotspot's distance to the pivot, and to the frame's nearest edge.
+    // (the hotspot and the pivot one pixel higher than their values, as the reference draws
+    // them)
+    const double hx = v[HOTSPOT], hy = v[HOTSPOT_Y] + 1.0, px = v[PIVOT], py = v[PIVOT_Y] + 1.0;
+    // The triggers' distances: on the frame squeezed to a square (y x width / height).
+    const double aspect = fh > 0 ? fw / fh : 1.0;
+    const double to_pivot = hypot(hx - px, (hy - py) * aspect);
+    // (outside the frame: the distance to its edge)
+    const double to_edge = fabs(fmin(fmin(hx, fw - hx), fmin(hy, fh - hy) * aspect));
+    const double wc = trigger(to_pivot, v[CENTER_RADIUS], v[CENTER_FALLOFF]);
+    const double we = trigger(to_edge, v[EDGE_WIDTH], v[EDGE_FALLOFF]);
+    *g = (MsGlareGlobals){
+        .size = 1.375 * fmax(v[SCALE_WIDTHS], 0.0),
+        .rel_height = v[REL_HEIGHTS],
+        .rays_num_scale = v[RAYS_NUM_SCALE],
+        .rays_length = v[RAYS_LENGTH],
+        .rays_thickness = v[RAYS_THICKNESS],
+        .lens = 1,
+        .hotspot = {hx, hy},
+        .pivot = {px, py},
+        .unit = fmax(fw / 4.0, 1e-6),
+        .frame_width = fw,
+        .frame_height = fh,
+        .gamma = v[GAMMA],
+        .rays_gain = v[RAYS_BRIGHTNESS],
+        .other_width = v[OTHER_WIDTH],
+        .rays_rotate = v[RAYS_ROTATE],
+        .center_bright = (v[CENTER_SCALE_BRIGHTNESS] - 1.0) * wc,
+        .center_width = (v[CENTER_SCALE_WIDTHS] - 1.0) * wc,
+        .edge_bright = (v[EDGE_SCALE_BRIGHTNESS] - 1.0) * we,
+        .edge_width = (v[EDGE_SCALE_WIDTHS] - 1.0) * we,
+    };
+    for (int c = 0; c < 3; ++c) {
+        g->hot_gain[c] = v[HOTSPOT_BRIGHT] * v[HOTSPOT_COLOR + c];
+        g->other_gain[c] = v[OTHER_BRIGHTNESS] * v[OTHER_COLOR + c];
+    }
+}
+
 static int render(const MsRender *r) {
     const double *v = r->values;
     const int w = r->width, h = r->height;
@@ -618,6 +705,14 @@ static int render(const MsRender *r) {
     j.spot[0] = (int)floor(fmin(fmax(v[HOTSPOT], -1e6), 1e6));
     j.spot[1] = (int)floor(fmin(fmax(v[HOTSPOT_Y], -1e6), 1e6));
     j.square = (int)fmin(floor(0.7 * fmax(v[OCCLUSION_SOFTNESS], 0.0) + 1e-3), 1024.0);
+    // Flicker (fitted on the reference's statistics: sd 0.18 x Amp at Randomness 0, frame to
+    // frame correlation 0.66 at Speed 1, at Randomness r a dead zone of 0.175 r (44 % of the
+    // frames unchanged at 0.6) and a scale (1 - r)^0.87; MillSaph's own noise, its own
+    // pattern)
+    j.flicker_amp = (float)v[FLICKER_AMP];
+    j.flicker_z = (float)fmod(0.37 * v[FLICKER_SPEED] * r->time + 11.3, 4096.0);
+    j.flicker_dead = (float)(0.175 * v[FLICKER_RANDOMNESS]);
+    j.flicker_scale = (float)pow(fmax(1.0 - v[FLICKER_RANDOMNESS], 0.0), 0.87);
     j.occluded_bright = (float)(v[OCCLUSION_SCALE_BRIGHTNESS] - 1.0);
     j.occluded_width = (float)(v[OCCLUSION_SCALE_WIDTHS] - 1.0);
     for (int c = 0; c < 3; ++c)
@@ -639,50 +734,70 @@ static int render(const MsRender *r) {
     j.persistence = (float)v[ATMOSPHERE_DETAIL];
     j.z = (float)(fmod(0.032 * v[ATMOSPHERE_SPEED] * r->time + 37.1 * v[ATMOSPHERE_SEED], 4096.0));
 
-    // The triggers: by the hotspot's distance to the pivot, and to the frame's nearest edge.
-    // (the hotspot and the pivot one pixel higher than their values, as the reference draws
-    // them)
-    const double hx = v[HOTSPOT], hy = v[HOTSPOT_Y] + 1.0, px = v[PIVOT], py = v[PIVOT_Y] + 1.0;
-    // The triggers' distances: on the frame squeezed to a square (y x width / height).
-    const double aspect = fh > 0 ? fw / fh : 1.0;
-    const double to_pivot = hypot(hx - px, (hy - py) * aspect);
-    // (outside the frame: the distance to its edge)
-    const double to_edge = fabs(fmin(fmin(hx, fw - hx), fmin(hy, fh - hy) * aspect));
-    const double wc = trigger(to_pivot, v[CENTER_RADIUS], v[CENTER_FALLOFF]);
-    const double we = trigger(to_edge, v[EDGE_WIDTH], v[EDGE_FALLOFF]);
-    MsGlareGlobals g = {
-        .size = 1.375 * fmax(v[SCALE_WIDTHS], 0.0),
-        .rel_height = v[REL_HEIGHTS],
-        .rays_num_scale = v[RAYS_NUM_SCALE],
-        .rays_length = v[RAYS_LENGTH],
-        .rays_thickness = v[RAYS_THICKNESS],
-        .lens = 1,
-        .hotspot = {hx, hy},
-        .pivot = {px, py},
-        .unit = fmax(fw / 4.0, 1e-6),
-        .frame_width = fw,
-        .frame_height = fh,
-        .gamma = v[GAMMA],
-        .rays_gain = v[RAYS_BRIGHTNESS],
-        .other_width = v[OTHER_WIDTH],
-        .rays_rotate = v[RAYS_ROTATE],
-        .center_bright = (v[CENTER_SCALE_BRIGHTNESS] - 1.0) * wc,
-        .center_width = (v[CENTER_SCALE_WIDTHS] - 1.0) * wc,
-        .edge_bright = (v[EDGE_SCALE_BRIGHTNESS] - 1.0) * we,
-        .edge_width = (v[EDGE_SCALE_WIDTHS] - 1.0) * we,
-    };
-    for (int c = 0; c < 3; ++c) {
-        g.hot_gain[c] = v[HOTSPOT_BRIGHT] * v[HOTSPOT_COLOR + c];
-        g.other_gain[c] = v[OTHER_BRIGHTNESS] * v[OTHER_COLOR + c];
+    // The Motion Blur: the elements at `samples` times spread evenly over the shutter
+    // (Shutter Angle / 360 of a frame, centred on the frame, as the reference's: no shift
+    // mid-motion, half the blur on a key's still side), each 1 / samples as bright; samples
+    // about every MOTION_SPACING pixels of the hotspot's and pivot's travel, at most
+    // MOTION_SAMPLES. (The reference's blur of a soft blob: a box over the shutter, within
+    // 0.5 % of its energy.) The occlusion, the Diffraction Glow, the Atmosphere and the Flicker:
+    // at the frame.
+    int samples = 1;
+    const double shutter = fmin(fmax(v[SHUTTER_ANGLE], 0.0), 360.0) / 360.0;
+    if (v[ENABLE_MOTION_BLUR] != 0.0 && shutter > 0 && r->values_at) {
+        double a[MS_MAX_PARAMS], b[MS_MAX_PARAMS];
+        if (r->values_at(r, r->time - 0.5 * shutter, a) &&
+            r->values_at(r, r->time + 0.5 * shutter, b)) {
+            const double travel = hypot(b[HOTSPOT] - a[HOTSPOT], b[HOTSPOT_Y] - a[HOTSPOT_Y]) +
+                                  hypot(b[PIVOT] - a[PIVOT], b[PIVOT_Y] - a[PIVOT_Y]);
+            samples = (int)fmin(ceil(travel / MOTION_SPACING), MOTION_SAMPLES);
+            samples = samples > 1 ? samples : 1;
+        }
     }
-
+    const int capacity = samples * GLARE_MAX_ELEMENTS;
     const size_t text_length = strlen(lens);
     MsJson *nodes = malloc((text_length + 1) * sizeof(MsJson));
-    float(*rows)[GLARE_FIELDS] = calloc(GLARE_MAX_ELEMENTS, sizeof *rows);
+    float(*rows)[GLARE_FIELDS] = calloc((size_t)capacity, sizeof *rows);
     MsLensTextures textures = {.count = 0};
-    j.count = nodes && rows ? ms_glare_style(lens, nodes, (int)text_length + 1, &g, rows,
-                                             GLARE_MAX_ELEMENTS, &textures)
-                            : -1;
+    j.count = nodes && rows ? 0 : -1;
+    // (the frame's own sample last: `nodes` then holds the lens as `textures` describes it)
+    for (int k = samples - 1; k >= 0 && j.count >= 0; --k) {
+        double at[MS_MAX_PARAMS];
+        const double *vk = v;
+        if (samples > 1 && r->values_at(r, r->time + shutter * ((k + 0.5) / samples - 0.5), at))
+            vk = at;
+        MsGlareGlobals g;
+        lens_globals(vk, fw, fh, &g);
+        MsLensTextures again = {.count = 0}; // (the same as the frame's)
+        const int n = ms_glare_style(lens, nodes, (int)text_length + 1, &g, rows + j.count,
+                                     GLARE_MAX_ELEMENTS, k == 0 ? &textures : &again);
+        if (n < 0) {
+            j.count = -1;
+            break;
+        }
+        for (int e = j.count; e < j.count + n; ++e) {
+            if (rows[e][GLARE_SHADOW_ROW] > 0)
+                rows[e][GLARE_SHADOW_ROW] += (float)j.count;
+            for (int c = 0; c < 3; ++c)
+                rows[e][GLARE_GAIN_R + c] /= (float)samples;
+        }
+        j.count += n;
+    }
+    // The noisy rows' noises (radius noise, noise_brightness: the lens's alone), computed once
+    // for each different one (the motion blur's times share them): the noise rows.
+    float(*noise_rows)[GLARE_FIELDS] = calloc(GLARE_MAX_ELEMENTS, sizeof *noise_rows);
+    int noises = 0;
+    for (int e = 0; noise_rows && e < j.count; ++e) {
+        float *row = rows[e];
+        if (!(row[GLARE_RN_OCTAVES] > 0 || row[GLARE_NB] != 0))
+            continue;
+        const size_t size = (GLARE_NB_BLUR + 1 - GLARE_RN_OCTAVES) * sizeof(float);
+        int k = 0;
+        while (k < noises && memcmp(noise_rows[k] + GLARE_RN_OCTAVES, row + GLARE_RN_OCTAVES, size))
+            ++k;
+        if (k == noises && noises < GLARE_MAX_ELEMENTS)
+            memcpy(noise_rows[noises++], row, sizeof *noise_rows);
+        row[GLARE_NOISE_SLOT] = (float)(k < noises ? k : 0);
+    }
     // The lens's images and MillSaph's textures it asks for: their texels, GLARE_TEXEL_ROW
     // floats a row (one row of 0 without); the textures generated here, on the CPU.
     const size_t texel_count = j.count >= 0 ? textures.texels : 0;
@@ -704,8 +819,12 @@ static int render(const MsRender *r) {
     }
     // The rows drawn (none of size 0, no shadow's own row) in lists by how, one after the
     // other, then the shadows' rows (their references renumbered).
-    float(*sorted)[GLARE_FIELDS] = rows ? calloc(GLARE_MAX_ELEMENTS, sizeof *sorted) : NULL;
-    int at[GLARE_MAX_ELEMENTS], n = 0;
+    float(*sorted)[GLARE_FIELDS] = rows ? calloc((size_t)capacity, sizeof *sorted) : NULL;
+    int *at = sorted ? malloc((size_t)capacity * sizeof(int)) : NULL, n = 0;
+    if (!at) {
+        free(sorted);
+        sorted = NULL;
+    }
     for (int list = 0; sorted && list <= GLARE_DRAW_LISTS; ++list)
         for (int e = 0; e < j.count; ++e) {
             const int drawn = rows[e][GLARE_R] > 0 && rows[e][GLARE_HIDDEN] == 0;
@@ -725,12 +844,15 @@ static int render(const MsRender *r) {
         if (sorted[e][GLARE_SHADOW_ROW] > 0)
             sorted[e][GLARE_SHADOW_ROW] = (float)(at[(int)sorted[e][GLARE_SHADOW_ROW] - 1] + 1);
     if (sorted)
-        memcpy(rows, sorted, sizeof *sorted * GLARE_MAX_ELEMENTS);
+        memcpy(rows, sorted, sizeof *sorted * (size_t)capacity);
     free(sorted);
-    if (j.count < 0 || !texels) {
+    free(at);
+    if (j.count < 0 || !texels || !noise_rows) {
+        free(noise_rows);
         free(texels);
         free(rows);
-        snprintf(r->err, r->err_size, texels ? "the Lens is not a lens (JSON)" : "not enough memory");
+        snprintf(r->err, r->err_size,
+                 j.count < 0 ? "the Lens is not a lens (JSON)" : "not enough memory");
         return 0;
     }
 
@@ -754,12 +876,14 @@ static int render(const MsRender *r) {
     float visible[4] = {1, 1, 1, 1};
     int ok = flare != NULL && (!glow || glowed != NULL);
     if (ok) {
-        MsImage source, occluder, rows_image, texels_image, visible_image, flare_image, glowed_image,
+        MsImage source, occluder, rows_image, noise_image, texels_image, visible_image, flare_image, glowed_image,
             output;
         ms_image_rgba(&source, r->inputs[SOURCE].pixels, r->inputs[SOURCE].row, r->half, w, h);
         ms_image_rgba(&occluder, r->inputs[OCCLUSION].pixels, r->inputs[OCCLUSION].row, r->half,
                       w, h);
-        ms_image(&rows_image, &rows[0][0], GLARE_FIELDS, GLARE_FIELDS, GLARE_MAX_ELEMENTS, 1);
+        ms_image(&rows_image, &rows[0][0], GLARE_FIELDS, GLARE_FIELDS, capacity, 1);
+        ms_image(&noise_image, &noise_rows[0][0], GLARE_FIELDS, GLARE_FIELDS, GLARE_MAX_ELEMENTS,
+                 1);
 
         ms_image(&texels_image, texels, GLARE_TEXEL_ROW, GLARE_TEXEL_ROW,
                  texel_rows > 0 ? texel_rows : 1, 1);
@@ -774,22 +898,24 @@ static int render(const MsRender *r) {
         j.source = &source;
         j.occluder = j.from && !same ? &occluder : &source;
         j.rows = &rows_image;
+        j.noise_rows = &noise_image;
         j.texels = &texels_image;
         j.visible = &visible_image;
         j.flare = &flare_image;
         j.glowed = glow ? &glowed_image : NULL;
         j.output = &output;
-        // Inputs uploaded to the GPU: the Source, the style's rows, the lens's texels, the
-        // Occlusion input.
-        MsImage *inputs[] = {&source, &rows_image, &texels_image, j.occluder};
+        // Inputs uploaded to the GPU: the Source, the style's rows and noise rows, the lens's
+        // texels, the Occlusion input.
+        MsImage *inputs[] = {&source, &rows_image, &noise_image, &texels_image, j.occluder};
         MsImage *between[] = {&visible_image, &flare_image, &glowed_image};
-        ok = ms_run(run, &j, inputs, j.occluder == &source ? 3 : 4, between, glow ? 3 : 2,
+        ok = ms_run(run, &j, inputs, j.occluder == &source ? 4 : 5, between, glow ? 3 : 2,
                     &output, r->info, r->err, r->err_size);
     } else {
         snprintf(r->err, r->err_size, "not enough memory");
     }
     free(glowed);
     free(flare);
+    free(noise_rows);
     free(texels);
     free(rows);
     return ok;

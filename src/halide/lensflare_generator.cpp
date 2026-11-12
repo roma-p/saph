@@ -96,6 +96,9 @@ class LensFlareOcclusion : public Generator<LensFlareOcclusion> {
 class LensFlareDraw : public Generator<LensFlareDraw> {
   public:
     Input<Buffer<float, 2>> rows{"rows"}; // (field, element), glare_layout.h
+    // The noisy elements' rows (GLARE_MAX_ELEMENTS at most): their noises, computed once for
+    // every row whose GLARE_NOISE_SLOT names one
+    Input<Buffer<float, 2>> noise_rows{"noise_rows"};
     // The rows drawn, in lists by how (glare_layout.h GLARE_DRAW_*, one after the other from
     // row 0): how many in each
     Input<int> plain{"plain"}, shadowed_count{"shadowed"}, special_count{"special"},
@@ -117,7 +120,11 @@ class LensFlareDraw : public Generator<LensFlareDraw> {
                                octaves, persistence, 12, "octave");
         atmosphere(x, y) = max(1.0f + amp * n, 0.0f);
         ms_glare::Field field = [&](Expr i, Expr el) {
-            return rows(clamp(i, 0, GLARE_FIELDS - 1), clamp(el, 0, GLARE_MAX_ELEMENTS - 1));
+            return rows(clamp(i, 0, GLARE_FIELDS - 1), clamp(el, 0, rows.dim(1).extent() - 1));
+        };
+        auto noise_field = [&](Expr i, Expr slot) {
+            return noise_rows(clamp(i, 0, GLARE_FIELDS - 1),
+                              clamp(slot, 0, noise_rows.dim(1).extent() - 1));
         };
         // Occlusion Scale Brightness and Widths: each element brighter and wider as the
         // flare is hidden (w = 2 x the hidden part, at most 1), as much as it responds to
@@ -150,20 +157,21 @@ class LensFlareDraw : public Generator<LensFlareDraw> {
         Func raw("raw"), thresholded("thresholded"), noises("noises");
         Expr at = -ms_glare::PI + (cast<float>(i) + 0.5f) * (2.0f * ms_glare::PI / ANGLES);
         auto around = [&](int rho, int seed, int octaves, int scale, float mean, float shift) {
-            Expr n = ms_noise::fbm(cos(at) * field(rho, e) + shift, sin(at) * field(rho, e) + 3.3f,
-                                   field(seed, e), field(octaves, e), 0.43f, 8,
+            Expr n = ms_noise::fbm(cos(at) * noise_field(rho, e) + shift,
+                                   sin(at) * noise_field(rho, e) + 3.3f, noise_field(seed, e),
+                                   noise_field(octaves, e), 0.43f, 8,
                                    "octave" + std::to_string(rho));
-            return clamp(mean + field(scale, e) * n, 0.0f, 1.0f);
+            return clamp(mean + noise_field(scale, e) * n, 0.0f, 1.0f);
         };
         raw(i, e, which) = select(which == 0,
                                   around(GLARE_RN_RHO, GLARE_RN_SEED, GLARE_RN_OCTAVES,
                                          GLARE_RN_SCALE, 0.47f, 11.1f),
                                   around(GLARE_NB_RHO, GLARE_NB_SEED, GLARE_NB_OCTAVES,
                                          GLARE_NB_SCALE, 0.5f, 7.7f));
-        thresholded(i, e) = ms_glare::threshold(raw(i, e, 1), field(GLARE_NB_WIDTH, e),
-                                                field(GLARE_NB_SOFT, e));
+        thresholded(i, e) = ms_glare::threshold(raw(i, e, 1), noise_field(GLARE_NB_WIDTH, e),
+                                                noise_field(GLARE_NB_SOFT, e));
         RDom tap(0, TAPS, "tap");
-        Expr blur = field(GLARE_NB_BLUR, e);
+        Expr blur = noise_field(GLARE_NB_BLUR, e);
         Expr step = cast<int>(round(blur * ANGLES * ((cast<float>(tap) + 0.5f) / TAPS - 0.5f)));
         Expr averaged = select(blur > 0.0f, sum(thresholded((i + step + 4 * ANGLES) % ANGLES, e)) / TAPS,
                                thresholded(i, e));
@@ -172,7 +180,7 @@ class LensFlareDraw : public Generator<LensFlareDraw> {
             Expr t = (a + ms_glare::PI) * (ANGLES / (2.0f * ms_glare::PI)) - 0.5f;
             Expr t0 = floor(t), w = t - t0;
             Expr i0 = (cast<int>(t0) + ANGLES) % ANGLES, i1 = (i0 + 1) % ANGLES;
-            Expr row = clamp(el, 0, GLARE_MAX_ELEMENTS - 1);
+            Expr row = clamp(cast<int>(field(GLARE_NOISE_SLOT, el)), 0, GLARE_MAX_ELEMENTS - 1);
             return noises(i0, row, k) * (1.0f - w) + noises(i1, row, k) * w;
         };
         // The element's image (if any) at the pixel: bilinear between its texels, 0 off it.
@@ -226,7 +234,9 @@ class LensFlareDraw : public Generator<LensFlareDraw> {
 
         texels.dim(0).set_bounds(0, GLARE_TEXEL_ROW);
         rows.dim(0).set_bounds(0, GLARE_FIELDS);
-        rows.dim(1).set_bounds(0, GLARE_MAX_ELEMENTS);
+        rows.dim(1).set_min(0);
+        noise_rows.dim(0).set_bounds(0, GLARE_FIELDS);
+        noise_rows.dim(1).set_bounds(0, GLARE_MAX_ELEMENTS);
         ms::interleaved(visible);
         ms::interleaved(flare);
         Var xo("xo"), yo("yo"), xi("xi"), yi("yi");
@@ -445,12 +455,20 @@ class LensFlareFinish : public Generator<LensFlareFinish> {
     Input<int> combine{"combine"};  // 0: Screen, 1: Add, 2: Flare Only
     Input<int> tint{"tint"};        // Tint Bg Whites
     Input<float> affect_alpha{"affect_alpha"};
+    // Flicker: the flare's brightness x 1 + amp F, F MillSaph's noise over time (at z) with a
+    // dead zone (dead) and a scale (scale) by Flicker Randomness
+    Input<float> flicker_amp{"flicker_amp"}, flicker_z{"flicker_z"};
+    Input<float> flicker_dead{"flicker_dead"}, flicker_scale{"flicker_scale"};
     Output<Buffer<float, 3>> output{"output"};
 
     void generate() {
         const bool gpu = get_target().has_gpu_feature();
         Func lit("lit"), hued("hued"), turned("turned");
-        Expr gain = select(c == 0, gain_r, c == 1, gain_g, gain_b);
+        // (sd 0.18: the reference's at Randomness 0; the noise's own sd 0.2816)
+        Expr n = ms_noise::perlin3(0.37f, 0.71f, flicker_z) * (0.18f / 0.2816f);
+        Expr past = max(abs(n) - flicker_dead, 0.0f) * flicker_scale;
+        Expr flicker = max(1.0f + flicker_amp * select(n < 0.0f, -past, past), 0.0f);
+        Expr gain = select(c == 0, gain_r, c == 1, gain_g, gain_b) * flicker;
         lit(x, y, c) = select(c < 3, flare(x, y, min(c, 2)) * gain, 0.0f);
         hued(x, y, c) = ms::hue_shifted(lit(x, y, 0), lit(x, y, 1), lit(x, y, 2), c, hue,
                                         lit(x, y, c));

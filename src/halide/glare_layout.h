@@ -81,6 +81,8 @@ enum {
     GLARE_NB_OCTAVES,
     GLARE_NB_SCALE,
     GLARE_NB_BLUR,        // blur_theta_map: the thresholded noise averaged over this x a turn
+    GLARE_NOISE_SLOT,     // Lens Flare: the row of the noise rows with its noises (the rows
+                          // of a motion blur's times share them)
     GLARE_BRIGHT_RESPONSE, // Lens Flare: brightness_response, width_response (Occlusion Scale)
     GLARE_WIDTH_RESPONSE,
     GLARE_TEX,            // Lens Flare: 1 when an image multiplies the element (or is it)

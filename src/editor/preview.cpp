@@ -78,7 +78,8 @@ bool Preview::render(const std::string &text, const PreviewSettings &s, int widt
     MsRunInfo info;
     const MsRender r = {values,  connected, inputs,  width,          height, (double)width,
                         (double)height, output_.data(), (ptrdiff_t)width * 4, message,
-                        sizeof message, 0,  &info,   texts,          0.0};
+                        sizeof message, 0,  &info,   texts,          0.0,
+                        nullptr,        nullptr};
     if (!e->render(&r)) {
         err = message;
         return false;

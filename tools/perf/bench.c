@@ -174,7 +174,7 @@ static double run_case(const Case *c, MsApi api, const float *source, float **bl
     MsRunInfo info;
     MsRender r = {values, connected, inputs,   width,      height,
                   width,  height,    half ? (void *)result : (void *)output,
-                  (ptrdiff_t)width * 4, err, sizeof err, half, &info, NULL, 0};
+                  (ptrdiff_t)width * 4, err, sizeof err, half, &info, NULL, 0, NULL, NULL};
     MsProfile profile = defaults[api];
     if (c->tweak)
         c->tweak(&profile);
@@ -259,7 +259,7 @@ static double timed(const MsEffect *e, const double *values, const int *connecte
                     char *err, size_t err_size) {
     MsRunInfo info;
     MsRender r = {values, connected, inputs,   width, height, width, height, output,
-                  (ptrdiff_t)width * 4, err, err_size, 0, &info, NULL, 0};
+                  (ptrdiff_t)width * 4, err, err_size, 0, &info, NULL, 0, NULL, NULL};
     ms_api_only(api);
     const double best = time_renders(e, &r, first);
     *used = info.api;

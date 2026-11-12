@@ -217,9 +217,56 @@ static const char *get_text(OfxParamSetHandle params, const char *name, OfxTime 
     return value;
 }
 
-// The parameter values at the time of `in_args` (WIDTH and HEIGHT in pixels of the frame
-// `px` x `py`; STRING ones in `texts`, the host's own strings) and which inputs are
-// connected. Returns 0 when the host does not give them.
+// The parameter values at `time` (WIDTH and HEIGHT in pixels of the frame `px` x `py`,
+// POINT ones x `scale`; STRING ones in `texts`, the host's own strings).
+static void fill_values(const MsEffect *e, OfxParamSetHandle params, OfxTime time, double px,
+                        double py, const double scale[2], double *values, const char **texts) {
+    for (int i = 0; i < e->param_count; ++i) {
+        const MsParam *p = &e->params[i];
+        texts[i] = NULL;
+        switch (p->type) {
+        case MS_PARAM_CHOICE:
+        case MS_PARAM_BOOL:
+            values[i] = get_int(params, p->name, time);
+            break;
+        case MS_PARAM_TEXT:
+            values[i] = 0.0;
+            break;
+        case MS_PARAM_STRING:
+            values[i] = 0.0;
+            texts[i] = get_text(params, p->name, time);
+            break;
+        case MS_PARAM_RGB: // red, green and blue in this entry and the next two
+            get_rgb(params, p->name, time, &values[i]);
+            break;
+        case MS_PARAM_RGB_PART: // read with the MS_PARAM_RGB before
+        case MS_PARAM_POINT_Y:  // with the MS_PARAM_POINT before
+            break;
+        case MS_PARAM_BUTTON:
+            values[i] = 0.0;
+            break;
+        case MS_PARAM_POINT: // canonical coordinates: x the render scale
+            get_point(params, p->name, time, &values[i]);
+            values[i] *= scale[0];
+            values[i + 1] *= scale[1];
+            break;
+        case MS_PARAM_WIDTH:
+            values[i] = get_double(params, p->name, time) * px;
+            break;
+        case MS_PARAM_HEIGHT:
+            values[i] = get_double(params, p->name, time) * py;
+            break;
+        case MS_PARAM_DOUBLE:
+        case MS_PARAM_ANGLE:
+            values[i] = get_double(params, p->name, time);
+            break;
+        }
+    }
+}
+
+// The parameter values at the time of `in_args` (as fill_values; WIDTH and HEIGHT in pixels
+// of the frame `px` x `py`) and which inputs are connected. Returns 0 when the host does not
+// give them.
 static int read_values(const MsEffect *e, OfxImageEffectHandle effect, OfxPropertySetHandle in_args,
                        OfxTime *time, double *px, double *py, double *values, const char **texts,
                        int *connected) {
@@ -230,49 +277,29 @@ static int read_values(const MsEffect *e, OfxImageEffectHandle effect, OfxProper
         return 0;
     double scale[2];
     frame_size(effect, in_args, px, py, scale);
-    for (int i = 0; i < e->param_count; ++i) {
-        const MsParam *p = &e->params[i];
-        texts[i] = NULL;
-        switch (p->type) {
-        case MS_PARAM_CHOICE:
-        case MS_PARAM_BOOL:
-            values[i] = get_int(params, p->name, *time);
-            break;
-        case MS_PARAM_TEXT:
-            values[i] = 0.0;
-            break;
-        case MS_PARAM_STRING:
-            values[i] = 0.0;
-            texts[i] = get_text(params, p->name, *time);
-            break;
-        case MS_PARAM_RGB: // red, green and blue in this entry and the next two
-            get_rgb(params, p->name, *time, &values[i]);
-            break;
-        case MS_PARAM_RGB_PART: // read with the MS_PARAM_RGB before
-        case MS_PARAM_POINT_Y:  // with the MS_PARAM_POINT before
-            break;
-        case MS_PARAM_BUTTON:
-            values[i] = 0.0;
-            break;
-        case MS_PARAM_POINT: // canonical coordinates: x the render scale
-            get_point(params, p->name, *time, &values[i]);
-            values[i] *= scale[0];
-            values[i + 1] *= scale[1];
-            break;
-        case MS_PARAM_WIDTH:
-            values[i] = get_double(params, p->name, *time) * *px;
-            break;
-        case MS_PARAM_HEIGHT:
-            values[i] = get_double(params, p->name, *time) * *py;
-            break;
-        case MS_PARAM_DOUBLE:
-        case MS_PARAM_ANGLE:
-            values[i] = get_double(params, p->name, *time);
-            break;
-        }
-    }
+    fill_values(e, params, *time, *px, *py, scale, values, texts);
     for (int c = 0; c < e->clip_count; ++c)
         connected[c] = clip_connected(effect, e->clips[c].clip);
+    return 1;
+}
+
+// MsRender.values_at: the values at another time of the render's instance (its STRING ones
+// left as they are at the render's time).
+typedef struct {
+    const MsEffect *e;
+    OfxImageEffectHandle effect;
+    OfxPropertySetHandle in_args;
+} RenderCaller;
+
+static int values_at(const MsRender *r, double time, double *values) {
+    const RenderCaller *c = r->caller;
+    OfxParamSetHandle params;
+    const char *texts[MS_MAX_PARAMS];
+    double px, py, scale[2];
+    if (ms_effect->getParamSet(c->effect, &params) != kOfxStatOK)
+        return 0;
+    frame_size(c->effect, c->in_args, &px, &py, scale);
+    fill_values(c->e, params, time, px, py, scale, values, texts);
     return 1;
 }
 
@@ -285,12 +312,15 @@ static OfxStatus render(const MsEffect *e, OfxImageEffectHandle effect,
     int connected[MS_MAX_CLIPS];
     if (!read_values(e, effect, in_args, &time, &px, &py, values, texts, connected))
         return kOfxStatFailed;
+    RenderCaller caller = {e, effect, in_args};
     MsRender r = {.values = values,
                   .connected = connected,
                   .frame_width = px,
                   .frame_height = py,
                   .texts = texts,
-                  .time = time};
+                  .time = time,
+                  .values_at = values_at,
+                  .caller = &caller};
     return ms_render_with(effect, in_args, e, &r);
 }
 

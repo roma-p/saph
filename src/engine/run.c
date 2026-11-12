@@ -40,7 +40,7 @@ static int failed[MS_API_COUNT];
 static int used[MS_API_COUNT];
 static MsApi only = MS_API_COUNT; // ms_api_only
 
-#define MAX_INPUTS 4 // images an effect uploads (ms_run's inputs)
+#define MAX_INPUTS 5 // images an effect uploads (ms_run's inputs)
 static MsMutex lock = MS_MUTEX_INIT;
 
 const struct halide_device_interface_t *ms_device_interface(MsApi api) {

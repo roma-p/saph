@@ -96,7 +96,7 @@ static inline int ms_same_input(const MsInput *a, const MsInput *b) {
 }
 
 // What an effect's render function receives. Images are width x height.
-typedef struct {
+typedef struct MsRender {
     const double *values;  // one per parameter, in table order; WIDTH and HEIGHT in pixels
     const int *connected;  // one per input: 1 if it has an image
     const MsInput *inputs; // one per input, in table order (MsClip.outside where a connected
@@ -115,6 +115,11 @@ typedef struct {
     // caller has none to give (the effects then take their default texts).
     const char *const *texts;
     double time; // the frame rendered (the host's time, in frames)
+    // Optional (NULL: the caller cannot): the parameters' values at another time (frames, e.g.
+    // between two frames for a motion blur) into `values`, as `values` holds them at `time`;
+    // returns 0 when it cannot. `caller`: the caller's own.
+    int (*values_at)(const struct MsRender *r, double time, double *values);
+    void *caller;
 } MsRender;
 
 typedef struct {

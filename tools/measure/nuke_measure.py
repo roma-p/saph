@@ -245,6 +245,15 @@ def set_knob(n, name, value):
     k = find_knob(n, name)
     if k is None:
         return False
+    if isinstance(value, dict) and "keys" in value:
+        # animated: {"keys": [[frame, value or [x, y]], ...]} (linear between the keys)
+        k.setAnimated()
+        for frame, v in value["keys"]:
+            for i, c in enumerate(v if isinstance(v, list) else [v]):
+                k.setValueAt(c, frame, i)
+        for curve in k.animations():
+            curve.changeInterpolation(curve.keys(), nuke.LINEAR)
+        return True
     if k.Class() == "Enumeration_Knob" and isinstance(value, str):
         k.setValue(value)
     elif isinstance(value, bool):

@@ -338,10 +338,12 @@ static void add_element(Builder *b, int e) {
 
 // Lens Flare: element e (just added, row `owner`) masked by the lens's shadow when it asks
 // (use_shadow_p): a row of the shadow element of radius R x shadow_rel_scale (R: the
-// element's), centred on the element moved by R x (shadow_amount_at_edge x 0.31 (D - 0.5)^1.26 -
-// shadow_offset_along_axis) towards the pivot (D: the hotspot's distance to the pivot, in
-// units; fitted on D 0.7 to 2.37, amounts -7 to 7, any centre) and R x shadow_offset_off_axis
-// across.
+// element's), centred on the element moved by R x (amount max(|amount| / 2, 1)^0.09 x law -
+// shadow_offset_along_axis) towards the pivot and R x shadow_offset_off_axis across. The law,
+// by D (the hotspot's distance to the pivot, in units) and the delay (shadow_animation_delay):
+// none up to D = 5 delay, then (0.29 + 0.19 delay) (D - 5 delay)^(1.29 + 1.5 delay); at delay
+// 0, 0.2375 D^1.06 (amount: shadow_amount_at_edge; fitted on D 0.25 to 2.8, delays 0 to 1,
+// within 0.02 R at amount 2; amounts -7 to 7, any centre, at delay 0.1).
 static void add_shadow(Builder *b, int e, int owner) {
     const MsGlareGlobals *g = b->g;
     if (b->shadow < 0 || get(b, e, "use_shadow_p", 0.0) == 0.0 || b->count >= b->max ||
@@ -352,8 +354,12 @@ static void add_shadow(Builder *b, int e, int owner) {
     const double length = sqrt(ax * ax + ay * ay);
     const double ux = length > 0 ? ax / length : 1.0, uy = length > 0 ? ay / length : 0.0;
     const double d = length / g->unit;
-    const double along = get(b, e, "shadow_amount_at_edge", 1.0) * 0.31 *
-                             pow(fmax(d - 0.5, 0.0), 1.26) -
+    const double delay = fmax(get(b, e, "shadow_animation_delay", 0.1), 0.0);
+    const double past = fmax(d - 5.0 * delay, 0.0);
+    const double law = delay > 0 ? (0.29 + 0.19 * delay) * pow(past, 1.29 + 1.5 * delay)
+                                 : 0.2375 * pow(past, 1.06);
+    const double amount = get(b, e, "shadow_amount_at_edge", 1.0);
+    const double along = amount * pow(fmax(fabs(amount) / 2.0, 1.0), 0.09) * law -
                          get(b, e, "shadow_offset_along_axis", 0.0);
     const double across = get(b, e, "shadow_offset_off_axis", 0.0);
     float *row = b->rows[owner];
