@@ -16,6 +16,10 @@ This folder has the tools; `HANDOFF.md` has the working rules of the project.
 | `probes.py` | Writes the probe images (impulse, step, ramps, levels, colours, noise, alpha, checker) as EXR. |
 | `compare.py` | Compares two EXR files or folders: largest and mean difference, where. |
 | `exr.py` | Reads and writes uncompressed EXR with numpy (no OpenEXR module). |
+| `ms_render.py` | MillSaph's renders of a jobs file without Nuke (`build/test_host`, `build/`'s plugin: nothing to install), the same pixels as `nuke_measure.py`'s; as a module, `render()` and `sweep()` to fit a setting by rendering over a range of it. |
+| `scores.py` | How close a batch is, job by job: p99.9 of the difference / the reference's peak, L1, energy; the worst first, a summary; `--save`, `--diff` to see what a change did. |
+| `sheet.py` | Contact sheets (PNG): reference beside MillSaph, sequences frame by frame. |
+| `bitexact.sh` | Whether a change renders exactly as before: `build/` against a commit built in a worktree, every case of `tools/test_cases.txt` on the CPU and the GPU, byte for byte. |
 
 Everything goes through `~/millsaph_measure/` (in the home folder: Nuke's interface may not
 see a terminal's `/tmp`):
@@ -43,6 +47,18 @@ licensed, run the same jobs from the Script Editor of Nuke's interface:
 MILLSAPH_MEASURE = "jobs ~/millsaph_measure/jobs/glow_1.json"
 exec(open("/path/to/MillSaph/tools/measure/nuke_measure.py").read())
 ```
+
+Once a model is in MillSaph, `ms_render.py` renders MillSaph's side of any batch headless
+(the reference's still needs Nuke), so that settings can be tried and fitted without
+installing (e.g. `sweep()` over an offset, against the reference's render):
+
+```
+python3 tools/measure/ms_render.py ~/millsaph_measure/jobs/lensflare_28_ms.json
+python3 tools/measure/scores.py ~/millsaph_measure/jobs/lensflare_28_ms.json --save before.json
+python3 tools/measure/sheet.py ~/millsaph_measure/jobs/lensflare_28_ms.json sheet.png --crop
+```
+
+(Not the Motion Blur: test_host gives no values between frames.)
 
 MillSaph has to be installed in that Nuke (`OFX_PLUGIN_PATH=<MillSaph>/build`, or a copy of
 `MillSaph.ofx.bundle` in the OFX folder; an old copy elsewhere, e.g. `/usr/OFX/Plugins`, can

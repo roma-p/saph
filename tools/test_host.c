@@ -3,7 +3,7 @@
 // an instance and renders one frame of a test pattern with every input connected.
 //
 //   test_host <plugin.ofx> <effect id> [name=value ...] [!Clip ...] [--size WxH] [--frames N]
-//             [--save file] [--pad N]
+//             [--save file] [--pad N] [--half] [--image Clip=file] [--time T]
 //
 //   name=value   sets a parameter (choices and checkboxes by number; a text: name=text, or
 //                name=@file for a file's contents)
@@ -16,6 +16,9 @@
 //                than the window, as hosts can give)
 //   --half       images in 16-bit floats, as hosts working in half give them (--save
 //                still writes floats)
+//   --image Clip=file  that input's image from a file (raw RGBA floats, bottom row first,
+//                as --save writes them; the render's size with --pad)
+//   --time T     renders frame T (default 1)
 //
 // Prints what the effect declares and the result of each action; exits with 1 if an
 // action fails. With an effect id the plugin does not have (e.g. "list"), lists its effects.
@@ -172,7 +175,7 @@ typedef struct {
 } Param;
 
 // The strings set on the command line (no allocation: nothing to free at the exit).
-static char text_pool[1 << 20];
+static char text_pool[1 << 24]; // (a lens with its images written in it: some MB)
 static size_t text_used;
 
 static Param params[MAX_PARAMS];
@@ -395,6 +398,20 @@ static void make_images(int argc, char **argv) {
         for (int a = 3; a < argc; ++a)
             if (argv[a][0] == '!' && strcmp(argv[a] + 1, clip->name) == 0)
                 connected = 0;
+        // --image Clip=file: its pixels from the file
+        const size_t name_length = strlen(clip->name);
+        for (int a = 3; a + 1 < argc && !output; ++a) {
+            const char *v = argv[a + 1];
+            if (strcmp(argv[a], "--image") != 0 || strncmp(v, clip->name, name_length) != 0 ||
+                v[name_length] != '=')
+                continue;
+            FILE *f = fopen(v + name_length + 1, "rb");
+            const size_t floats = (size_t)w * h * 4;
+            if (!f || fread(clip->pixels, sizeof(float), floats, f) != floats)
+                printf("cannot read %s (%zu floats)\n", v + name_length + 1, floats);
+            if (f)
+                fclose(f);
+        }
         OfxPropertySetHandle props = (OfxPropertySetHandle)&clip->props;
         clip->props.print = 0;
         set_int(props, kOfxImageClipPropConnected, 0, connected);
@@ -491,11 +508,12 @@ int main(int argc, char **argv) {
     if (argc < 3) {
         fprintf(stderr,
                 "usage: %s <plugin.ofx> <effect id> [name=value ...] [!Clip ...] [--size WxH] "
-                "[--frames N] [--save file] [--pad N] [--half]\n",
+                "[--frames N] [--save file] [--pad N] [--half] [--image Clip=file] [--time T]\n",
                 argv[0]);
         return 2;
     }
     int frames = 1;
+    double time = 1.0;
     const char *save = NULL;
     for (int a = 3; a < argc; ++a)
         half |= strcmp(argv[a], "--half") == 0;
@@ -509,6 +527,8 @@ int main(int argc, char **argv) {
             save = argv[a + 1];
         if (strcmp(argv[a], "--pad") == 0)
             pad = atoi(argv[a + 1]) > 0 ? atoi(argv[a + 1]) : 0;
+        if (strcmp(argv[a], "--time") == 0)
+            time = atof(argv[a + 1]);
     }
     void *library = dlopen(argv[1], RTLD_NOW);
     if (!library) {
@@ -536,7 +556,7 @@ int main(int argc, char **argv) {
                kOfxImageEffectContextGeneral);
     PropSet render_args = {.owner = "render"};
     OfxPropertySetHandle r = (OfxPropertySetHandle)&render_args;
-    set_double(r, kOfxPropTime, 0, 1.0);
+    set_double(r, kOfxPropTime, 0, time);
     set_double(r, kOfxImageEffectPropRenderScale, 0, 1.0);
     set_double(r, kOfxImageEffectPropRenderScale, 1, 1.0);
     const int window[4] = {0, 0, width, height};

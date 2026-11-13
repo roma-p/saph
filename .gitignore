@@ -10,3 +10,4 @@ third_party/*
 build_log.txt
 millsaph_report_*.txt
 millsaph_perf.zip
+__pycache__/

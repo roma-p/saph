@@ -336,6 +336,15 @@ if(MILLSAPH_EDITOR)
   add_dependencies(MillSaph millsaph_lens_editor)
 endif()
 
+# build/test_host: a minimal OFX host running the plugin outside a DCC (tools/test_host.c;
+# tools/measure/ms_render.py, bitexact.sh). (dlopen: not on Windows.)
+if(NOT WIN32)
+  add_executable(test_host tools/test_host.c src/common/half.c)
+  target_include_directories(test_host PRIVATE src ${third_party}/openfx/include)
+  target_link_libraries(test_host PRIVATE ${CMAKE_DL_LIBS})
+  set_target_properties(test_host PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
+endif()
+
 add_executable(millsaph_bench tools/perf/bench.c tools/perf/images.c tools/perf/transfer.c)
 target_link_libraries(millsaph_bench PRIVATE millsaph_core)
 if(NOT WIN32)
