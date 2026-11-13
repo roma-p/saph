@@ -375,6 +375,11 @@ if(APPLE AND EXISTS ${ae_sdk}/Headers/AE_Effect.h)
     LIBRARY_OUTPUT_DIRECTORY ${ae_bundle}/Contents/MacOS
   )
   configure_file(cmake/AEInfo.plist.in ${ae_bundle}/Contents/Info.plist @ONLY)
+  if(MILLSAPH_EDITOR) # the Lens Flare editor next to the module (Edit Lens)
+    add_dependencies(MillSaphAE millsaph_lens_editor)
+    add_custom_command(TARGET MillSaphAE POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy
+                       $<TARGET_FILE:millsaph_lens_editor> ${ae_bundle}/Contents/MacOS/)
+  endif()
   add_custom_command(TARGET MillSaphAE POST_BUILD COMMAND codesign --force --sign - ${ae_bundle})
 elseif(WIN32 AND MSVC AND EXISTS ${ae_sdk}/Headers/AE_Effect.h)
   # The PiPL resource (src/ae/pipl.r) describes each effect to After Effects. Adobe's
@@ -403,4 +408,9 @@ elseif(WIN32 AND MSVC AND EXISTS ${ae_sdk}/Headers/AE_Effect.h)
     LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/ae
     LIBRARY_OUTPUT_DIRECTORY_RELEASE ${CMAKE_BINARY_DIR}/ae  # Visual Studio
   )
+  if(MILLSAPH_EDITOR) # the Lens Flare editor next to the .aex (Edit Lens)
+    add_dependencies(MillSaphAE millsaph_lens_editor)
+    add_custom_command(TARGET MillSaphAE POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy
+                       $<TARGET_FILE:millsaph_lens_editor> ${CMAKE_BINARY_DIR}/ae/)
+  endif()
 endif()

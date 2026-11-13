@@ -5,8 +5,9 @@
 // Each effect has its own entry point (EffectMain_<Name>) and PiPL resource (pipl.r).
 // Its After Effects parameters, by index:
 //   0             the effect's own layer: the Source
-//   1 ...         the effect's parameters, in table order (TEXT and STRING ones are left
-//                 out: STRING ones keep their default text; an RGB colour is one parameter)
+//   1 ...         the effect's parameters, in table order (TEXT ones are left out; an RGB
+//                 colour is one parameter; a STRING is arbitrary data with no control of its
+//                 own, its text saved in the project; a BUTTON is a button)
 //   then          one layer menu per other input (Mask, Lens...), "None" by default
 // WIDTH and HEIGHT parameters are shown as a percentage of the layer width / height.
 //
@@ -17,6 +18,11 @@
 //   unpremultiplied, alpha, where OFX hosts give premultiplied images);
 // - origin_x / origin_y of the checked-out buffers, read here as the position of their
 //   top-left pixel in the layer;
+// - the STRING parameters as arbitrary data with no control (PF_PUI_NO_ECW_UI), changed by a
+//   button's press through the params array of PF_Cmd_USER_CHANGED_PARAM (the handle resized
+//   in place);
+// - the parameters read between frames (MsRender.values_at: a motion blur), in TIME_STEPS
+//   units a frame.
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -64,11 +70,26 @@ enum { BANDPASS, EDGEAWAREBLUR, DISTORT, MOSAIC, GLOW, EDGEBLUR, RACKDEFOCUS, GL
 
 // ---------------------------------------------------------------- parameters
 
-// 1 when parameter type `t` has an After Effects parameter (TEXT, STRING and BUTTON ones
-// are left out for now, and the green and blue of an RGB are in its colour).
+// 1 when parameter type `t` has an After Effects parameter (TEXT ones are left out, and the
+// green and blue of an RGB are in its colour).
 static int in_ae(MsParamType t) {
-    return t != MS_PARAM_TEXT && t != MS_PARAM_STRING && t != MS_PARAM_RGB_PART &&
-           t != MS_PARAM_POINT_Y && t != MS_PARAM_BUTTON;
+    return t != MS_PARAM_TEXT && t != MS_PARAM_RGB_PART && t != MS_PARAM_POINT_Y;
+}
+
+// The effect parameter of After Effects index `index` (-1: none).
+static int param_at(const MsEffect *e, int index) {
+    for (int i = 0, k = 1; i < e->param_count; ++i)
+        if (in_ae(e->params[i].type) && k++ == index)
+            return i;
+    return -1;
+}
+
+// The effect parameter named `name` (-1: none).
+static int param_named(const MsEffect *e, const char *name) {
+    for (int i = 0; i < e->param_count; ++i)
+        if (e->params[i].name && strcmp(e->params[i].name, name) == 0)
+            return i;
+    return -1;
 }
 
 // After Effects index of effect parameter i (0 for one left out).
@@ -99,6 +120,108 @@ static PF_Err add_param(PF_InData *in_data, PF_ParamDef *def) {
     return in_data->inter.add_param(in_data->effect_ref, -1, def);
 }
 
+// ---------------------------------------------------------------- texts (STRING)
+
+// A STRING parameter's text: arbitrary data, a handle holding the text and its 0.
+static PF_Handle new_text(PF_InData *in_data, const char *text, size_t length) {
+    PF_Handle h = in_data->utils->host_new_handle(length + 1);
+    char *p = h ? in_data->utils->host_lock_handle(h) : NULL;
+    if (p) {
+        memcpy(p, text, length);
+        p[length] = 0;
+        in_data->utils->host_unlock_handle(h);
+    }
+    return h;
+}
+
+// A copy of a text handle's text (malloc; "" for none), to free.
+static char *text_of(PF_InData *in_data, PF_Handle h) {
+    const char *p = h ? in_data->utils->host_lock_handle(h) : NULL;
+    const size_t size = h ? (size_t)in_data->utils->host_get_handle_size(h) : 0;
+    char *copy = malloc(size + 1);
+    if (copy) {
+        if (p && size)
+            memcpy(copy, p, size);
+        copy[size] = 0;
+    }
+    if (p)
+        in_data->utils->host_unlock_handle(h);
+    return copy;
+}
+
+// The arbitrary data callbacks of the STRING parameters (their id: the After Effects index).
+static PF_Err text_callback(const MsEffect *e, PF_InData *in_data, PF_ArbParamsExtra *x) {
+    char *a = NULL, *b = NULL;
+    PF_Err err = PF_Err_NONE;
+    switch (x->which_function) {
+    case PF_Arbitrary_NEW_FUNC: {
+        const int i = param_at(e, x->id);
+        const char *text = i >= 0 && e->params[i].def_text ? e->params[i].def_text : "";
+        *x->u.new_func_params.arbPH = new_text(in_data, text, strlen(text));
+        break;
+    }
+    case PF_Arbitrary_DISPOSE_FUNC:
+        if (x->u.dispose_func_params.arbH)
+            in_data->utils->host_dispose_handle(x->u.dispose_func_params.arbH);
+        break;
+    case PF_Arbitrary_COPY_FUNC:
+        a = text_of(in_data, x->u.copy_func_params.src_arbH);
+        *x->u.copy_func_params.dst_arbPH = a ? new_text(in_data, a, strlen(a)) : NULL;
+        break;
+    case PF_Arbitrary_FLAT_SIZE_FUNC:
+        a = text_of(in_data, x->u.flat_size_func_params.arbH);
+        *x->u.flat_size_func_params.flat_data_sizePLu = a ? (A_u_long)strlen(a) + 1 : 1;
+        break;
+    case PF_Arbitrary_FLATTEN_FUNC:
+        a = text_of(in_data, x->u.flatten_func_params.arbH);
+        if (a && x->u.flatten_func_params.buf_sizeLu > 0) {
+            const size_t n = strlen(a) + 1 < x->u.flatten_func_params.buf_sizeLu
+                                 ? strlen(a) + 1
+                                 : x->u.flatten_func_params.buf_sizeLu;
+            memcpy(x->u.flatten_func_params.flat_dataPV, a, n);
+            ((char *)x->u.flatten_func_params.flat_dataPV)[n - 1] = 0;
+        }
+        break;
+    case PF_Arbitrary_UNFLATTEN_FUNC: {
+        const char *flat = x->u.unflatten_func_params.flat_dataPV;
+        size_t n = 0;
+        while (n < x->u.unflatten_func_params.buf_sizeLu && flat[n])
+            ++n;
+        *x->u.unflatten_func_params.arbPH = new_text(in_data, flat, n);
+        break;
+    }
+    case PF_Arbitrary_INTERP_FUNC: // (no animation: the left key's)
+        a = text_of(in_data, x->u.interp_func_params.left_arbH);
+        *x->u.interp_func_params.interpPH = a ? new_text(in_data, a, strlen(a)) : NULL;
+        break;
+    case PF_Arbitrary_COMPARE_FUNC:
+        a = text_of(in_data, x->u.compare_func_params.a_arbH);
+        b = text_of(in_data, x->u.compare_func_params.b_arbH);
+        *x->u.compare_func_params.compareP =
+            a && b && strcmp(a, b) == 0 ? PF_ArbCompare_EQUAL : PF_ArbCompare_NOT_EQUAL;
+        break;
+    case PF_Arbitrary_PRINT_SIZE_FUNC:
+        a = text_of(in_data, x->u.print_size_func_params.arbH);
+        *x->u.print_size_func_params.print_sizePLu = a ? (A_u_long)strlen(a) + 1 : 1;
+        break;
+    case PF_Arbitrary_PRINT_FUNC:
+        a = text_of(in_data, x->u.print_func_params.arbH);
+        if (a && x->u.print_func_params.print_sizeLu > 0)
+            snprintf(x->u.print_func_params.print_bufferPC, x->u.print_func_params.print_sizeLu,
+                     "%s", a);
+        break;
+    case PF_Arbitrary_SCAN_FUNC:
+        *x->u.scan_func_params.arbPH = new_text(in_data, x->u.scan_func_params.bufPC,
+                                                x->u.scan_func_params.bytes_to_scanLu);
+        break;
+    default:
+        break;
+    }
+    free(a);
+    free(b);
+    return err;
+}
+
 static PF_Err params_setup(AeEffect *ae, PF_InData *in_data, PF_OutData *out_data) {
     const MsEffect *e = ae->effect;
     if (e->param_count > MS_MAX_PARAMS || e->clip_count > MS_MAX_CLIPS)
@@ -113,7 +236,21 @@ static PF_Err params_setup(AeEffect *ae, PF_InData *in_data, PF_OutData *out_dat
         snprintf(def.PF_DEF_NAME, sizeof def.PF_DEF_NAME, "%s", p->label);
         def.uu.id = param_index(e, i); // saved in projects: keep it stable
 
-        if (p->type == MS_PARAM_CHOICE) {
+        if (p->type == MS_PARAM_STRING) {
+            // arbitrary data: no control (Edit Lens and the like change it), saved, not
+            // animated
+            def.param_type = PF_Param_ARBITRARY_DATA;
+            def.flags = PF_ParamFlag_CANNOT_TIME_VARY;
+            def.ui_flags = PF_PUI_NO_ECW_UI;
+            const char *text = p->def_text ? p->def_text : "";
+            def.u.arb_d.id = (A_short)def.uu.id;
+            def.u.arb_d.dephault = new_text(in_data, text, strlen(text));
+            def.u.arb_d.value = NULL;
+        } else if (p->type == MS_PARAM_BUTTON) {
+            def.param_type = PF_Param_BUTTON;
+            def.flags = PF_ParamFlag_SUPERVISE;
+            def.u.button_d.u.namesptr = p->label;
+        } else if (p->type == MS_PARAM_CHOICE) {
             char *text = ae->popups[i];
             text[0] = 0;
             for (int k = 0; k < p->entry_count; ++k)
@@ -195,23 +332,37 @@ static void read_color(PF_InData *in_data, const PF_ParamDef *def, double *rgb) 
     rgb[2] = def->u.cd.value.blue / 255.0;
 }
 
-// The parameter values at the current time, as the effect wants them (see MsRender).
-static PF_Err read_values(const MsEffect *e, PF_InData *in_data, double frame_width,
-                          double frame_height, double *values) {
+// Times between frames: After Effects times are integers (time_scale units a second), so
+// these are read in finer units, TIME_STEPS a frame.
+#define TIME_STEPS 64
+
+// The parameter values at `frame` (frames, maybe between two), as the effect wants them (see
+// MsRender); the STRING ones' texts into `texts` (malloc'd, to free), or left out if NULL.
+static PF_Err read_values(const MsEffect *e, PF_InData *in_data, double frame, double frame_width,
+                          double frame_height, double *values, char **texts) {
+    const A_long step = in_data->time_step * TIME_STEPS;
+    const A_long time = (A_long)(frame * step + (frame < 0 ? -0.5 : 0.5));
+    const A_u_long scale = in_data->time_scale * TIME_STEPS;
     for (int i = 0; i < e->param_count; ++i) {
         const MsParam *p = &e->params[i];
         if (p->type != MS_PARAM_RGB_PART && p->type != MS_PARAM_POINT_Y) // with the one before
             values[i] = 0.0;
-        if (!in_ae(p->type))
+        if (texts)
+            texts[i] = NULL;
+        if (!in_ae(p->type) || p->type == MS_PARAM_BUTTON ||
+            (p->type == MS_PARAM_STRING && !texts))
             continue;
         PF_ParamDef def;
         memset(&def, 0, sizeof def);
-        const PF_Err err = in_data->inter.checkout_param(in_data->effect_ref, param_index(e, i),
-                                                         in_data->current_time, in_data->time_step,
-                                                         in_data->time_scale, &def);
+        const PF_Err err =
+            in_data->inter.checkout_param(in_data->effect_ref, param_index(e, i), time, step,
+                                          scale, &def);
         if (err)
             return err;
         switch (p->type) {
+        case MS_PARAM_STRING:
+            texts[i] = text_of(in_data, def.u.arb_d.value);
+            break;
         case MS_PARAM_CHOICE:
             values[i] = def.u.pd.value - 1;
             break;
@@ -351,6 +502,19 @@ static PF_Err pre_render(const MsEffect *e, PF_InData *in_data, PF_PreRenderExtr
     return err;
 }
 
+// MsRender.values_at: the values at another time (the STRING ones left out).
+typedef struct {
+    const MsEffect *e;
+    PF_InData *in_data;
+    double frame_width, frame_height;
+} RenderCaller;
+
+static int values_at(const MsRender *r, double time, double *values) {
+    const RenderCaller *c = r->caller;
+    return read_values(c->e, c->in_data, time, c->frame_width, c->frame_height, values, NULL) ==
+           PF_Err_NONE;
+}
+
 // Renders the effect on the checked-out layers into `output`.
 static PF_Err render(const MsEffect *e, PF_InData *in_data, PF_OutData *out_data, int depth,
                      PF_EffectWorld *const *worlds, PF_EffectWorld *output) {
@@ -365,6 +529,7 @@ static PF_Err render(const MsEffect *e, PF_InData *in_data, PF_OutData *out_data
     const size_t bytes = (size_t)area.width * area.height * 4 * sizeof(float);
 
     double values[MS_MAX_PARAMS];
+    char *texts[MS_MAX_PARAMS] = {NULL};
     int connected[MS_MAX_CLIPS];
     MsInput inputs[MS_MAX_CLIPS];
     float *buffers[MS_MAX_CLIPS] = {NULL};
@@ -382,18 +547,19 @@ static PF_Err render(const MsEffect *e, PF_InData *in_data, PF_OutData *out_data
             inputs[c] = (MsInput){buffers[c], (ptrdiff_t)area.width * 4};
         }
     }
+    // The time in frames (AE: in time_scale units, a frame time_step long).
+    const double frame =
+        in_data->time_step ? (double)in_data->current_time / in_data->time_step : 0.0;
     if (ok)
-        err = read_values(e, in_data, frame_width, frame_height, values);
+        err = read_values(e, in_data, frame, frame_width, frame_height, values, texts);
     if (ok && !err) {
-        // The time in frames (AE: in time_scale units, a frame time_step long).
-        const double frame =
-            in_data->time_step ? (double)in_data->current_time / in_data->time_step : 0.0;
+        RenderCaller caller = {e, in_data, frame_width, frame_height};
         const MsRender r = {values,       connected,     inputs,
                             area.width,   area.height,   frame_width,
                             frame_height, result,        (ptrdiff_t)area.width * 4,
                             message,      sizeof message, 0,
-                            NULL,         NULL,         frame,
-                            NULL,         NULL};
+                            NULL,         (const char *const *)texts, frame,
+                            values_at,    &caller};
         if (e->render(&r)) {
             unpack(result, area, output, depth);
         } else {
@@ -406,6 +572,8 @@ static PF_Err render(const MsEffect *e, PF_InData *in_data, PF_OutData *out_data
     }
     for (int c = 0; c < e->clip_count; ++c)
         free(buffers[c]);
+    for (int i = 0; i < e->param_count; ++i)
+        free(texts[i]);
     free(result);
     return err;
 }
@@ -426,10 +594,114 @@ static PF_Err smart_render(const MsEffect *e, PF_InData *in_data, PF_OutData *ou
     return err;
 }
 
+// ---------------------------------------------------------------- buttons
+
+// MsHost on the parameters After Effects gives with PF_Cmd_USER_CHANGED_PARAM (`params`, by
+// After Effects index): what a button's press reads and sets.
+typedef struct {
+    const MsEffect *e;
+    PF_InData *in_data;
+    PF_ParamDef **params;
+    char *text; // the last text given by get_text
+} AeHost;
+
+static PF_ParamDef *host_param(MsHost *host, const char *name, int *i) {
+    const AeHost *h = host->data;
+    *i = param_named(h->e, name);
+    return *i >= 0 && in_ae(h->e->params[*i].type) ? h->params[param_index(h->e, *i)] : NULL;
+}
+
+static const char *host_get_text(MsHost *host, const char *name) {
+    AeHost *h = host->data;
+    int i;
+    PF_ParamDef *def = host_param(host, name, &i);
+    if (!def || h->e->params[i].type != MS_PARAM_STRING)
+        return NULL;
+    free(h->text);
+    h->text = text_of(h->in_data, def->u.arb_d.value);
+    return h->text;
+}
+
+static int host_set_text(MsHost *host, const char *name, const char *text) {
+    AeHost *h = host->data;
+    int i;
+    PF_ParamDef *def = host_param(host, name, &i);
+    if (!def || h->e->params[i].type != MS_PARAM_STRING)
+        return 0;
+    const size_t n = strlen(text);
+    PF_Handle handle = def->u.arb_d.value;
+    if (!handle || h->in_data->utils->host_resize_handle(n + 1, &handle) != PF_Err_NONE)
+        return 0;
+    char *p = h->in_data->utils->host_lock_handle(handle);
+    if (!p)
+        return 0;
+    memcpy(p, text, n + 1);
+    h->in_data->utils->host_unlock_handle(handle);
+    def->u.arb_d.value = handle;
+    def->uu.change_flags |= PF_ChangeFlag_CHANGED_VALUE;
+    return 1;
+}
+
+static double host_get_value(MsHost *host, const char *name) {
+    int i;
+    PF_ParamDef *def = host_param(host, name, &i);
+    if (!def)
+        return 0.0;
+    switch (((AeHost *)host->data)->e->params[i].type) {
+    case MS_PARAM_CHOICE:
+        return def->u.pd.value - 1;
+    case MS_PARAM_BOOL:
+        return def->u.bd.value != 0;
+    case MS_PARAM_DOUBLE:
+        return def->u.fs_d.value;
+    default:
+        return 0.0;
+    }
+}
+
+static int host_set_value(MsHost *host, const char *name, double value) {
+    int i;
+    PF_ParamDef *def = host_param(host, name, &i);
+    if (!def)
+        return 0;
+    switch (((AeHost *)host->data)->e->params[i].type) {
+    case MS_PARAM_CHOICE:
+        def->u.pd.value = (A_long)value + 1;
+        break;
+    case MS_PARAM_BOOL:
+        def->u.bd.value = value != 0.0;
+        break;
+    case MS_PARAM_DOUBLE:
+        def->u.fs_d.value = value;
+        break;
+    default:
+        return 0;
+    }
+    def->uu.change_flags |= PF_ChangeFlag_CHANGED_VALUE;
+    return 1;
+}
+
+// A button pressed: its press, on these parameters; its error shown.
+static PF_Err user_changed_param(const MsEffect *e, PF_InData *in_data, PF_OutData *out_data,
+                                 PF_ParamDef *params[], const PF_UserChangedParamExtra *extra) {
+    const int i = extra ? param_at(e, extra->param_index) : -1;
+    if (i < 0 || e->params[i].type != MS_PARAM_BUTTON || !e->params[i].press || !params)
+        return PF_Err_NONE;
+    AeHost data = {e, in_data, params, NULL};
+    MsHost host = {host_get_text, host_set_text, host_get_value, host_set_value, &data};
+    char message[256] = "";
+    if (!e->params[i].press(&host, message, sizeof message)) {
+        snprintf(out_data->return_msg, sizeof out_data->return_msg, "%s: %s", e->label, message);
+        out_data->out_flags |= PF_OutFlag_DISPLAY_ERROR_MESSAGE;
+    }
+    free(data.text);
+    return PF_Err_NONE;
+}
+
 // ---------------------------------------------------------------- entry points
 
 static PF_Err main_entry(AeEffect *ae, PF_Cmd cmd, PF_InData *in_data, PF_OutData *out_data,
-                         void *extra) {
+                         PF_ParamDef *params[], void *extra) {
     const MsEffect *e = ae->effect;
     switch (cmd) {
     case PF_Cmd_ABOUT:
@@ -451,6 +723,11 @@ static PF_Err main_entry(AeEffect *ae, PF_Cmd cmd, PF_InData *in_data, PF_OutDat
         return pre_render(e, in_data, (PF_PreRenderExtra *)extra);
     case PF_Cmd_SMART_RENDER:
         return smart_render(e, in_data, out_data, (PF_SmartRenderExtra *)extra);
+    case PF_Cmd_ARBITRARY_CALLBACK:
+        return text_callback(e, in_data, (PF_ArbParamsExtra *)extra);
+    case PF_Cmd_USER_CHANGED_PARAM:
+        return user_changed_param(e, in_data, out_data, params,
+                                  (const PF_UserChangedParamExtra *)extra);
     default:
         return PF_Err_NONE;
     }
@@ -460,9 +737,8 @@ static PF_Err main_entry(AeEffect *ae, PF_Cmd cmd, PF_InData *in_data, PF_OutDat
 #define ENTRY(name, slot)                                                                          \
     EXPORT PF_Err EffectMain_##name(PF_Cmd cmd, PF_InData *in_data, PF_OutData *out_data,          \
                                     PF_ParamDef *params[], PF_LayerDef *output, void *extra) {     \
-        (void)params;                                                                              \
         (void)output;                                                                              \
-        return main_entry(&effects[slot], cmd, in_data, out_data, extra);                          \
+        return main_entry(&effects[slot], cmd, in_data, out_data, params, extra);                  \
     }
 ENTRY(BandPass, BANDPASS)
 ENTRY(EdgeAwareBlur, EDGEAWAREBLUR)
