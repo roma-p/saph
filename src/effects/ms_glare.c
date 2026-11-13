@@ -78,24 +78,6 @@ enum {
     INVERT_MASK,
     MASK_TYPE
 };
-#define RELATIVE(id, n, l, h, d)                                                                   \
-    [id] = {.type = MS_PARAM_DOUBLE,                                                               \
-            .name = (n),                                                                           \
-            .label = (l),                                                                          \
-            .hint = (h),                                                                           \
-            .def = (d),                                                                            \
-            .min = 0.0,                                                                            \
-            .max = MS_UNBOUNDED,                                                                   \
-            .display_max = 5.0}
-#define FRACTION(id, n, l, h, d)                                                                   \
-    [id] = {.type = MS_PARAM_DOUBLE,                                                               \
-            .name = (n),                                                                           \
-            .label = (l),                                                                          \
-            .hint = (h),                                                                           \
-            .def = (d),                                                                            \
-            .min = 0.0,                                                                            \
-            .max = 1.0,                                                                            \
-            .display_max = 1.0}
 static const MsParam params[] = {
     [STYLE] = {.type = MS_PARAM_STRING,
                .name = "style_",
@@ -103,7 +85,7 @@ static const MsParam params[] = {
                .hint = "The glare's elements, as JSON text: {\"elements\": [...]}, each a blob, "
                        "spot, ring, rays, polar_flare or fancy_spot (containers group them).",
                .def_text = default_style},
-    RELATIVE(BRIGHTNESS, "brightness", "Brightness", "Scales the brightness of the glares.", 1.0),
+    MS_RELATIVE(BRIGHTNESS, "brightness", "Brightness", "Scales the brightness of the glares.", 1.0),
     [SCALE_COLORS] = {.type = MS_PARAM_RGB,
                       .name = "scale_colors",
                       .label = "Scale Colors",
@@ -111,7 +93,7 @@ static const MsParam params[] = {
                       .def = 1.0},
     [SCALE_COLORS_G] = {.type = MS_PARAM_RGB_PART, .name = "scale_colors_green", .def = 1.0},
     [SCALE_COLORS_B] = {.type = MS_PARAM_RGB_PART, .name = "scale_colors_blue", .def = 1.0},
-    RELATIVE(SATURATION, "saturation", "Saturation", "The glares' saturation (0: grey).", 1.0),
+    MS_RELATIVE(SATURATION, "saturation", "Saturation", "The glares' saturation (0: grey).", 1.0),
     [THRESHOLD] = {.type = MS_PARAM_DOUBLE,
                    .name = "threshold",
                    .label = "Threshold",
@@ -143,7 +125,7 @@ static const MsParam params[] = {
               .min = 0.0,
               .max = MS_UNBOUNDED,
               .display_max = 0.5},
-    RELATIVE(REL_HEIGHT, "rel_height", "Rel Height", "The glares' height relative to their width.",
+    MS_RELATIVE(REL_HEIGHT, "rel_height", "Rel Height", "The glares' height relative to their width.",
              1.0),
     [ROTATE] = {.type = MS_PARAM_ANGLE,
                 .name = "rotate",
@@ -153,9 +135,9 @@ static const MsParam params[] = {
                 .max = MS_UNBOUNDED,
                 .display_min = -180.0,
                 .display_max = 180.0},
-    RELATIVE(RAYS_NUM_SCALE, "rays_num_scale", "Rays Num Scale", "Scales the number of rays.", 1.0),
-    RELATIVE(RAYS_LENGTH, "rays_length", "Rays Length", "Scales the length of the rays.", 1.0),
-    RELATIVE(RAYS_THICKNESS, "rays_thickness", "Rays Thickness", "Scales the width of the rays.",
+    MS_RELATIVE(RAYS_NUM_SCALE, "rays_num_scale", "Rays Num Scale", "Scales the number of rays.", 1.0),
+    MS_RELATIVE(RAYS_LENGTH, "rays_length", "Rays Length", "Scales the length of the rays.", 1.0),
+    MS_RELATIVE(RAYS_THICKNESS, "rays_thickness", "Rays Thickness", "Scales the width of the rays.",
              1.0),
     [BLUR_GLARE] = {.type = MS_PARAM_WIDTH,
                     .name = "blur_glare",
@@ -178,12 +160,12 @@ static const MsParam params[] = {
                    .hint = "Computes the glares at full or half resolution (faster).",
                    .entries = res_entries,
                    .entry_count = ARRAY_SIZE(res_entries)},
-    FRACTION(AFFECT_ALPHA, "affect_alpha", "Affect Alpha", "Adds the glares to the alpha.", 0.0),
-    FRACTION(FROM_ALPHA, "glare_from_alpha", "Glare From Alpha",
+    MS_FRACTION(AFFECT_ALPHA, "affect_alpha", "Affect Alpha", "Adds the glares to the alpha.", 0.0),
+    MS_FRACTION(FROM_ALPHA, "glare_from_alpha", "Glare From Alpha",
              "Takes the glares from the alpha instead of the colors.", 0.0),
-    FRACTION(UNDER_SOURCE, "glare_under_source", "Glare Under Source",
+    MS_FRACTION(UNDER_SOURCE, "glare_under_source", "Glare Under Source",
              "Puts the glares behind the Source, by its alpha.", 0.0),
-    FRACTION(SOURCE_OPACITY, "source_opacity", "Source Opacity",
+    MS_FRACTION(SOURCE_OPACITY, "source_opacity", "Source Opacity",
              "Scales the Source under the glares.", 1.0),
     [INVERT_MASK] = MS_PARAM_INVERT_MASK("Use the black areas of the Mask."),
     [MASK_TYPE] = {.type = MS_PARAM_CHOICE,

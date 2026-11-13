@@ -57,15 +57,6 @@ enum {
     EDGE_MODE,
     INVERT_MASK
 };
-#define RELATIVE(id, n, l, h, d)                                                                   \
-    [id] = {.type = MS_PARAM_DOUBLE,                                                               \
-            .name = (n),                                                                           \
-            .label = (l),                                                                          \
-            .hint = (h),                                                                           \
-            .def = (d),                                                                            \
-            .min = 0.0,                                                                            \
-            .max = MS_UNBOUNDED,                                                                   \
-            .display_max = 5.0}
 static const MsParam params[] = {
     [BRIGHTNESS] = {.type = MS_PARAM_DOUBLE,
                     .name = "brightness",
@@ -104,11 +95,11 @@ static const MsParam params[] = {
                .min = 0.0,
                .max = MS_UNBOUNDED,
                .display_max = 0.5},
-    RELATIVE(WIDTH_X, "width_x", "Width X", "Scales the horizontal glow width.", 1.0),
-    RELATIVE(WIDTH_Y, "width_y", "Width Y", "Scales the vertical glow width.", 1.0),
-    RELATIVE(WIDTH_RED, "width_red", "Width Red", "Scales the red glow width.", 1.0),
-    RELATIVE(WIDTH_GREEN, "width_green", "Width Green", "Scales the green glow width.", 1.2),
-    RELATIVE(WIDTH_BLUE, "width_blue", "Width Blue", "Scales the blue glow width.", 1.4),
+    MS_RELATIVE(WIDTH_X, "width_x", "Width X", "Scales the horizontal glow width.", 1.0),
+    MS_RELATIVE(WIDTH_Y, "width_y", "Width Y", "Scales the vertical glow width.", 1.0),
+    MS_RELATIVE(WIDTH_RED, "width_red", "Width Red", "Scales the red glow width.", 1.0),
+    MS_RELATIVE(WIDTH_GREEN, "width_green", "Width Green", "Scales the green glow width.", 1.2),
+    MS_RELATIVE(WIDTH_BLUE, "width_blue", "Width Blue", "Scales the blue glow width.", 1.4),
     [SUBPIXEL] = {.type = MS_PARAM_BOOL,
                   .name = "subpixel",
                   .label = "Subpixel",

@@ -63,26 +63,8 @@ enum {
     MASK_TYPE,
     SWAP_DIAGONALS
 };
-#define RELATIVE(id, n, l, h, d)                                                                   \
-    [id] = {.type = MS_PARAM_DOUBLE,                                                               \
-            .name = (n),                                                                           \
-            .label = (l),                                                                          \
-            .hint = (h),                                                                           \
-            .def = (d),                                                                            \
-            .min = 0.0,                                                                            \
-            .max = MS_UNBOUNDED,                                                                   \
-            .display_max = 5.0}
-#define FRACTION(id, n, l, h, d)                                                                   \
-    [id] = {.type = MS_PARAM_DOUBLE,                                                               \
-            .name = (n),                                                                           \
-            .label = (l),                                                                          \
-            .hint = (h),                                                                           \
-            .def = (d),                                                                            \
-            .min = 0.0,                                                                            \
-            .max = 1.0,                                                                            \
-            .display_max = 1.0}
 static const MsParam params[] = {
-    RELATIVE(BRIGHTNESS, "brightness", "Brightness", "Scales the brightness of all the rays.", 1.0),
+    MS_RELATIVE(BRIGHTNESS, "brightness", "Brightness", "Scales the brightness of all the rays.", 1.0),
     [SCALE_COLORS] = {.type = MS_PARAM_RGB,
                       .name = "scale_colors",
                       .label = "Scale Colors",
@@ -90,11 +72,11 @@ static const MsParam params[] = {
                       .def = 1.0},
     [SCALE_COLORS_G] = {.type = MS_PARAM_RGB_PART, .name = "scale_colors_green", .def = 1.0},
     [SCALE_COLORS_B] = {.type = MS_PARAM_RGB_PART, .name = "scale_colors_blue", .def = 1.0},
-    RELATIVE(BRIGHTNESS_X, "brightness_x", "Brightness X", "Scales the horizontal rays.", 1.0),
-    RELATIVE(BRIGHTNESS_Y, "brightness_y", "Brightness Y", "Scales the vertical rays.", 1.0),
-    RELATIVE(BRIGHTNESS_DIAG1, "brightness_diag1", "Brightness Diag1",
+    MS_RELATIVE(BRIGHTNESS_X, "brightness_x", "Brightness X", "Scales the horizontal rays.", 1.0),
+    MS_RELATIVE(BRIGHTNESS_Y, "brightness_y", "Brightness Y", "Scales the vertical rays.", 1.0),
+    MS_RELATIVE(BRIGHTNESS_DIAG1, "brightness_diag1", "Brightness Diag1",
              "Scales the rays up to the right.", 1.0),
-    RELATIVE(BRIGHTNESS_DIAG2, "brightness_diag2", "Brightness Diag2",
+    MS_RELATIVE(BRIGHTNESS_DIAG2, "brightness_diag2", "Brightness Diag2",
              "Scales the rays down to the right.", 1.0),
     [THRESHOLD] = {.type = MS_PARAM_DOUBLE,
                    .name = "threshold",
@@ -127,15 +109,15 @@ static const MsParam params[] = {
               .min = 0.0,
               .max = MS_UNBOUNDED,
               .display_max = 0.5},
-    RELATIVE(SIZE_X, "size_x", "Size X", "Scales the length of the horizontal rays.", 1.0),
-    RELATIVE(SIZE_Y, "size_y", "Size Y", "Scales the length of the vertical rays.", 1.0),
-    RELATIVE(SIZE_DIAG1, "size_diag1", "Size Diag1",
+    MS_RELATIVE(SIZE_X, "size_x", "Size X", "Scales the length of the horizontal rays.", 1.0),
+    MS_RELATIVE(SIZE_Y, "size_y", "Size Y", "Scales the length of the vertical rays.", 1.0),
+    MS_RELATIVE(SIZE_DIAG1, "size_diag1", "Size Diag1",
              "Scales the length of the rays up to the right.", 0.75),
-    RELATIVE(SIZE_DIAG2, "size_diag2", "Size Diag2",
+    MS_RELATIVE(SIZE_DIAG2, "size_diag2", "Size Diag2",
              "Scales the length of the rays down to the right.", 0.75),
-    RELATIVE(SIZE_RED, "size_red", "Size Red", "Scales the length of the red rays.", 0.5),
-    RELATIVE(SIZE_GREEN, "size_green", "Size Green", "Scales the length of the green rays.", 1.0),
-    RELATIVE(SIZE_BLUE, "size_blue", "Size Blue", "Scales the length of the blue rays.", 1.5),
+    MS_RELATIVE(SIZE_RED, "size_red", "Size Red", "Scales the length of the red rays.", 0.5),
+    MS_RELATIVE(SIZE_GREEN, "size_green", "Size Green", "Scales the length of the green rays.", 1.0),
+    MS_RELATIVE(SIZE_BLUE, "size_blue", "Size Blue", "Scales the length of the blue rays.", 1.5),
     [BLUR_GLINT] = {.type = MS_PARAM_WIDTH,
                     .name = "blur_glint",
                     .label = "Blur Glint",
@@ -151,12 +133,12 @@ static const MsParam params[] = {
                    .max = MS_UNBOUNDED,
                    .display_min = -1.0,
                    .display_max = 1.0},
-    FRACTION(AFFECT_ALPHA, "affect_alpha", "Affect Alpha", "Adds the rays to the alpha.", 0.0),
-    FRACTION(FROM_ALPHA, "glint_from_alpha", "Glint From Alpha",
+    MS_FRACTION(AFFECT_ALPHA, "affect_alpha", "Affect Alpha", "Adds the rays to the alpha.", 0.0),
+    MS_FRACTION(FROM_ALPHA, "glint_from_alpha", "Glint From Alpha",
              "Takes the rays from the alpha instead of the colors.", 0.0),
-    FRACTION(UNDER_SOURCE, "glint_under_source", "Glint Under Source",
+    MS_FRACTION(UNDER_SOURCE, "glint_under_source", "Glint Under Source",
              "Puts the rays behind the Source, by its alpha.", 0.0),
-    FRACTION(SOURCE_OPACITY, "source_opacity", "Source Opacity",
+    MS_FRACTION(SOURCE_OPACITY, "source_opacity", "Source Opacity",
              "Scales the Source under the rays.", 1.0),
     [INVERT_MASK] = MS_PARAM_INVERT_MASK("Use the black areas of the Mask."),
     [MASK_TYPE] = {.type = MS_PARAM_CHOICE,

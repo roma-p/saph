@@ -77,6 +77,44 @@ typedef struct {
     int (*press)(MsHost *host, char *err, size_t err_size);
 } MsParam;
 
+// Common kinds of parameter, as table entries ([id] = ...): name n, label l, hint h, default d.
+// A scale (0 and up, slider to 5):
+#define MS_RELATIVE(id, n, l, h, d)                                                                \
+    [id] = {.type = MS_PARAM_DOUBLE,                                                               \
+            .name = (n),                                                                           \
+            .label = (l),                                                                          \
+            .hint = (h),                                                                           \
+            .def = (d),                                                                            \
+            .min = 0.0,                                                                            \
+            .max = MS_UNBOUNDED,                                                                   \
+            .display_max = 5.0}
+// a fraction (0 to 1):
+#define MS_FRACTION(id, n, l, h, d)                                                                \
+    [id] = {.type = MS_PARAM_DOUBLE,                                                               \
+            .name = (n),                                                                           \
+            .label = (l),                                                                          \
+            .hint = (h),                                                                           \
+            .def = (d),                                                                            \
+            .min = 0.0,                                                                            \
+            .max = 1.0,                                                                            \
+            .display_max = 1.0}
+// a distance (a fraction of the frame's width, 0 and up, slider to 1):
+#define MS_DISTANCE(id, n, l, h, d)                                                                \
+    [id] = {.type = MS_PARAM_WIDTH,                                                                \
+            .name = (n),                                                                           \
+            .label = (l),                                                                          \
+            .hint = (h),                                                                           \
+            .def = (d),                                                                            \
+            .min = 0.0,                                                                            \
+            .max = MS_UNBOUNDED,                                                                   \
+            .display_max = 1.0}
+// a colour, white by default (its green and blue: entries id + 1 and id + 2, n "_green" and
+// n "_blue"):
+#define MS_COLOUR(id, n, l, h)                                                                     \
+    [id] = {.type = MS_PARAM_RGB, .name = (n), .label = (l), .hint = (h), .def = 1.0},             \
+    [id + 1] = {.type = MS_PARAM_RGB_PART, .name = n "_green", .def = 1.0},                        \
+    [id + 2] = {.type = MS_PARAM_RGB_PART, .name = n "_blue", .def = 1.0}
+
 // The most inputs and parameters of an effect (the hosts' code sizes arrays by them).
 #define MS_MAX_CLIPS 8
 #define MS_MAX_PARAMS 64

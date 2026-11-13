@@ -49,23 +49,30 @@ using Field = std::function<Expr(Expr, Expr)>;
 // noise (0..1), which 1, noise_brightness's thresholded noise (lensflare_generator.cpp).
 using Angular = std::function<Expr(int, Expr, Expr)>;
 
-// Element e's value, channel c, at offset (dx, dy) (pixels, y up) from its centre; noise:
-// with Lens Flare's radius noise and noise_brightness (the elements without them are
-// cheaper without); image: Lens Flare's image there (it multiplies the element, or is it).
-inline Expr element_value(const Field &field, Expr dx, Expr dy, Expr c, Expr e,
-                          const Angular *noise = nullptr, Expr image = Expr()) {
+// Element e's frame at offset (dx, dy) (pixels, y up) from its centre: the offset scaled,
+// turned and stretched (ex, ey: r0, th), its angle without the stretch (sectors, waves, the
+// rays' width), the radius its band is cut at.
+struct ElementFrame {
+    Expr rot, cr, sr, turned;
+    Expr sx, sy, qx, qy; // scaled by the stretch (Glare); by rel_width, rel_height (Lens Flare)
+    Expr ax, ay;         // scaled without the stretch
+    Expr r0, th, angle, clip_r;
+};
+
+inline ElementFrame element_frame(const Field &field, Expr dx, Expr dy, Expr e) {
     auto f = [&](int i) { return field(i, e); };
+    ElementFrame m;
     Expr kind = f(GLARE_KIND);
-    Expr rot = f(GLARE_ROTATE);
-    Expr sx = dx / f(GLARE_SCALE_X), sy = dy / f(GLARE_SCALE_Y);
+    m.rot = f(GLARE_ROTATE);
+    m.sx = dx / f(GLARE_SCALE_X), m.sy = dy / f(GLARE_SCALE_Y);
     // (Lens Flare: scaled by rel_width, rel_height in the screen's frame (q), then turned by
     // its rotation and stretched in that frame)
-    Expr turned = f(GLARE_TURNED_FRAME) != 0.0f;
-    Expr cr = cos(rot), sr = sin(rot);
-    Expr qx = dx / max(f(GLARE_REL_X), 1e-6f), qy = dy / max(f(GLARE_REL_Y), 1e-6f);
-    Expr tx = qx * cr + qy * sr, ty = -qx * sr + qy * cr;
-    Expr ex = select(turned, tx / f(GLARE_SCALE_X), sx * cr + sy * sr);
-    Expr ey = select(turned, ty / f(GLARE_SCALE_Y), -sx * sr + sy * cr);
+    m.turned = f(GLARE_TURNED_FRAME) != 0.0f;
+    m.cr = cos(m.rot), m.sr = sin(m.rot);
+    m.qx = dx / max(f(GLARE_REL_X), 1e-6f), m.qy = dy / max(f(GLARE_REL_Y), 1e-6f);
+    Expr tx = m.qx * m.cr + m.qy * m.sr, ty = -m.qx * m.sr + m.qy * m.cr;
+    Expr ex = select(m.turned, tx / f(GLARE_SCALE_X), m.sx * m.cr + m.sy * m.sr);
+    Expr ey = select(m.turned, ty / f(GLARE_SCALE_Y), -m.sx * m.sr + m.sy * m.cr);
     // (Lens Flare, stretch_distort of strength k: the shape (not its image), in units of R,
     // from y to y + k (0.213 - 0.311 y + 0.515 y^2), x x (1 + 0.472 k y); fitted at 7
     // stretches and strengths, 1-5 % of the pixels)
@@ -74,27 +81,33 @@ inline Expr element_value(const Field &field, Expr dx, Expr dy, Expr c, Expr e,
     Expr root = -2.0f * qc / (qb + sqrt(max(qb * qb - 4.0f * qa * qc, 0.0f)));
     ex = select(dk != 0.0f, ex / (1.0f + dk * 0.472f * root), ex);
     ey = select(dk != 0.0f, root * Rd, ey);
-    Expr r0 = sqrt(ex * ex + ey * ey);
-    Expr th = atan2(ey, ex);
+    m.r0 = sqrt(ex * ex + ey * ey);
+    m.th = atan2(ey, ex);
     // The angles of sectors and waves, and the rays' width: without the stretch.
-    Expr ax = dx / f(GLARE_ANGLE_X), ay = dy / f(GLARE_ANGLE_Y);
-    Expr aex = select(turned, tx / f(GLARE_ANGLE_X), ax * cr + ay * sr);
-    Expr aey = select(turned, ty / f(GLARE_ANGLE_Y), -ax * sr + ay * cr);
-    Expr angle = atan2(aey, aex);
-    Expr gain = select(c == 0, f(GLARE_GAIN_R), c == 1, f(GLARE_GAIN_G), f(GLARE_GAIN_B));
+    m.ax = dx / f(GLARE_ANGLE_X), m.ay = dy / f(GLARE_ANGLE_Y);
+    Expr aex = select(m.turned, tx / f(GLARE_ANGLE_X), m.ax * m.cr + m.ay * m.sr);
+    Expr aey = select(m.turned, ty / f(GLARE_ANGLE_Y), -m.ax * m.sr + m.ay * m.cr);
+    m.angle = atan2(aey, aex);
+    m.clip_r = select(m.turned, select(kind == GLARE_RAYS, sqrt(m.qx * m.qx + m.qy * m.qy), m.r0),
+                      sqrt(dx * dx + dy * dy) / f(GLARE_CLIP_SCALE));
+    return m;
+}
 
-    // FALLOFF: (1 - t)^1.965 exp(-0.475 t), inside its circle.
-    Expr tb = r0 / f(GLARE_FALLOFF_R);
-    Expr clip_r = select(turned, select(kind == GLARE_RAYS, sqrt(qx * qx + qy * qy), r0),
-                         sqrt(dx * dx + dy * dy) / f(GLARE_CLIP_SCALE));
-    Expr falloff = pow(max(1.0f - tb, 0.0f), 1.965f) * exp(-0.475f * tb) *
-                   band_edge(clip_r - f(GLARE_CLIP_R));
+// FALLOFF: (1 - t)^1.965 exp(-0.475 t), inside its circle.
+inline Expr falloff_value(const Field &field, const ElementFrame &m, Expr e) {
+    Expr tb = m.r0 / field(GLARE_FALLOFF_R, e);
+    return pow(max(1.0f - tb, 0.0f), 1.965f) * exp(-0.475f * tb) *
+           band_edge(m.clip_r - field(GLARE_CLIP_R, e));
+}
 
-    // STOPS: the radius through the polygon and the radius waves first.
+// STOPS: the radius through the polygon (regular, or Lens Flare's irregular ones with the
+// noisy elements), the radius waves, and Lens Flare's radius noise.
+inline Expr stops_radius(const Field &field, const ElementFrame &m, Expr e, const Angular *noise) {
+    auto f = [&](int i) { return field(i, e); };
     Expr start = f(GLARE_START);
     Expr sides = f(GLARE_SIDES);
     Expr seg = 2.0f * PI / max(sides, 3.0f);
-    Expr phase = th - start;
+    Expr phase = m.th - start;
     Expr phi = phase - seg * floor(phase / seg) - seg / 2.0f;
     Expr edge = cos(PI / max(sides, 3.0f)) / cos(phi);
     if (noise) {
@@ -109,7 +122,7 @@ inline Expr element_value(const Field &field, Expr dx, Expr dy, Expr c, Expr e,
                       cos(0.5f * (v1 - v0)) / cos(turn_at - 0.5f * (v0 + v1)), edge);
     }
     edge = edge + (1.0f - edge) * f(GLARE_ROUNDNESS);
-    Expr r1 = select(sides >= 3.0f, r0 / edge, r0);
+    Expr r1 = select(sides >= 3.0f, m.r0 / edge, m.r0);
     Expr lo = f(GLARE_RW_MIN), hi = f(GLARE_RW_MAX);
     // (their frequency across the sector's width; a whole turn: per turn)
     Expr whole = phase - 2.0f * PI * floor(phase / (2.0f * PI));
@@ -121,11 +134,17 @@ inline Expr element_value(const Field &field, Expr dx, Expr dy, Expr c, Expr e,
         // (Lens Flare: the radius x r_noise_min..max by the radius noise)
         Expr lo_n = f(GLARE_RN_MIN), hi_n = f(GLARE_RN_MAX);
         r = select(f(GLARE_RN_OCTAVES) > 0.0f,
-                   r / max(lo_n + (hi_n - lo_n) * (*noise)(0, th, e), 1e-3f), r);
+                   r / max(lo_n + (hi_n - lo_n) * (*noise)(0, m.th, e), 1e-3f), r);
     }
+    return r;
+}
+
+// STOPS: the colour at radius r: linear between the stops (held beyond them), in its band
+// (edges as the row says), or blurred (Blur Gradient); then faded (fade_gradient).
+inline Expr stops_profile(const Field &field, Expr r, Expr c, Expr e) {
+    auto f = [&](int i) { return field(i, e); };
     Expr R = f(GLARE_R);
     Expr t = r / R;
-    // The colour: linear between the stops (held beyond them), in its band.
     Expr stops = f(GLARE_STOP_COUNT);
     auto radius = [&](Expr k) { return field(GLARE_STOP_RADII + k, e); };
     auto colour = [&](Expr k) { return field(GLARE_STOP_COLORS + 3 * k + c, e); };
@@ -167,22 +186,32 @@ inline Expr element_value(const Field &field, Expr dx, Expr dy, Expr c, Expr e,
     // fade_gradient f: x 1 - f t outwards; f < 0: x 1 + f (1 - t), darker at the centre
     // (Lens Flare's measures at -0.75, -0.3, 0.5, 0.89)
     Expr fade = f(GLARE_FADE), tc = clamp(t, 0.0f, 1.0f);
-    col = col * select(fade < 0.0f, 1.0f + fade * (1.0f - tc), 1.0f - fade * tc);
-    // Sectors: the angular window (repeated), soft edges.
+    return col * select(fade < 0.0f, 1.0f + fade * (1.0f - tc), 1.0f - fade * tc);
+}
+
+// Sectors: the angular window (repeated), soft edges; its position in the window (u: 0..1
+// across it, v: in its repeat) for the waves.
+inline Expr sector_window(const Field &field, const ElementFrame &m, Expr e, Expr &u, Expr &v) {
+    auto f = [&](int i) { return field(i, e); };
     Expr width = f(GLARE_WIDTH), soft = f(GLARE_SOFTNESS);
-    Expr aphase = angle - start;
+    Expr aphase = m.angle - f(GLARE_START);
     Expr turn = aphase - 2.0f * PI * floor(aphase / (2.0f * PI));
-    Expr u = turn / width;
-    Expr v = u * f(GLARE_REPEATS) - floor(u * f(GLARE_REPEATS));
+    u = turn / width;
+    v = u * f(GLARE_REPEATS) - floor(u * f(GLARE_REPEATS));
     // Sharp edges (no softness): the start edge itself left out, the end edge over one
     // pixel of arc.
-    Expr past = (turn - width) * r0;
+    Expr past = (turn - width) * m.r0;
     Expr sharp = select(u <= 1e-5f, 0.0f, u <= 1.0f, 1.0f, clamp(0.57f - past, 0.0f, 1.0f));
     Expr window = select(soft > 0.0f,
                          smoothstep(min(v, 1.0f - v) / (0.5f * soft)) *
                              select(u <= 1.0f, 1.0f, 0.0f),
                          sharp);
-    window = select(width >= 2.0f * PI - 1e-5f && soft == 0.0f, 1.0f, window);
+    return select(width >= 2.0f * PI - 1e-5f && soft == 0.0f, 1.0f, window);
+}
+
+// A polar flare's waves at (u, v) of its sector (sector_window).
+inline Expr sector_waves(const Field &field, Expr e, Expr u, Expr v) {
+    auto f = [&](int i) { return field(i, e); };
     Expr wave = f(GLARE_WAVE), ww = f(GLARE_WAVE_WIDTH);
     Expr ph = (u - 0.5f) * f(GLARE_WAVE_FREQ) + 0.5f;
     ph = ph - floor(ph) - 0.5f;
@@ -193,15 +222,14 @@ inline Expr element_value(const Field &field, Expr dx, Expr dy, Expr c, Expr e,
     // (in each of the sector's repeats)
     Expr cosine =
         0.5f + 0.5f * cos(2.0f * PI * (v * f(GLARE_WAVE_FREQ) - f(GLARE_WAVE_PHASE)));
-    waves = select(f(GLARE_WAVE_LENS) == 0.0f || wave == 0.0f, waves,
-                   wave * threshold(cosine, ww, f(GLARE_WAVE_SOFT)));
-    Expr gradient = col * select(f(GLARE_SECTOR) != 0.0f, window, 1.0f) * f(GLARE_BOOST) * waves;
-    if (noise) // (Lens Flare: x noise_brightness x its noise)
-        gradient = select(f(GLARE_NB) != 0.0f, gradient * f(GLARE_NB) * (*noise)(1, th, e),
-                          gradient);
+    return select(f(GLARE_WAVE_LENS) == 0.0f || wave == 0.0f, waves,
+                  wave * threshold(cosine, ww, f(GLARE_WAVE_SOFT)));
+}
 
-    // RAYS: lines through the centre, 1 - d / L along (stretched), 1 - smoothstep(d / w)
-    // across (not stretched); cut at L unstretched.
+// RAYS: lines through the centre, 1 - d / L along (stretched), 1 - smoothstep(d / w) across
+// (not stretched); cut at L unstretched.
+inline Expr rays_value(const Field &field, const ElementFrame &m, Expr dx, Expr dy, Expr e) {
+    auto f = [&](int i) { return field(i, e); };
     Expr L = f(GLARE_R), w = f(GLARE_RAY_WIDTH), lines = f(GLARE_LINES);
     RDom j(0, GLARE_MAX_LINES, "j");
     j.where(cast<float>(j) < lines);
@@ -213,7 +241,7 @@ inline Expr element_value(const Field &field, Expr dx, Expr dy, Expr c, Expr e,
     Expr lmin = f(GLARE_RAY_MIN);
     Expr Lj = L * select(lmin < 1.0f, lmin + (1.0f - lmin) * sqrt(rnd(1)), 1.0f);
     Expr spacing = PI / select(lines > 0.0f, lines, 1.0f);
-    Expr ang = rot + cast<float>(j) * spacing + f(GLARE_RAY_JITTER) * (rnd(2) - 0.5f) * spacing;
+    Expr ang = m.rot + cast<float>(j) * spacing + f(GLARE_RAY_JITTER) * (rnd(2) - 0.5f) * spacing;
     Expr ca = cos(ang), sa = sin(ang); // (Lens Flare's frame q: the screen's, the same angle)
     // (Lens Flare: each line turned by the rotation in the frame q, its length there; its
     // width across it as the squeeze makes it: x rel_width rel_height / |v|)
@@ -225,16 +253,37 @@ inline Expr element_value(const Field &field, Expr dx, Expr dy, Expr c, Expr e,
     Expr squeezed = w * (f(GLARE_REL_Y) * ca * ca + f(GLARE_REL_X) * sa * sa);
     Expr shown = max(squeezed, 0.75f);
     Expr across_s = (-dx * vy + dy * vx) / vlen;
-    Expr along = select(turned, along_q, sx * ca + sy * sa);
-    Expr across = select(turned, across_s, -ax * sa + ay * ca);
-    Expr ray_w = select(turned, shown, w), thin = select(turned, squeezed / shown, 1.0f);
+    Expr along = select(m.turned, along_q, m.sx * ca + m.sy * sa);
+    Expr across = select(m.turned, across_s, -m.ax * sa + m.ay * ca);
+    Expr ray_w = select(m.turned, shown, w), thin = select(m.turned, squeezed / shown, 1.0f);
     Expr safe_w = select(ray_w > 0.0f, ray_w, 1.0f); // no width: no rays
-    Expr ray = select(w > 0.0f,
-                      sum(max(1.0f - abs(along) / Lj, 0.0f) *
-                          (1.0f - smoothstep(abs(across) / safe_w)) * thin),
-                      0.0f) *
-               band_edge(clip_r - f(GLARE_CLIP_R));
+    return select(w > 0.0f,
+                  sum(max(1.0f - abs(along) / Lj, 0.0f) *
+                      (1.0f - smoothstep(abs(across) / safe_w)) * thin),
+                  0.0f) *
+           band_edge(m.clip_r - f(GLARE_CLIP_R));
+}
 
+// Element e's value, channel c, at offset (dx, dy) (pixels, y up) from its centre; noise:
+// with Lens Flare's radius noise and noise_brightness (the elements without them are
+// cheaper without); image: Lens Flare's image there (it multiplies the element, or is it).
+inline Expr element_value(const Field &field, Expr dx, Expr dy, Expr c, Expr e,
+                          const Angular *noise = nullptr, Expr image = Expr()) {
+    auto f = [&](int i) { return field(i, e); };
+    Expr kind = f(GLARE_KIND);
+    const ElementFrame m = element_frame(field, dx, dy, e);
+    Expr gain = select(c == 0, f(GLARE_GAIN_R), c == 1, f(GLARE_GAIN_G), f(GLARE_GAIN_B));
+    Expr falloff = falloff_value(field, m, e);
+    Expr r = stops_radius(field, m, e, noise);
+    Expr col = stops_profile(field, r, c, e);
+    Expr u, v;
+    Expr window = sector_window(field, m, e, u, v);
+    Expr waves = sector_waves(field, e, u, v);
+    Expr gradient = col * select(f(GLARE_SECTOR) != 0.0f, window, 1.0f) * f(GLARE_BOOST) * waves;
+    if (noise) // (Lens Flare: x noise_brightness x its noise)
+        gradient = select(f(GLARE_NB) != 0.0f, gradient * f(GLARE_NB) * (*noise)(1, m.th, e),
+                          gradient);
+    Expr ray = rays_value(field, m, dx, dy, e);
     Expr value = select(kind == GLARE_FALLOFF, falloff, kind == GLARE_RAYS, ray, gradient);
     if (image.defined())
         value = select(kind == GLARE_IMAGE, image, value * image);
