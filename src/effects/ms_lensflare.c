@@ -434,7 +434,7 @@ static const MsParam params[] = {
 
 // The Motion Blur's samples: about one every this many pixels of travel, at most this many.
 #define MOTION_SPACING 3.0
-#define MOTION_SAMPLES 16
+#define MOTION_SAMPLES (GLARE_MAX_ROWS / GLARE_MAX_ELEMENTS)
 
 // One render: images and settings of the kernels.
 typedef struct {
@@ -753,7 +753,7 @@ static int render(const MsRender *r) {
             samples = samples > 1 ? samples : 1;
         }
     }
-    const int capacity = samples * GLARE_MAX_ELEMENTS;
+    const int capacity = GLARE_MAX_ROWS; // (the kernel's rows: always this many)
     const size_t text_length = strlen(lens);
     MsJson *nodes = malloc((text_length + 1) * sizeof(MsJson));
     float(*rows)[GLARE_FIELDS] = calloc((size_t)capacity, sizeof *rows);
@@ -829,7 +829,8 @@ static int render(const MsRender *r) {
         for (int e = 0; e < j.count; ++e) {
             const int drawn = rows[e][GLARE_R] > 0 && rows[e][GLARE_HIDDEN] == 0;
             const int special = rows[e][GLARE_RN_OCTAVES] > 0 || rows[e][GLARE_NB] != 0 ||
-                                rows[e][GLARE_TEX] != 0;
+                                rows[e][GLARE_TEX] != 0 || rows[e][GLARE_TN_AMP] != 0 ||
+                                rows[e][GLARE_STREAK_AMP] != 0 || rows[e][GLARE_IRREGULAR] != 0;
             const int kind = !drawn ? GLARE_DRAW_LISTS
                                     : (special ? GLARE_DRAW_SPECIAL : GLARE_DRAW_PLAIN) +
                                           (rows[e][GLARE_SHADOW_ROW] > 0);

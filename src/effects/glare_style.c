@@ -4,12 +4,19 @@
 #include "effects/glare_style.h"
 
 #include <math.h>
+#include <stdint.h>
 #include <string.h>
 
 #include "common/json.h"
 
 #define PI 3.14159265358979323846
 #define RADIANS (PI / 180.0)
+// Lens Flare: the noise_amp texture's cells a radius per simplex_noise_freq, its change with
+// the element's position (per S), the streaks' cells a radian per streaks_freq (fitted on the
+// reference's correlation lengths)
+#define TEXTURE_SCALE 1.95
+#define TEXTURE_VARY 2.8
+#define STREAK_SCALE 16.0
 
 typedef struct {
     const MsJson *nodes;
@@ -39,6 +46,18 @@ static int get_list(const Builder *b, int e, const char *key, double *out, int m
     for (int c = b->nodes[list].first; c >= 0 && n < max; c = b->nodes[c].next)
         out[n++] = ms_json_number(b->nodes, c, 0.0);
     return n;
+}
+
+// MillSaph's random: a number in [0, 1) by (seed, i, k) (an integer hash; not the reference's).
+static double random01(double seed, int i, int k) {
+    uint32_t h = (uint32_t)(int32_t)floor(seed * 1000.0) * 0x9e3779b9u ^ (uint32_t)i * 0x85ebca6bu ^
+                 (uint32_t)k * 0xc2b2ae35u;
+    h ^= h >> 16;
+    h *= 0x7feb352du;
+    h ^= h >> 15;
+    h *= 0x846ca68bu;
+    h ^= h >> 16;
+    return (h & 0xffffff) / 16777216.0;
 }
 
 static int is_type(const Builder *b, int e, const char *type) {
@@ -103,13 +122,18 @@ static void place(const Builder *b, int e, float *row, double *size_k, double *s
     // the families: at the hotspot (center 1), the others; the rays also by their own knobs
     const int at_hotspot = fabs(get(b, e, "center", 1.0) - 1.0) < 1e-6;
     const int rays = is_type(b, e, "rays");
-    // the triggers, as much as the element responds to them
+    // the triggers, as much as the element responds to them (center_trigger, edge_trigger 0:
+    // not to that one)
     const double rb = get(b, e, "brightness_response", 1.0);
     const double rw = get(b, e, "width_response", 1.0);
+    const double ct = get(b, e, "center_trigger", 1.0) != 0.0;
+    const double et = get(b, e, "edge_trigger", 1.0) != 0.0;
     row[GLARE_BRIGHT_RESPONSE] = (float)rb;
     row[GLARE_WIDTH_RESPONSE] = (float)rw;
-    const double triggers_bright = (1.0 + g->center_bright * rb) * (1.0 + g->edge_bright * rb);
-    const double triggers_width = (1.0 + g->center_width * rw) * (1.0 + g->edge_width * rw);
+    const double triggers_bright =
+        (1.0 + ct * g->center_bright * rb) * (1.0 + et * g->edge_bright * rb);
+    const double triggers_width =
+        (1.0 + ct * g->center_width * rw) * (1.0 + et * g->edge_width * rw);
     // scale_brightness_by_dist s: x (min_brightness_scale + s d), or x (min + 1 - s d) when
     // brightness_scale_inverted; scale_width_by_dist the same with its own settings
     // (brightness_direction, size_direction: no change on a still)
@@ -188,6 +212,26 @@ static void add_element(Builder *b, int e) {
     row[GLARE_ANGLE_Y] = (float)(g->lens ? 1.0 : rel_h);
     row[GLARE_REL_X] = (float)(g->lens ? rel_w : 0.0);
     row[GLARE_REL_Y] = (float)(g->lens ? rel_h : 0.0);
+    // Lens Flare, noise_amp: the element x max(1 + 0.714 amp n, 0), n MillSaph's fbm (of
+    // gradient noise, sd 0.28 an octave: the reference's sd 0.2 x amp at octaves_scale 0.2)
+    // across the element, simplex_noise_freq x TEXTURE_SCALE cells a radius (x freq_rel_x,
+    // freq_rel_y on the screen), octaves_scale x the amplitude an octave; changing as the
+    // element moves x noise_vary_by_position (the reference's: half decorrelated at about 25 px
+    // of travel at 1 for a radius of 44 px).
+    const double amp = g->lens && !b->as_shadow ? get(b, e, "noise_amp", 0.0) : 0.0;
+    if (amp != 0.0 && size > 0 && S > 0) {
+        const double k = get(b, e, "simplex_noise_freq", 4.0) * TEXTURE_SCALE / (2.0 * S * size);
+        const double vary = get(b, e, "noise_vary_by_position", 0.0) * TEXTURE_VARY / S;
+        row[GLARE_TN_AMP] = (float)(0.714 * amp);
+        row[GLARE_TN_FX] = (float)(k * get(b, e, "freq_rel_x", 1.0));
+        row[GLARE_TN_FY] = (float)(k * get(b, e, "freq_rel_y", 1.0));
+        const double px = row[GLARE_POS_X], py = row[GLARE_POS_Y];
+        row[GLARE_TN_Z] = (float)fmod(0.3 + 37.1 * get(b, e, "rand_seed", 0.0) +
+                                          vary * (0.6 * px + 0.8 * py),
+                                      4096.0);
+        row[GLARE_TN_U] = (float)fmod(vary * (0.6 * py - 0.8 * px), 4096.0);
+        row[GLARE_TN_PERSIST] = (float)get(b, e, "octaves_scale", 0.2);
+    }
 
     if (is_type(b, e, "rays")) {
         // floor(ray_number / 2) lines; the length L = 2 S size x Rays Length x radius_range's
@@ -209,6 +253,16 @@ static void add_element(Builder *b, int e) {
         row[GLARE_RAY_MIN] = (float)(g->lens && range[1] > 0 ? fmin(range[0] / range[1], 1.0) : 1.0);
         row[GLARE_RAY_SEED] = (float)get(b, e, "rand_seed", 0.0);
         row[GLARE_RAY_JITTER] = (float)(g->lens ? get(b, e, "jitter_angles", 0.0) : 0.0);
+        // Lens Flare, streaks: thin stripes along the lines, x max(1 + amp (0.09 + 0.55 n), 0),
+        // n MillSaph's fbm around a circle of streaks_freq x STREAK_SCALE cells' radius (the
+        // reference's: mean +7 %, sd 0.11 x amp at freq 1, 0.23 at 4)
+        const double streaks = g->lens ? get(b, e, "streaks_amp", 0.0) : 0.0;
+        if (streaks != 0.0) {
+            row[GLARE_STREAK_AMP] = (float)streaks;
+            row[GLARE_STREAK_FREQ] = (float)(get(b, e, "streaks_freq", 1.0) * STREAK_SCALE);
+            row[GLARE_STREAK_PERSIST] = (float)get(b, e, "streaks_octaves_scale", 0.3);
+            row[GLARE_STREAK_SEED] = (float)(0.7 + 37.1 * get(b, e, "rand_seed", 0.0));
+        }
         for (int c = 0; c < 3; ++c)
             row[GLARE_GAIN_R + c] = (float)(bright * color[c]);
         scale_gain(row, lens_gain);
@@ -273,8 +327,31 @@ static void add_element(Builder *b, int e) {
         row[GLARE_WIDTH] = (float)(fmin(get(b, e, "angle_width", 360.0), 360.0) * RADIANS);
         row[GLARE_SOFTNESS] = (float)get(b, e, "arc_edge_softness", 0.0);
         row[GLARE_REPEATS] = (float)fmax(1.0, floor(get(b, e, "repeats", 1.0)));
-        const int sides = (int)get(b, e, "n_sides", 0.0);
-        row[GLARE_SIDES] = (float)(sides >= 3 ? sides : 0);
+        const int n_sides = (int)get(b, e, "n_sides", 0.0);
+        const int sides = n_sides < 3 ? 0 : n_sides < GLARE_MAX_SIDES ? n_sides : GLARE_MAX_SIDES;
+        row[GLARE_SIDES] = (float)sides;
+        // the vertices: on the circle, the first at the start angle; random_side_lengths r:
+        // each side's angle (1 - r) x its share + r x a random share (MillSaph's random by
+        // rand_seed, 0.05 + u each; the reference's: the vertices on the circle, the first one
+        // kept, energy -12 to -18 % at r 1 on a hexagon, -3 to -5 % at 0.5)
+        double r = g->lens ? fmin(fmax(get(b, e, "random_side_lengths", 0.0), 0.0), 1.0) : 0.0;
+        const double seed = get(b, e, "rand_seed", 0.0);
+        double weights[GLARE_MAX_SIDES], total = 0.0, largest = 0.0;
+        for (int k = 0; k < sides; ++k) {
+            total += weights[k] = 0.05 + random01(seed, k, 7);
+            largest = fmax(largest, weights[k]);
+        }
+        // (no side over 0.95 pi: the centre inside)
+        const double over = sides > 0 ? largest / total - 1.0 / sides : 0.0;
+        if (over > 0 && r * over > 0.475 - 1.0 / sides)
+            r = (0.475 - 1.0 / sides) / over;
+        row[GLARE_IRREGULAR] = (float)(sides > 0 && r > 0);
+        double at = 0.0;
+        for (int k = 0; k <= GLARE_MAX_SIDES; ++k) {
+            row[GLARE_VERTICES + k] = (float)(k < sides ? at : k == sides ? 2.0 * PI : 7.0);
+            if (k < sides)
+                at += 2.0 * PI * ((1.0 - r) / sides + r * weights[k] / total);
+        }
         row[GLARE_ROUNDNESS] = (float)get(b, e, "roundness", 0.0);
         // Blur Gradient: the radial profile blurred, sigma blur_gradient x R / 2.8 (with the
         // edges' antialiasing, 0.6 px)
@@ -353,7 +430,12 @@ static void add_shadow(Builder *b, int e, int owner) {
     const double ax = g->pivot[0] - g->hotspot[0], ay = g->pivot[1] - g->hotspot[1];
     const double length = sqrt(ax * ax + ay * ay);
     const double ux = length > 0 ? ax / length : 1.0, uy = length > 0 ? ay / length : 0.0;
-    const double d = length / g->unit;
+    // shadow_dist_calc "use element": D the element's distance to the pivot, not the hotspot's
+    const double d =
+        ms_json_is(b->nodes, e, "shadow_dist_calc", "use element")
+            ? hypot(b->rows[owner][GLARE_POS_X] - g->pivot[0],
+                    b->rows[owner][GLARE_POS_Y] - g->pivot[1]) / g->unit
+            : length / g->unit;
     const double delay = fmax(get(b, e, "shadow_animation_delay", 0.1), 0.0);
     const double past = fmax(d - 5.0 * delay, 0.0);
     const double law = delay > 0 ? (0.29 + 0.19 * delay) * pow(past, 1.29 + 1.5 * delay)

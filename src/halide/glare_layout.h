@@ -5,8 +5,12 @@
 #pragma once
 
 #define GLARE_MAX_ELEMENTS 256
+// Lens Flare's rows: the elements at up to 16 times of a motion blur (a constant size: the
+// kernel faster than with a size of its own each render)
+#define GLARE_MAX_ROWS (16 * GLARE_MAX_ELEMENTS)
 #define GLARE_MAX_STOPS 32 // colour stops of an element
 #define GLARE_MAX_LINES 64 // ray lines of a rays element
+#define GLARE_MAX_SIDES 16 // sides of a polygon
 
 // An element's kind (GLARE_KIND).
 enum {
@@ -83,6 +87,16 @@ enum {
     GLARE_NB_BLUR,        // blur_theta_map: the thresholded noise averaged over this x a turn
     GLARE_NOISE_SLOT,     // Lens Flare: the row of the noise rows with its noises (the rows
                           // of a motion blur's times share them)
+    GLARE_TN_AMP,         // Lens Flare, noise_amp: x max(1 + this x a fbm, 0) (0: none), the
+    GLARE_TN_FX,          // fbm at (dx x FX, dy x FY, Z) (pixels from the centre), octaves
+    GLARE_TN_FY,          // PERSIST^k
+    GLARE_TN_Z,           // (Z and U: where it is read, by the element's position)
+    GLARE_TN_U,
+    GLARE_TN_PERSIST,
+    GLARE_STREAK_AMP,     // Lens Flare, RAYS' streaks: x max(1 + AMP (0.09 + 0.55 n), 0), n a
+    GLARE_STREAK_FREQ,    // fbm around a circle of radius FREQ (the angle), PERSIST^k
+    GLARE_STREAK_PERSIST,
+    GLARE_STREAK_SEED,
     GLARE_BRIGHT_RESPONSE, // Lens Flare: brightness_response, width_response (Occlusion Scale)
     GLARE_WIDTH_RESPONSE,
     GLARE_TEX,            // Lens Flare: 1 when an image multiplies the element (or is it)
@@ -106,6 +120,12 @@ enum {
     GLARE_SOFTNESS,   // arc_edge_softness
     GLARE_REPEATS,    // the angular window's repeats
     GLARE_SIDES,      // polygon sides (0: a circle)
+    // Lens Flare: 1 when the polygon is irregular (random_side_lengths), its vertices' angles
+    // from the first (GLARE_START), increasing, then 2 pi, then more than 2 pi up to
+    // GLARE_MAX_SIDES (else regular: GLARE_SIDES alone)
+    GLARE_IRREGULAR,
+    GLARE_VERTICES,
+    GLARE_VERTICES_END = GLARE_VERTICES + GLARE_MAX_SIDES,
     GLARE_ROUNDNESS,  // the polygon's edge radius lerped towards the circle
     GLARE_FADE,       // fade_gradient
     GLARE_SIGMA,      // the radial profile's gaussian blur (Blur Gradient), 0: none

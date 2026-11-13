@@ -120,7 +120,7 @@ class LensFlareDraw : public Generator<LensFlareDraw> {
                                octaves, persistence, 12, "octave");
         atmosphere(x, y) = max(1.0f + amp * n, 0.0f);
         ms_glare::Field field = [&](Expr i, Expr el) {
-            return rows(clamp(i, 0, GLARE_FIELDS - 1), clamp(el, 0, rows.dim(1).extent() - 1));
+            return rows(clamp(i, 0, GLARE_FIELDS - 1), clamp(el, 0, GLARE_MAX_ROWS - 1));
         };
         auto noise_field = [&](Expr i, Expr slot) {
             return noise_rows(clamp(i, 0, GLARE_FIELDS - 1),
@@ -203,9 +203,33 @@ class LensFlareDraw : public Generator<LensFlareDraw> {
         Expr sampled = (texel(0, 0) * (1.0f - fu) + texel(1, 0) * fu) * (1.0f - fv) +
                        (texel(0, 1) * (1.0f - fu) + texel(1, 1) * fu) * fv;
         Expr image = select(field(GLARE_TEX, e) != 0.0f, sampled, 1.0f);
+        // noise_amp's texture and the rays' streaks (glare_style.c): MillSaph's fbm
+        auto octaves = [&](Expr u, Expr v, Expr w, Expr persistence, int count) {
+            Expr total = 0.0f, amplitude = 1.0f;
+            for (int k = 0; k < count; ++k) {
+                total += amplitude * ms_noise::perlin3(u * float(1 << k) + 17.3f * k,
+                                                       v * float(1 << k) + 5.1f * k, w);
+                amplitude *= persistence;
+            }
+            return total;
+        };
+        // (each computed only for the elements with it: a sum of one term where asked, else 1)
+        RDom tn_on(0, 1, "tn_on"), streak_on(0, 1, "streak_on");
+        tn_on.where(field(GLARE_TN_AMP, e) != 0.0f);
+        streak_on.where(field(GLARE_STREAK_AMP, e) != 0.0f);
+        Expr tn = octaves(dx * field(GLARE_TN_FX, e) + field(GLARE_TN_U, e), dy * field(GLARE_TN_FY, e),
+                          field(GLARE_TN_Z, e), field(GLARE_TN_PERSIST, e), 6);
+        Expr texture_noise =
+            1.0f + sum(max(1.0f + field(GLARE_TN_AMP, e) * tn, 0.0f) - 1.0f + 0.0f * tn_on);
+        Expr streak_at = atan2(dy, dx), streak_rho = field(GLARE_STREAK_FREQ, e);
+        Expr sn = octaves(cos(streak_at) * streak_rho, sin(streak_at) * streak_rho,
+                          field(GLARE_STREAK_SEED, e), field(GLARE_STREAK_PERSIST, e), 3);
+        Expr streaks = 1.0f + sum(max(1.0f + field(GLARE_STREAK_AMP, e) * (0.09f + 0.55f * sn),
+                                      0.0f) -
+                                  1.0f + 0.0f * streak_on);
         Func special("special");
-        special(x, y, c, e) =
-            ms_glare::element_value(field, dx, dy, c, e, &angular, image) * atmo * brighter;
+        special(x, y, c, e) = ms_glare::element_value(field, dx, dy, c, e, &angular, image) *
+                              atmo * brighter * texture_noise * streaks;
         noisy(x, y, c, e) = special(x, y, c, e) * mask;
         // The sum of the elements, each where it reaches (none of size 0, no shadow's row):
         // those without a shadow, those with one, those with a radius noise (apart: the
@@ -234,7 +258,7 @@ class LensFlareDraw : public Generator<LensFlareDraw> {
 
         texels.dim(0).set_bounds(0, GLARE_TEXEL_ROW);
         rows.dim(0).set_bounds(0, GLARE_FIELDS);
-        rows.dim(1).set_min(0);
+        rows.dim(1).set_bounds(0, GLARE_MAX_ROWS);
         noise_rows.dim(0).set_bounds(0, GLARE_FIELDS);
         noise_rows.dim(1).set_bounds(0, GLARE_MAX_ELEMENTS);
         ms::interleaved(visible);

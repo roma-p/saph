@@ -97,6 +97,17 @@ inline Expr element_value(const Field &field, Expr dx, Expr dy, Expr c, Expr e,
     Expr phase = th - start;
     Expr phi = phase - seg * floor(phase / seg) - seg / 2.0f;
     Expr edge = cos(PI / max(sides, 3.0f)) / cos(phi);
+    if (noise) {
+        // (Lens Flare's irregular polygons, with the noisy elements: the side the angle is on,
+        // the last vertex before it by halving, its half angle and middle)
+        Expr turn_at = phase - 2.0f * PI * floor(phase / (2.0f * PI));
+        Expr side = 0;
+        for (int step = GLARE_MAX_SIDES / 2; step >= 1; step /= 2)
+            side = select(field(GLARE_VERTICES + side + step, e) <= turn_at, side + step, side);
+        Expr v0 = field(GLARE_VERTICES + side, e), v1 = field(GLARE_VERTICES + side + 1, e);
+        edge = select(f(GLARE_IRREGULAR) != 0.0f,
+                      cos(0.5f * (v1 - v0)) / cos(turn_at - 0.5f * (v0 + v1)), edge);
+    }
     edge = edge + (1.0f - edge) * f(GLARE_ROUNDNESS);
     Expr r1 = select(sides >= 3.0f, r0 / edge, r0);
     Expr lo = f(GLARE_RW_MIN), hi = f(GLARE_RW_MAX);
