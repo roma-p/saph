@@ -414,9 +414,14 @@ static void add_element(Builder *b, int e) {
 }
 
 // Lens Flare: element e (just added, row `owner`) masked by the lens's shadow when it asks
-// (use_shadow_p): a row of the shadow element of radius R x shadow_rel_scale (R: the
-// element's), centred on the element moved by R x (amount max(|amount| / 2, 1)^0.09 x law -
-// shadow_offset_along_axis) towards the pivot and R x shadow_offset_off_axis across. The law,
+// (use_shadow_p): a row of the shadow element of radius (R + 1.1 px) x shadow_rel_scale (R:
+// the element's; the reference's shadow edge about a pixel further out than its elements'),
+// centred on the element moved by R x (amount max(|amount| / 2, 1)^0.09 x law + 0.01 rs ((1 -
+// exp(-law / 0.01)) clamp(amount / 2, -1, 1) - 1) - shadow_offset_along_axis) towards the
+// pivot (rs: shadow_rel_scale) and R x shadow_offset_off_axis across. The second term: the
+// reference's shadow 0.01 rs towards the hotspot before the law acts (concentric masks), 0.02 rs
+// more for a negative amount once it acts (+-2, +-7 at D 1-1.66); the law fitted at amount 2.
+// The law,
 // by D (the hotspot's distance to the pivot, in units) and the delay (shadow_animation_delay):
 // none up to D = 5 delay, then (0.29 + 0.19 delay) (D - 5 delay)^(1.29 + 1.5 delay); at delay
 // 0, 0.2375 D^1.06 (amount: shadow_amount_at_edge; fitted on D 0.25 to 2.8, delays 0 to 1,
@@ -441,12 +446,15 @@ static void add_shadow(Builder *b, int e, int owner) {
     const double law = delay > 0 ? (0.29 + 0.19 * delay) * pow(past, 1.29 + 1.5 * delay)
                                  : 0.2375 * pow(past, 1.06);
     const double amount = get(b, e, "shadow_amount_at_edge", 1.0);
-    const double along = amount * pow(fmax(fabs(amount) / 2.0, 1.0), 0.09) * law -
+    const double rel_scale = get(b, e, "shadow_rel_scale", 1.0);
+    const double along =
+        amount * pow(fmax(fabs(amount) / 2.0, 1.0), 0.09) * law +
+        0.01 * rel_scale * ((1.0 - exp(-law / 0.01)) * fmin(fmax(amount / 2.0, -1.0), 1.0) - 1.0) -
                          get(b, e, "shadow_offset_along_axis", 0.0);
     const double across = get(b, e, "shadow_offset_off_axis", 0.0);
     float *row = b->rows[owner];
     b->as_shadow = 1;
-    b->shadow_r = R * get(b, e, "shadow_rel_scale", 1.0);
+    b->shadow_r = R * rel_scale + 1.1 * rel_scale;
     b->shadow_x = row[GLARE_POS_X] + R * (along * ux - across * uy);
     b->shadow_y = row[GLARE_POS_Y] + R * (along * uy + across * ux);
     const int at = b->count;
