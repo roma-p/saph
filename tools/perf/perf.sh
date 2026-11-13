@@ -56,4 +56,6 @@ Glare                Glare !Mask
 LensFlare            LensFlare !Occlusion
 LensFlare_Atmosphere LensFlare !Occlusion atmosphere_amp=1
 LensFlare_Glow       LensFlare diffraction_glow=1
+JpegDamage           JpegDamage !Mask
+JpegDamage_Freq      JpegDamage !Mask quality=0.3 x_freq_scale=3 high_freq_scale=0
 CASES

@@ -40,6 +40,8 @@ EFFECTS = [
     ("Glare", SAPPHIRE + "Lighting.S_Glare_v1", MILLSAPH + "Glare_v1", "brightness", [("", {})]),
     ("LensFlare", SAPPHIRE + "Lighting.S_LensFlare_v1", MILLSAPH + "LensFlare_v1", "brightness",
      [("", {})]),
+    ("JpegDamage", SAPPHIRE + "Stylize.S_JpegDamage_v1", MILLSAPH + "JpegDamage_v1", "quality",
+     [("", {})]),
 ]
 # The photo-like image: gradients, a disc and a box with hard edges, a little noise.
 DISC = "pow(x/width-0.39,2)*256/81+pow(y/height-0.46,2)<0.077"

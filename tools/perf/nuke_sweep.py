@@ -46,6 +46,7 @@ NODES = {
     "MS_Glint": (SAPPHIRE + "Lighting.S_Glint_v1", MILLSAPH + "Glint_v1"),
     "MS_Glare": (SAPPHIRE + "Lighting.S_Glare_v1", MILLSAPH + "Glare_v1"),
     "MS_LensFlare": (SAPPHIRE + "Lighting.S_LensFlare_v1", MILLSAPH + "LensFlare_v1"),
+    "MS_JpegDamage": (SAPPHIRE + "Stylize.S_JpegDamage_v1", MILLSAPH + "JpegDamage_v1"),
 }
 PLUGIN_LOG = os.path.expanduser("~/millsaph.log")  # src/common/log.h
 # The test image, as nuke_time.py: gradients, a disc and a box with hard edges, a little noise.

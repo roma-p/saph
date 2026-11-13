@@ -64,9 +64,10 @@ static AeEffect effects[] = {
     {&ms_bandpass_effect, {{0}}}, {&ms_edgeawareblur_effect, {{0}}}, {&ms_distort_effect, {{0}}},
     {&ms_mosaic_effect, {{0}}},   {&ms_glow_effect, {{0}}},          {&ms_edgeblur_effect, {{0}}},
     {&ms_rackdefocus_effect, {{0}}}, {&ms_glint_effect, {{0}}},     {&ms_glare_effect, {{0}}},
-    {&ms_lensflare_effect, {{0}}},
+    {&ms_lensflare_effect, {{0}}}, {&ms_jpegdamage_effect, {{0}}},
 };
-enum { BANDPASS, EDGEAWAREBLUR, DISTORT, MOSAIC, GLOW, EDGEBLUR, RACKDEFOCUS, GLINT, GLARE, LENSFLARE };
+enum { BANDPASS, EDGEAWAREBLUR, DISTORT, MOSAIC, GLOW, EDGEBLUR, RACKDEFOCUS, GLINT, GLARE, LENSFLARE,
+       JPEGDAMAGE };
 
 // ---------------------------------------------------------------- parameters
 
@@ -750,6 +751,7 @@ ENTRY(RackDefocus, RACKDEFOCUS)
 ENTRY(Glint, GLINT)
 ENTRY(Glare, GLARE)
 ENTRY(LensFlare, LENSFLARE)
+ENTRY(JpegDamage, JPEGDAMAGE)
 
 // One effect for PluginDataEntryFunction2: what the SDK's PF_REGISTER_EFFECT_EXT2 does
 // (Util/entry.h, C++ only), as an effect plug-in ('eFKT') with the reserved info it gives.
@@ -784,6 +786,7 @@ EXPORT PF_Err PluginDataEntryFunction2(PF_PluginDataPtr in_ptr, PF_PluginDataCB2
         {"MS_Glint", "MillSaph Glint", "EffectMain_Glint"},
         {"MS_Glare", "MillSaph Glare", "EffectMain_Glare"},
         {"MS_LensFlare", "MillSaph LensFlare", "EffectMain_LensFlare"},
+        {"MS_JpegDamage", "MillSaph JpegDamage", "EffectMain_JpegDamage"},
     };
     PF_Err err = PF_Err_NONE;
     for (size_t i = 0; i < ARRAY_SIZE(list) && !err; ++i)

@@ -74,3 +74,7 @@ LensFlare !Occlusion preset=9
 LensFlare !Occlusion preset=10
 LensFlare !Occlusion preset=11
 LensFlare !Occlusion preset=12
+JpegDamage
+JpegDamage !Mask quality=0.03 all_freq_scale=2 x_freq_scale=3 y_freq_scale=0.5 high_freq_scale=0 scale_lights=1.5 offset_darks=-0.2 saturation=1.5
+JpegDamage mask_use=1 invert_mask=1 blur_mask=0.02 quality=1
+JpegDamage --half --pad 3

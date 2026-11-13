@@ -732,6 +732,10 @@ int main(int argc, char **argv) {
         {"LensFlare atmosphere", "MS_LensFlare", "atmosphere_amp=1 atmosphere_detail=1", NULL},
         {"LensFlare glow", "MS_LensFlare", "same diffraction_glow=1 glow_width=0.2", NULL},
         {"LensFlare half", "MS_LensFlare", "half", NULL},
+        {"JpegDamage", "MS_JpegDamage", "", NULL},
+        {"JpegDamage q0.5 freq", "MS_JpegDamage", "quality=0.5 x_freq_scale=3 high_freq_scale=0", NULL},
+        {"JpegDamage mask", "MS_JpegDamage", "same blur_mask=0.005", NULL},
+        {"JpegDamage half", "MS_JpegDamage", "half", NULL},
     };
 
     printf("%d x %d, best of %d renders after the first. GPU APIs built:", width, height,

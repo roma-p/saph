@@ -43,3 +43,4 @@ MS_EFFECT(16006, "MS_RackDefocus", "MillSaph RackDefocus", "EffectMain_RackDefoc
 MS_EFFECT(16007, "MS_Glint", "MillSaph Glint", "EffectMain_Glint", 0x02000000)
 MS_EFFECT(16008, "MS_Glare", "MillSaph Glare", "EffectMain_Glare", 0x02000000)
 MS_EFFECT(16009, "MS_LensFlare", "MillSaph LensFlare", "EffectMain_LensFlare", 0x02000004)
+MS_EFFECT(16010, "MS_JpegDamage", "MillSaph JpegDamage", "EffectMain_JpegDamage", 0x02000000)
