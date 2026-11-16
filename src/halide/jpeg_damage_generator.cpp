@@ -111,12 +111,13 @@ Expr mux8(Expr index, const Tuple &t) {
 // quantisation steps and the decoder's (`table`, column `which`): its decoded samples.
 struct Blocks {
     Func pass1, coef, quant, deq, pass2, inv1, inv2, out;
+    Func error; // (the coefficients' errors, as given)
 };
 
 Blocks blocks(const std::string &name, Func plane, Func steps, Func decoder, Func error) {
     Blocks b{Func(name + "_pass1"), Func(name + "_coef"), Func(name + "_quant"),
              Func(name + "_deq"),   Func(name + "_pass2"), Func(name + "_inv1"),
-             Func(name + "_inv2"),  Func(name + "_out")};
+             Func(name + "_inv2"),  Func(name + "_out"),  error};
     // (the block's row r, top row first, is image row 8 by + 7 - r)
     auto sample = [&](Expr col, Expr row, Expr bxx, Expr byy) {
         return plane(bxx * 8 + col, byy * 8 + 7 - row) - 128;
@@ -311,6 +312,10 @@ class JpegDamage : public Generator<JpegDamage> {
                 b->pass2.unroll(u);
                 b->inv1.unroll(u);
                 b->inv2.unroll(k);
+                // (the errors apart, a loop per block: inlined in the unrolled DCTs, their
+                // hashes 64 times over made the kernel slow to compile, ~10 s at load)
+                b->error.compute_root().bound(u, 0, 8).bound(v, 0, 8).reorder(u, v, bx, by);
+                b->error.gpu_tile(bx, by, bxo, byo, bxi, byi, 8, 8);
                 b->out.gpu_tile(x, y, xo, yo, xi, yi, 16, 16);
             }
             cb_up.first.gpu_tile(x, y, xo, yo, xi, yi, 16, 16);
