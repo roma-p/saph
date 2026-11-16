@@ -744,6 +744,11 @@ int main(int argc, char **argv) {
         {"PixelSort down", "MS_PixelSort", "downsample=1", NULL},
         {"PixelSort mask", "MS_PixelSort", "same", NULL},
         {"PixelSort half", "MS_PixelSort", "half", NULL},
+        {"FlickerMatch", "MS_FlickerMatch", "same", NULL},
+        {"FlickerMatch full", "MS_FlickerMatch",
+         "same rect_corner1=0 rect_corner1_y=0 rect_corner2=1 rect_corner2_y=1", NULL},
+        {"FlickerMatchColor", "MS_FlickerMatchColor", "same match_color=0.3", NULL},
+        {"FlickerMatch half", "MS_FlickerMatch", "same half", NULL},
     };
 
     printf("%d x %d, best of %d renders after the first. GPU APIs built:", width, height,

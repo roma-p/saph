@@ -65,9 +65,11 @@ static AeEffect effects[] = {
     {&ms_mosaic_effect, {{0}}},   {&ms_glow_effect, {{0}}},          {&ms_edgeblur_effect, {{0}}},
     {&ms_rackdefocus_effect, {{0}}}, {&ms_glint_effect, {{0}}},     {&ms_glare_effect, {{0}}},
     {&ms_lensflare_effect, {{0}}}, {&ms_jpegdamage_effect, {{0}}}, {&ms_pixelsort_effect, {{0}}},
+    {&ms_flickermatch_effect, {{0}}}, {&ms_flickermatchcolor_effect, {{0}}},
 };
 enum { BANDPASS, EDGEAWAREBLUR, DISTORT, MOSAIC, GLOW, EDGEBLUR, RACKDEFOCUS, GLINT, GLARE, LENSFLARE,
-       JPEGDAMAGE, PIXELSORT };
+       JPEGDAMAGE, PIXELSORT, FLICKERMATCH, FLICKERMATCHCOLOR
+};
 
 // ---------------------------------------------------------------- parameters
 
@@ -753,6 +755,8 @@ ENTRY(Glare, GLARE)
 ENTRY(LensFlare, LENSFLARE)
 ENTRY(JpegDamage, JPEGDAMAGE)
 ENTRY(PixelSort, PIXELSORT)
+ENTRY(FlickerMatch, FLICKERMATCH)
+ENTRY(FlickerMatchColor, FLICKERMATCHCOLOR)
 
 // One effect for PluginDataEntryFunction2: what the SDK's PF_REGISTER_EFFECT_EXT2 does
 // (Util/entry.h, C++ only), as an effect plug-in ('eFKT') with the reserved info it gives.
@@ -789,6 +793,8 @@ EXPORT PF_Err PluginDataEntryFunction2(PF_PluginDataPtr in_ptr, PF_PluginDataCB2
         {"MS_LensFlare", "MillSaph LensFlare", "EffectMain_LensFlare"},
         {"MS_JpegDamage", "MillSaph JpegDamage", "EffectMain_JpegDamage"},
         {"MS_PixelSort", "MillSaph PixelSort", "EffectMain_PixelSort"},
+        {"MS_FlickerMatch", "MillSaph FlickerMatch", "EffectMain_FlickerMatch"},
+        {"MS_FlickerMatchColor", "MillSaph FlickerMatchColor", "EffectMain_FlickerMatchColor"},
     };
     PF_Err err = PF_Err_NONE;
     for (size_t i = 0; i < ARRAY_SIZE(list) && !err; ++i)

@@ -87,3 +87,10 @@ PixelSort !Mask downsample=1 sort_resolution=150 sort_angle=90
 PixelSort apply_mask=1 mask_use=1 invert_mask=1 mix_with_source=0.3
 PixelSort !Mask show=4
 PixelSort --half --pad 3
+FlickerMatch
+FlickerMatch !Match
+FlickerMatch match_level=0.2 rect_corner1=0.9 rect_corner1_y=0.1 rect_corner2=-0.2 rect_corner2_y=1.3
+FlickerMatch rect_corner1=0.5 rect_corner1_y=0.5 rect_corner2=0.5 rect_corner2_y=0.5 --half --pad 3
+FlickerMatchColor
+FlickerMatchColor match_color=0.2 match_color_green=0 match_color_blue=1.5 rect_corner1=0.1 rect_corner2=0.3
+FlickerMatchColor --half

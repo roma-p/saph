@@ -4,6 +4,7 @@
 # Editor of an interactive Nuke (headless Nuke renders Sapphire unlicensed):
 #
 #   MILLSAPH_PERF_DIR = "~/millsaph_perf"         # optional: where the image and results go
+#   MILLSAPH_PERF_ONLY = "FlickerMatch FlickerMatchColor"   # optional: only these effects
 #   exec(open("<MillSaph>/tools/perf/nuke_time.py").read())
 #
 # The test image (4K, photo-like, like tools/test_host.c --size) is rendered once to
@@ -44,7 +45,13 @@ EFFECTS = [
      [("", {})]),
     ("PixelSort", SAPPHIRE + "Stylize.S_PixelSort_v1", MILLSAPH + "PixelSort_v1", "threshold",
      [("", {}), ("Radial", {"Mode": 1}), ("Circular", {"Mode": 2})]),
+    ("FlickerMatch", SAPPHIRE + "Time.S_FlickerMatch_v1", MILLSAPH + "FlickerMatch_v1",
+     "match_level", [("", {})]),
+    ("FlickerMatchColor", SAPPHIRE + "Time.S_FlickerMatchColor_v1",
+     MILLSAPH + "FlickerMatchColor_v1", "match_color", [("", {})]),
 ]
+# The effects whose second input has to be connected to do anything (the image there too).
+SECOND_INPUT = {"FlickerMatch", "FlickerMatchColor"}
 # The photo-like image: gradients, a disc and a box with hard edges, a little noise.
 DISC = "pow(x/width-0.39,2)*256/81+pow(y/height-0.46,2)<0.077"
 BOX = "x>width*0.68&&x<width*0.88&&y>height/7&&y<height*5/6"
@@ -123,7 +130,10 @@ try:
     say("read + write without effect: %.0f ms per frame\n" % io_ms)
 
     summary = []  # (case, Sapphire ms, MillSaph ms)
+    only = globals().get("MILLSAPH_PERF_ONLY", "").split()
     for label, sapphire, millsaph, knob, cases in EFFECTS:
+        if only and label not in only:
+            continue
         results = {}
         for vendor, cls in (("Sapphire", sapphire), ("MillSaph", millsaph)):
             try:
@@ -133,6 +143,8 @@ try:
                 say("%s %s not available: %s" % (vendor, label, ex)); continue
             created.append(n)
             n.setInput(0, r)
+            if label in SECOND_INPUT:
+                n.setInput(1, r)
             same_style(n, vendor)
             gpu = [(k.name(), k.value()) for k in n.allKnobs()
                    if "gpu" in k.name().lower() or "device" in k.name().lower()]
