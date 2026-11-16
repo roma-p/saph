@@ -51,6 +51,8 @@ EFFECTS = [
      MILLSAPH + "FlickerMatchColor_v1", "match_color", [("", {})]),
     ("Flicker", SAPPHIRE + "Time.S_Flicker_v1", MILLSAPH + "Flicker_v1", "amplitude",
      [("", {}), ("Color Wave", {"rand_color_amp": 1, "wave_amp": 1})]),
+    ("TVDamage", SAPPHIRE + "Stylize.S_TVDamage_v1", MILLSAPH + "TVDamage_v1", "static_amplitude",
+     [("", {}), ("Orthicon", {"orthicon": 1}), ("Fish Eye", {"fish_eye": 1, "turn_off": 0.2})]),
 ]
 # The effects whose second input has to be connected to do anything (the image there too).
 SECOND_INPUT = {"FlickerMatch", "FlickerMatchColor"}

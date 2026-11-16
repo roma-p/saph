@@ -117,7 +117,7 @@ typedef struct {
 
 // The most inputs and parameters of an effect (the hosts' code sizes arrays by them).
 #define MS_MAX_CLIPS 8
-#define MS_MAX_PARAMS 64
+#define MS_MAX_PARAMS 96
 
 // An input image: RGBA (channels next to each other), bottom row first, in floats or
 // 16-bit floats (MsRender.half), `row` of these from the start of one row to the next (4 x
@@ -206,6 +206,7 @@ extern const MsEffect ms_pixelsort_effect;
 extern const MsEffect ms_flickermatch_effect;
 extern const MsEffect ms_flickermatchcolor_effect;
 extern const MsEffect ms_flicker_effect;
+extern const MsEffect ms_tvdamage_effect;
 
 #ifdef __cplusplus
 }

@@ -181,6 +181,11 @@ ms_kernel(pixel_sort_down GENERATOR ms_pixel_sort_down CPU GPU)
 ms_kernel(flicker_match GENERATOR ms_flicker_match CPU GPU)
 # MS_Flicker: the gains of the frame, the image.
 ms_kernel(flicker GENERATOR ms_flicker CPU GPU)
+# MS_TVDamage: the reception, the orthicon's bright parts, the screen, the picture's end.
+ms_kernel(tv_damage_source GENERATOR ms_tv_damage_source CPU GPU)
+ms_kernel(tv_damage_bright GENERATOR ms_tv_damage_bright CPU GPU)
+ms_kernel(tv_damage_screen GENERATOR ms_tv_damage_screen CPU GPU)
+ms_kernel(tv_damage_final GENERATOR ms_tv_damage_final CPU GPU)
 # MS_Glow: the thresholded Source blurred, then combined.
 ms_kernel(glow_blur GENERATOR ms_glow_blur CPU GPU)
 ms_kernel(glow_combine GENERATOR ms_glow_combine CPU GPU)

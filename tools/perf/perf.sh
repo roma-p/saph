@@ -64,4 +64,6 @@ PixelSort_Circular   PixelSort !Mask Mode=2
 FlickerMatch         FlickerMatch
 FlickerMatchColor    FlickerMatchColor
 Flicker              Flicker
+TVDamage             TVDamage !Mask
+TVDamage_Orthicon    TVDamage !Mask orthicon=1
 CASES

@@ -60,7 +60,7 @@ EFFECTS = {
     "Flicker": ("Time.S_Flicker_v1", "Flicker_v1"),
     "FlickerMatch": ("Time.S_FlickerMatch_v1", "FlickerMatch_v1"),
     "FlickerMatchColor": ("Time.S_FlickerMatchColor_v1", "FlickerMatchColor_v1"),
-    "TVDamage": ("Stylize.S_TVDamage_v1", None),
+    "TVDamage": ("Stylize.S_TVDamage_v1", "TVDamage_v1"),
     "JpegDamage": ("Stylize.S_JpegDamage_v1", "JpegDamage_v1"),
     "PixelSort": ("Stylize.S_PixelSort_v1", "PixelSort_v1"),
     "Mosaic": ("Stylize.S_Mosaic_v1", "Mosaic_v1"),

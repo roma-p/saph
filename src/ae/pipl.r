@@ -48,3 +48,4 @@ MS_EFFECT(16011, "MS_PixelSort", "MillSaph PixelSort", "EffectMain_PixelSort", 0
 MS_EFFECT(16012, "MS_FlickerMatch", "MillSaph FlickerMatch", "EffectMain_FlickerMatch", 0x02000000)
 MS_EFFECT(16013, "MS_FlickerMatchColor", "MillSaph FlickerMatchColor", "EffectMain_FlickerMatchColor", 0x02000000)
 MS_EFFECT(16014, "MS_Flicker", "MillSaph Flicker", "EffectMain_Flicker", 0x02000000)
+MS_EFFECT(16015, "MS_TVDamage", "MillSaph TVDamage", "EffectMain_TVDamage", 0x02000000)
