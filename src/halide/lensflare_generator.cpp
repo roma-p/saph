@@ -5,7 +5,8 @@
 //                           Occlusion Softness), one value in pixel (0, 0)
 //   ms_lensflare_draw       the flare: the sum of the style's elements (glare_layout.h) at
 //                           each pixel, each where it reaches (those that take it x the
-//                           Atmosphere, a noise over the frame), x the occlusion's value
+//                           Atmosphere, a noise over the frame), x the occlusion's value;
+//                           each row's radial profile first, in a table read at each pixel
 //   ms_lensflare_glow       the Diffraction Glow added: the Occlusion input's edges near the
 //                           hotspot, blurred, x how much of the flare shows
 //   ms_lensflare_texture    one of MillSaph's own textures (lens dirt, a prism glint, a
@@ -105,6 +106,9 @@ class LensFlareDraw : public Generator<LensFlareDraw> {
         both{"special_shadowed"};
     Input<Buffer<float, 2>> texels{"texels"}; // the images' (glare_layout.h GLARE_TEXEL_ROW)
     Input<Buffer<float, 3>> visible{"visible"}; // ms_lensflare_occlusion's value
+    // The rows in use (the lists, then the shadows' rows), and the samples of each one's
+    // profile in the table
+    Input<int> count{"count"}, samples{"samples"};
     // The Atmosphere: 1 + amp x a noise (fbm of `octaves`, frequency `freq` per pixel,
     // `persistence`, at time `z`), at least 0
     Input<float> amp{"amp"}, freq{"freq"}, persistence{"persistence"}, z{"z"};
@@ -126,6 +130,21 @@ class LensFlareDraw : public Generator<LensFlareDraw> {
             return noise_rows(clamp(i, 0, GLARE_FIELDS - 1),
                               clamp(slot, 0, noise_rows.dim(1).extent() - 1));
         };
+        // Each row's stops_profile (ms_glare), sampled from radius 0 to where it ends, read
+        // linearly between its samples (the stops' loops once a row, not at each pixel).
+        Var k("sample");
+        Func profile("profile");
+        auto spacing = [&](Expr el) {
+            return max(ms_glare::profile_end(field, el), 1.0f) / cast<float>(samples - 1);
+        };
+        profile(k, c, e) = ms_glare::stops_profile(field, cast<float>(k) * spacing(e), c, e);
+        ms_glare::Profile lookup = [&](Expr r, Expr ch, Expr el) {
+            el = clamp(el, 0, count - 1);
+            ch = clamp(ch, 0, 2);
+            Expr u = clamp(r / spacing(el), 0.0f, cast<float>(samples - 1));
+            Expr i0 = clamp(cast<int>(floor(u)), 0, samples - 2), w = u - cast<float>(i0);
+            return profile(i0, ch, el) * (1.0f - w) + profile(i0 + 1, ch, el) * w;
+        };
         // Occlusion Scale Brightness and Widths: each element brighter and wider as the
         // flare is hidden (w = 2 x the hidden part, at most 1), as much as it responds to
         // the triggers.
@@ -141,13 +160,17 @@ class LensFlareDraw : public Generator<LensFlareDraw> {
         Expr shadow_row = cast<int>(field(GLARE_SHADOW_ROW, e)) - 1;
         Expr sx = cast<float>(x) + 0.5f - field(GLARE_POS_X, shadow_row);
         Expr sy = cast<float>(y) + 0.5f - field(GLARE_POS_Y, shadow_row);
-        Expr shadow = clamp(ms_glare::element_value(field, sx, sy, c, shadow_row), 0.0f, 1.0f);
+        Expr shadow = clamp(
+            ms_glare::element_value(field, sx, sy, c, shadow_row, nullptr, Expr(), &lookup), 0.0f,
+            1.0f);
         shadow = select(field(GLARE_SHADOW_INVERT, e) != 0.0f, 1.0f - shadow, shadow);
         Expr mask = 1.0f - field(GLARE_SHADOW_OPACITY, e) * (1.0f - shadow);
         Func element("element"), shadowed("shadowed");
         Expr atmo = select(field(GLARE_ATMOSPHERE, e) != 0.0f, atmosphere(x, y), 1.0f);
         Func noisy("noisy");
-        element(x, y, c, e) = ms_glare::element_value(field, dx, dy, c, e) * atmo * brighter;
+        element(x, y, c, e) =
+            ms_glare::element_value(field, dx, dy, c, e, nullptr, Expr(), &lookup) * atmo *
+            brighter;
         shadowed(x, y, c, e) = element(x, y, c, e) * mask;
         // The noises around each noisy element (MillSaph's, glare_style.c): ANGLES angles
         // a turn, from -pi; the radius noise (0..1) and noise_brightness's, thresholded and
@@ -228,8 +251,9 @@ class LensFlareDraw : public Generator<LensFlareDraw> {
                                       0.0f) -
                                   1.0f + 0.0f * streak_on);
         Func special("special");
-        special(x, y, c, e) = ms_glare::element_value(field, dx, dy, c, e, &angular, image) *
-                              atmo * brighter * texture_noise * streaks;
+        special(x, y, c, e) =
+            ms_glare::element_value(field, dx, dy, c, e, &angular, image, &lookup) * atmo *
+            brighter * texture_noise * streaks;
         noisy(x, y, c, e) = special(x, y, c, e) * mask;
         // The sum of the elements, each where it reaches (none of size 0, no shadow's row):
         // those without a shadow, those with one, those with a radius noise (apart: the
@@ -269,14 +293,18 @@ class LensFlareDraw : public Generator<LensFlareDraw> {
         atmosphere.compute_at(flare, gpu ? xi : x);
         // (the noises of every row: none but the noisy ones cost anything, their octaves
         // and taps empty)
+        profile.compute_root().bound(c, 0, 3).reorder(k, c, e);
         noises.compute_root().bound(i, 0, ANGLES).bound(e, 0, GLARE_MAX_ELEMENTS).bound(which, 0, 2);
         thresholded.compute_root().bound(i, 0, ANGLES).bound(e, 0, GLARE_MAX_ELEMENTS);
         if (gpu) {
             Var io("io"), ii("ii");
             noises.gpu_tile(i, io, ii, 64);
+            Var ko("ko"), ki("ki");
+            profile.gpu_tile(k, ko, ki, 128);
             thresholded.gpu_tile(i, io, ii, 64);
         } else {
             noises.parallel(e).vectorize(i, 8);
+            profile.parallel(e).vectorize(k, 8);
             thresholded.parallel(e).vectorize(i, 8);
         }
         sum_of.update(0).reorder(c, el);

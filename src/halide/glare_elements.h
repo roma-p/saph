@@ -49,6 +49,10 @@ using Field = std::function<Expr(Expr, Expr)>;
 // noise (0..1), which 1, noise_brightness's thresholded noise (lensflare_generator.cpp).
 using Angular = std::function<Expr(int, Expr, Expr)>;
 
+// Element e's stops_profile at radius r, channel c, read from a table (Lens Flare,
+// lensflare_generator.cpp): the same profile, interpolated.
+using Profile = std::function<Expr(Expr, Expr, Expr)>;
+
 // Element e's frame at offset (dx, dy) (pixels, y up) from its centre: the offset scaled,
 // turned and stretched (ex, ey: r0, th), its angle without the stretch (sectors, waves, the
 // rays' width), the radius its band is cut at.
@@ -266,16 +270,18 @@ inline Expr rays_value(const Field &field, const ElementFrame &m, Expr dx, Expr 
 
 // Element e's value, channel c, at offset (dx, dy) (pixels, y up) from its centre; noise:
 // with Lens Flare's radius noise and noise_brightness (the elements without them are
-// cheaper without); image: Lens Flare's image there (it multiplies the element, or is it).
+// cheaper without); image: Lens Flare's image there (it multiplies the element, or is it);
+// profile: its stops_profile from a table (else computed here).
 inline Expr element_value(const Field &field, Expr dx, Expr dy, Expr c, Expr e,
-                          const Angular *noise = nullptr, Expr image = Expr()) {
+                          const Angular *noise = nullptr, Expr image = Expr(),
+                          const Profile *profile = nullptr) {
     auto f = [&](int i) { return field(i, e); };
     Expr kind = f(GLARE_KIND);
     const ElementFrame m = element_frame(field, dx, dy, e);
     Expr gain = select(c == 0, f(GLARE_GAIN_R), c == 1, f(GLARE_GAIN_G), f(GLARE_GAIN_B));
     Expr falloff = falloff_value(field, m, e);
     Expr r = stops_radius(field, m, e, noise);
-    Expr col = stops_profile(field, r, c, e);
+    Expr col = profile ? (*profile)(r, c, e) : stops_profile(field, r, c, e);
     Expr u, v;
     Expr window = sector_window(field, m, e, u, v);
     Expr waves = sector_waves(field, e, u, v);
@@ -288,6 +294,14 @@ inline Expr element_value(const Field &field, Expr dx, Expr dy, Expr c, Expr e,
     if (image.defined())
         value = select(kind == GLARE_IMAGE, image, value * image);
     return value * gain;
+}
+
+// The radius past which element e's stops_profile is 0 (Blur Gradient: nearly): its last
+// stop, at least R, + its edge (2 pixels at most) and 5 sigma of the blur.
+inline Expr profile_end(const Field &field, Expr e) {
+    Expr last = max(cast<int>(field(GLARE_STOP_COUNT, e)) - 1, 0);
+    Expr R = field(GLARE_R, e);
+    return R * max(field(GLARE_STOP_RADII + last, e), 1.0f) + 5.0f * field(GLARE_SIGMA, e) + 4.0f;
 }
 
 // How far element e reaches (pixels): its radius x its stretch, x 1.6 for the radius waves

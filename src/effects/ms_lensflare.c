@@ -422,6 +422,14 @@ typedef struct {
     int edge, glow_blur;
 } Job;
 
+// The samples of each row's profile in ms_lensflare_draw's table: 16384 (a sample every 0.25
+// pixel up to 4096 pixels from an element's centre), fewer with many rows (Motion Blur's), the
+// table at most 8M floats (32 MB).
+static int profile_samples(int rows) {
+    const int budget = (8 << 20) / (3 * (rows > 1 ? rows : 1));
+    return budget > 16384 ? 16384 : budget < 1024 ? 1024 : budget;
+}
+
 // The occlusion at the hotspot, the elements drawn, the finish; on `api`.
 static int run(MsApi api, void *user) {
     const Job *j = user;
@@ -437,6 +445,8 @@ static int run(MsApi api, void *user) {
                            MS_INT("special_shadowed", j->sizes[3]),
                            MS_IMAGE("texels", j->texels),
                            MS_IMAGE("visible", j->visible),
+                           MS_INT("count", j->count > 0 ? j->count : 1),
+                           MS_INT("samples", profile_samples(j->count)),
                            MS_FLOAT("amp", j->amp), MS_FLOAT("freq", j->freq),
                            MS_FLOAT("persistence", j->persistence), MS_FLOAT("z", j->z),
                            MS_INT("octaves", j->octaves),
