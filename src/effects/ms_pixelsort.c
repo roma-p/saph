@@ -1,8 +1,8 @@
 // MS_PixelSort: the pixels sorted by their value along lines, in the spans a threshold
 // leaves (src/halide/pixel_sort_generator.cpp).
 //   - Mode: Linear (straight lines at the Sort Angle), Radial (rays from the Center, from
-//     Inner Radius over Ray Length; Vary Radius: each ray moved out by up to that share of the
-//     distance to the image's farthest corner),
+//     Inner Radius over Ray Length; Vary Radius: each ray's start moved out by up to that share
+//     of the distance to the image's farthest corner, its end kept),
 //     Circular (rings around the Circle Center from Inner Radius over Thickness; Vary Start:
 //     each ring's start turned by up to that share of a turn); radii 2 x the settings (as the
 //     reference's); Start Angle and Degrees Sorted limit both to a sector
@@ -129,8 +129,8 @@ static const MsParam params[] = {
     MS_DISTANCE(RAY_INNER, "_inner_radius", "Inner Radius", "Where the rays start (Radial).", 0.05),
     MS_DISTANCE(RAY_LENGTH, "ray_length", "Ray Length", "The rays' length (Radial).", 0.4),
     MS_FRACTION(VARY_RADIUS, "vary_radius", "Vary Radius",
-                "Moves each ray outwards by a random amount, up to this share of the distance to "
-                "the image's farthest corner (Radial).",
+                "Moves each ray's start outwards by a random amount, up to this share of the "
+                "distance to the image's farthest corner (Radial).",
                 0.1),
     START_ANGLE(RING_START, "start_angle", "Where the rings start (Circular)."),
     DEGREES(RING_DEGREES, "degrees_sorted",
@@ -360,7 +360,7 @@ static void lines(const double *v, int w, int sw, int sh, Job *j) {
     if (radial) {
         // as many rays as pixels on the outer circle
         j->vary *= (float)far; // (the largest move out, in pixels)
-        const double outer = fmin(inner + extent + j->vary, far);
+        const double outer = fmin(inner + extent, far);
         j->count = (int)fmin(fmax(ceil(span * outer), 1.0), 65536.0);
         j->step = (float)(span / j->count);
         j->samples = power_of_2(ceil(reach));
@@ -374,7 +374,8 @@ static int render(const MsRender *r) {
     const double *v = r->values;
     const int w = r->width, h = r->height, has_mask = r->connected[MASK];
     Job j = {.blur_mask = (int)floor(v[BLUR_MASK] + 0.5),
-             .mask_alpha = (int)v[MASK_USE],
+             // (the reference reads the Mask's luma whatever Mask Use says)
+             .mask_alpha = 0,
              .invert_mask = (int)v[INVERT_MASK],
              .has_mask = has_mask,
              .seed = (int)floor(fmod(v[SEED] * 1000.0, 2147483647.0)),

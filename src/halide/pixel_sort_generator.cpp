@@ -3,8 +3,8 @@
 //   - the lines: Linear, digital lines along the Sort Angle (one pixel along the major axis at
 //     a time, the other coordinate floor(slope x + 0.5) off: every pixel on one line); Radial,
 //     rays from the Center (as many as pixels on the outer circle), samples one pixel apart
-//     outwards, each ray moved out by a random share of Vary Radius x the distance to the
-//     image's farthest corner;
+//     outwards, each ray's start moved out by a random share of Vary Radius x the distance to
+//     the image's farthest corner (its end stays at Inner Radius + Ray Length);
 //     Circular, rings one pixel wide around the Center, samples one pixel apart
 //     counter-clockwise. Rays and rings sample the image (the nearest pixel), and each pixel
 //     reads back the sample it falls on
@@ -104,7 +104,7 @@ struct Lines {
         Expr radius = select(mode == 1, ray_start(line) + fs, rr);
         Expr qx = cast<int>(floor(cx + radius * cos(angle)));
         Expr qy = cast<int>(floor(cy + radius * sin(angle)));
-        Expr inside = select(mode == 1, fs < extent, fs / rr < span) && qx >= 0 &&
+        Expr inside = select(mode == 1, radius < inner + extent, fs / rr < span) && qx >= 0 &&
                       qx < width && qy >= 0 && qy < height;
         px = select(mode == 0, select(major == 0, along, across), qx);
         py = select(mode == 0, select(major == 0, across, along), qy);
@@ -129,7 +129,7 @@ struct Lines {
         Expr out = r - ray_start(ray);
         Expr polar_s = select(mode == 1, cast<int>(floor(out)),
                               cast<int>(floor(ring_rel * ring_radius(ring))));
-        Expr polar_on = select(mode == 1, wrap(theta - a0) < span && out >= 0.0f && out < extent,
+        Expr polar_on = select(mode == 1, wrap(theta - a0) < span && out >= 0.0f && r < inner + extent,
                                r >= inner && ring_rel < span);
         line = select(mode == 0, ll, polar_line);
         s = select(mode == 0, ls, polar_s);
