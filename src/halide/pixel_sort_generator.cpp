@@ -52,8 +52,11 @@ Expr sort_value(Expr type, Expr r, Expr g, Expr b) {
                      (r - g) / safe + 4.0f);
     Expr hue = select(d > 0.0f, (h6 - 6.0f * floor(h6 / 6.0f)) / 6.0f, 0.0f);
     Expr saturation = select(mx > 0.0f, d / mx, 0.0f);
-    // (strict: the same on the CPU and the GPU, no fused multiply-adds, for the same order)
-    return strict_float(select(type == 0, 0.3125f * r + 0.5f * g + 0.1875f * b, type == 1,
+    // (the same on the CPU and the GPU, for the same order: strict, and Luma's products by
+    // powers of 2 only (exact), as CUDA's code fuses multiply-adds even in strict_float: 5 r
+    // as 4 r + r, 3 b as 2 b + b, the sum / 16)
+    Expr luma = ((r * 4.0f + r) + g * 8.0f + (b * 2.0f + b)) * (1.0f / 16.0f);
+    return strict_float(select(type == 0, luma, type == 1,
                                (r + g + b) / 3.0f, type == 2, mn, type == 3, mx, type == 4, r,
                                type == 5, g, type == 6, b, type == 7, hue, type == 8, saturation,
                                mx));
