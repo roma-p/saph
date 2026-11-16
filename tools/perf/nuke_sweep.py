@@ -51,6 +51,7 @@ NODES = {
     "MS_FlickerMatch": (SAPPHIRE + "Time.S_FlickerMatch_v1", MILLSAPH + "FlickerMatch_v1"),
     "MS_FlickerMatchColor": (SAPPHIRE + "Time.S_FlickerMatchColor_v1",
                              MILLSAPH + "FlickerMatchColor_v1"),
+    "MS_Flicker": (SAPPHIRE + "Time.S_Flicker_v1", MILLSAPH + "Flicker_v1"),
 }
 PLUGIN_LOG = os.path.expanduser("~/millsaph.log")  # src/common/log.h
 # The test image, as nuke_time.py: gradients, a disc and a box with hard edges, a little noise.

@@ -63,4 +63,5 @@ PixelSort_Radial     PixelSort !Mask Mode=1
 PixelSort_Circular   PixelSort !Mask Mode=2
 FlickerMatch         FlickerMatch
 FlickerMatchColor    FlickerMatchColor
+Flicker              Flicker
 CASES

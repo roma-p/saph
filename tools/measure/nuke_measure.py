@@ -25,6 +25,8 @@
 #     "probes": "~/millsaph_measure/probes",    where the input names below are (EXR)
 #     "out": "~/millsaph_measure/renders/glow_1",
 #     "vendors": ["reference", "millsaph"],     optional, these two by default
+#     "fps": 24,                                optional: the project's frame rate (a job's
+#                                               "fps" overrides it)
 #     "jobs": [
 #       {"name": "impulse_default", "effect": "Glow", "inputs": ["impulse"]},
 #       {"name": "impulse_width4", "effect": "Glow", "inputs": ["impulse", null, "flat"],
@@ -55,7 +57,7 @@ EFFECTS = {
     "Glint": ("Lighting.S_Glint_v1", "Glint_v1"),
     "Glare": ("Lighting.S_Glare_v1", "Glare_v1"),
     "LensFlare": ("Lighting.S_LensFlare_v1", "LensFlare_v1"),
-    "Flicker": ("Time.S_Flicker_v1", None),
+    "Flicker": ("Time.S_Flicker_v1", "Flicker_v1"),
     "FlickerMatch": ("Time.S_FlickerMatch_v1", "FlickerMatch_v1"),
     "FlickerMatchColor": ("Time.S_FlickerMatchColor_v1", "FlickerMatchColor_v1"),
     "TVDamage": ("Stylize.S_TVDamage_v1", None),
@@ -339,11 +341,15 @@ def jobs(path):
         log.write(s + "\n")
         log.flush()
 
-    say("Nuke %s, %s: %d jobs at %d x %d" % (nuke.NUKE_VERSION_STRING, path, len(spec["jobs"]), w, h))
+    say("Nuke %s, %s: %d jobs at %d x %d, %g fps" % (nuke.NUKE_VERSION_STRING, path, len(spec["jobs"]),
+                                                    w, h, nuke.root()["fps"].value()))
     say("Reference licence: " + licence_check())
     start = time.time()
     for job in spec["jobs"]:
         frames = job.get("frames", [1, 1])
+        fps = job.get("fps", spec.get("fps"))
+        if fps:
+            nuke.root()["fps"].setValue(fps)
         vendors = job.get("vendors", spec.get("vendors", ["reference", "millsaph"]))
         if "node" in job:
             vendors = ["nuke"]

@@ -94,3 +94,7 @@ FlickerMatch rect_corner1=0.5 rect_corner1_y=0.5 rect_corner2=0.5 rect_corner2_y
 FlickerMatchColor
 FlickerMatchColor match_color=0.2 match_color_green=0 match_color_blue=1.5 rect_corner1=0.1 rect_corner2=0.3
 FlickerMatchColor --half
+Flicker
+Flicker amplitude=0
+Flicker amplitude=1 rand_color_amp=2 rand_freq=0 wave_amp=1 wave_freq=60 wave_r_phase=-0.3 red_amp=2 blue_amp=0 brightness=3 seed=4
+Flicker --half --pad 3

@@ -205,6 +205,7 @@ extern const MsEffect ms_jpegdamage_effect;
 extern const MsEffect ms_pixelsort_effect;
 extern const MsEffect ms_flickermatch_effect;
 extern const MsEffect ms_flickermatchcolor_effect;
+extern const MsEffect ms_flicker_effect;
 
 #ifdef __cplusplus
 }

@@ -47,3 +47,4 @@ MS_EFFECT(16010, "MS_JpegDamage", "MillSaph JpegDamage", "EffectMain_JpegDamage"
 MS_EFFECT(16011, "MS_PixelSort", "MillSaph PixelSort", "EffectMain_PixelSort", 0x02000000)
 MS_EFFECT(16012, "MS_FlickerMatch", "MillSaph FlickerMatch", "EffectMain_FlickerMatch", 0x02000000)
 MS_EFFECT(16013, "MS_FlickerMatchColor", "MillSaph FlickerMatchColor", "EffectMain_FlickerMatchColor", 0x02000000)
+MS_EFFECT(16014, "MS_Flicker", "MillSaph Flicker", "EffectMain_Flicker", 0x02000000)

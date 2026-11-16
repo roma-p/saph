@@ -749,6 +749,9 @@ int main(int argc, char **argv) {
          "same rect_corner1=0 rect_corner1_y=0 rect_corner2=1 rect_corner2_y=1", NULL},
         {"FlickerMatchColor", "MS_FlickerMatchColor", "same match_color=0.3", NULL},
         {"FlickerMatch half", "MS_FlickerMatch", "same half", NULL},
+        {"Flicker", "MS_Flicker", "", NULL},
+        {"Flicker color wave", "MS_Flicker", "rand_color_amp=1 wave_amp=1 wave_g_phase=0.3", NULL},
+        {"Flicker half", "MS_Flicker", "half", NULL},
     };
 
     printf("%d x %d, best of %d renders after the first. GPU APIs built:", width, height,
