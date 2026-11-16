@@ -1,5 +1,6 @@
 // Messages for whoever runs the host: "[MillSaph] ..." lines printed to the terminal
-// (stderr) and added to MS_LOG_FILE, as hosts often run without a terminal.
+// (stderr) and added to MS_LOG_FILE, as hosts often run without a terminal. In the file the
+// line starts "[MillSaph <process id>] ": several processes (hosts, tests) write there at once.
 
 #pragma once
 

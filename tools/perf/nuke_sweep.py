@@ -55,6 +55,7 @@ NODES = {
     "MS_TVDamage": (SAPPHIRE + "Stylize.S_TVDamage_v1", MILLSAPH + "TVDamage_v1"),
 }
 PLUGIN_LOG = os.path.expanduser("~/millsaph.log")  # src/common/log.h
+PLUGIN_LOG_MINE = "[MillSaph %d] " % os.getpid()  # this process's lines (src/common/log.c)
 # The test image, as nuke_time.py: gradients, a disc and a box with hard edges, a little noise.
 DISC = "pow(x/width-0.39,2)*256/81+pow(y/height-0.46,2)<0.077"
 BOX = "x>width*0.68&&x<width*0.88&&y>height/7&&y<height*5/6"
@@ -184,7 +185,8 @@ def timed(n, grade, frames_only=False, log=False):
         if log and rep and os.path.exists(PLUGIN_LOG):
             with open(PLUGIN_LOG) as f:
                 f.seek(start)
-                own += [float(m) for m in re.findall(r" effect ([0-9.]+)", f.read())]
+                own += [float(m) for l in f.read().splitlines() if l.startswith(PLUGIN_LOG_MINE)
+                        for m in re.findall(r" effect ([0-9.]+)", l)]
     nuke.delete(w); created.remove(w)
     if frames_only:
         ms, how = min(frames), ""
@@ -350,8 +352,8 @@ try:
     if os.path.exists(PLUGIN_LOG):  # where MillSaph ran: the lines other than each render's
         with open(PLUGIN_LOG) as f:
             f.seek(log_start)
-            lines = [l for l in f.read().splitlines()
-                     if " render " not in l and " settings " not in l]
+            lines = [l for l in f.read().splitlines() if l.startswith(PLUGIN_LOG_MINE)
+                     and " render " not in l and " settings " not in l]
         say("\nMillSaph's log during the test (%s), renders left out:\n%s" % (
             PLUGIN_LOG, "\n".join(lines)))
 finally:

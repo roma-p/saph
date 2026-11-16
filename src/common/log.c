@@ -3,6 +3,12 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
+#ifdef _WIN32
+#include <process.h>
+#define getpid _getpid
+#else
+#include <unistd.h>
+#endif
 
 #include "common/log.h"
 #include "common/mutex.h"
@@ -32,7 +38,7 @@ void ms_log(const char *format, ...) {
     fprintf(stderr, "[MillSaph] %s\n", line);
     FILE *file = fopen(path, "a"); // none (e.g. another user's file): the terminal only
     if (file) {
-        fprintf(file, "[MillSaph] %s\n", line);
+        fprintf(file, "[MillSaph %d] %s\n", (int)getpid(), line);
         fclose(file);
     }
     ms_mutex_unlock(&lock);

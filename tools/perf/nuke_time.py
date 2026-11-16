@@ -13,7 +13,8 @@
 # comes from Nuke's performance timers (the time Nuke spent in the node), not from the whole
 # frame minus reading and writing: Nuke does those alongside the effect. Results are printed
 # and written to <dir>/timing.txt, followed by the lines MillSaph wrote meanwhile to its log
-# (~/millsaph.log: the API it runs on, and where each render's time goes).
+# (~/millsaph.log: the API it runs on, and where each render's time goes; only this Nuke's
+# lines, other processes such as tests write there too).
 #
 # A new effect gets a line in EFFECTS (and a case in perf.sh).
 import os, time, nuke
@@ -66,6 +67,7 @@ if not os.path.isdir(HERE):
 log = open(os.path.join(HERE, "timing.txt"), "w")
 PLUGIN_LOG = os.path.expanduser("~/millsaph.log")  # src/common/log.h
 plugin_log_start = os.path.getsize(PLUGIN_LOG) if os.path.exists(PLUGIN_LOG) else 0
+PLUGIN_LOG_MINE = "[MillSaph %d] " % os.getpid()  # this process's lines (src/common/log.c)
 def say(*a):
     s = " ".join(str(x) for x in a); print(s); log.write(s + "\n"); log.flush()
 
@@ -174,7 +176,8 @@ try:
     if os.path.exists(PLUGIN_LOG):
         with open(PLUGIN_LOG) as f:
             f.seek(plugin_log_start)
-            say("\nMillSaph's log during the test (%s):\n%s" % (PLUGIN_LOG, f.read().rstrip()))
+            lines = [l for l in f.read().splitlines() if l.startswith(PLUGIN_LOG_MINE)]
+            say("\nMillSaph's log during the test (%s):\n%s" % (PLUGIN_LOG, "\n".join(lines)))
 finally:
     try: nuke.stopPerformanceTimers()
     except Exception: pass
