@@ -21,6 +21,7 @@
 #include "common/defines.h"
 #include "common/effect.h"
 #include "common/mask.h"
+#include "effects/mask_input.h"
 #include "engine/engine.h"
 
 // Inputs: clip, label in the host, value where there is no image, optional, mask.
@@ -223,24 +224,20 @@ static void tables(const double *v, float steps[8][8][2], float decoder[8][8][2]
 // One render: images and settings of the kernels (src/halide/jpeg_damage_generator.cpp,
 // mask_generator.cpp).
 typedef struct {
-    MsImage *source, *mask, *mask_value, *steps, *decoder, *output;
-    int blur_mask, mask_alpha, invert_mask, has_mask, fx, fy, seed, epoch, flip;
+    MsImage *source, *steps, *decoder, *output;
+    MsMask *mask;
+    int fx, fy, seed, epoch, flip;
     float rate, amp, density, coherence;
     float saturation, lights, darks;
 } Job;
 
 static int run(MsApi api, void *user) {
     const Job *j = user;
-    if (j->has_mask) {
-        const int status =
-            MS_KERNEL(MS_K_MASK, api, MS_IMAGE("mask", j->mask),
-                      MS_INT("mask_alpha", j->mask_alpha), MS_INT("invert_mask", j->invert_mask),
-                      MS_INT("blur_mask", j->blur_mask), MS_IMAGE("mask_value", j->mask_value));
-        if (status != 0)
-            return status;
-    }
+    const int status = ms_mask_run(j->mask, api);
+    if (status != 0)
+        return status;
     return MS_KERNEL(MS_K_JPEG_DAMAGE, api, MS_IMAGE("source", j->source),
-                     MS_IMAGE("mask_value", j->mask_value), MS_IMAGE("steps", j->steps),
+                     MS_IMAGE("mask_value", &j->mask->value), MS_IMAGE("steps", j->steps),
                      MS_IMAGE("decoder", j->decoder), MS_INT("fx", j->fx), MS_INT("fy", j->fy),
                      MS_FLOAT("rate", j->rate), MS_FLOAT("amp", j->amp),
                      MS_FLOAT("density", j->density), MS_FLOAT("coherence", j->coherence),
@@ -252,36 +249,22 @@ static int run(MsApi api, void *user) {
 
 static int render(const MsRender *r) {
     const double *v = r->values;
-    const int w = r->width, h = r->height, has_mask = r->connected[MASK];
-    float *mask_value = has_mask ? malloc((size_t)w * h * sizeof(float)) : NULL;
-    if (has_mask && !mask_value) {
-        snprintf(r->err, r->err_size, "not enough memory");
+    const int w = r->width, h = r->height;
+    MsImage source, steps_image, decoder_image, output;
+    ms_image_rgba(&source, r->inputs[SOURCE].pixels, r->inputs[SOURCE].row, r->half, w, h);
+    MsMask mask;
+    if (!ms_mask_init(&mask, r, MASK, SOURCE, &source, v[MASK_USE], v[INVERT_MASK], v[BLUR_MASK]))
         return 0;
-    }
     float steps[8][8][2], decoder[8][8][2];
     tables(v, steps, decoder);
-    const float no_mask = 1.0f;
-    MsImage source, mask, value, steps_image, decoder_image, output;
-    ms_image_rgba(&source, r->inputs[SOURCE].pixels, r->inputs[SOURCE].row, r->half, w, h);
-    ms_image_rgba(&mask, r->inputs[MASK].pixels, r->inputs[MASK].row, r->half, w, h);
-    if (has_mask)
-        ms_image(&value, mask_value, w, w, h, 1);
-    else
-        ms_image_constant(&value, &no_mask, w, h);
     ms_image(&steps_image, &steps[0][0][0], 16, 8, 8, 2);
     ms_image(&decoder_image, &decoder[0][0][0], 16, 8, 8, 2);
     ms_image_rgba(&output, r->output, r->output_row, r->half, w, h);
-    const int mask_is_source = has_mask && ms_same_input(&r->inputs[MASK], &r->inputs[SOURCE]);
     Job j = {.source = &source,
-             .mask = mask_is_source ? &source : &mask,
-             .mask_value = &value,
+             .mask = &mask,
              .steps = &steps_image,
              .decoder = &decoder_image,
              .output = &output,
-             .blur_mask = (int)floor(v[BLUR_MASK] + 0.5),
-             .mask_alpha = (int)v[MASK_USE],
-             .invert_mask = (int)v[INVERT_MASK],
-             .has_mask = has_mask,
              .saturation = (float)v[SATURATION],
              .lights = (float)v[SCALE_LIGHTS],
              .darks = (float)v[OFFSET_DARKS]};
@@ -303,11 +286,11 @@ static int render(const MsRender *r) {
     j.epoch = v[JITTER_FRAMES] > 0 ? (int)floor(fmod(r->time / v[JITTER_FRAMES], 2147483647.0)) : 0;
     j.flip = (int)v[FLIP_NOISE];
     // Inputs uploaded to the GPU: the Source, the Mask or the one mask value, the tables.
-    MsImage *const inputs[] = {&source, has_mask ? j.mask : &value, &steps_image, &decoder_image};
-    MsImage *between[] = {&value}; // made on the GPU from the Mask
-    const int ok = ms_run(run, &j, inputs, 4, between, has_mask, &output, r->info, r->err,
+    MsImage *const inputs[] = {&source, mask.input, &steps_image, &decoder_image};
+    MsImage *between[] = {&mask.value}; // made on the GPU from the Mask
+    const int ok = ms_run(run, &j, inputs, 4, between, mask.has_mask, &output, r->info, r->err,
                           r->err_size);
-    free(mask_value);
+    ms_mask_free(&mask);
     return ok;
 }
 

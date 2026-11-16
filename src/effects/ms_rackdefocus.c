@@ -21,6 +21,7 @@
 #include "common/effect.h"
 #include "common/mask.h"
 #include "effects/fft.h"
+#include "effects/mask_input.h"
 #include "engine/engine.h"
 
 // Inputs: clip, label in the host, value where there is no image, optional, mask.
@@ -189,9 +190,9 @@ static const MsParam params[] = {
 
 // One render: images and settings of the kernels.
 typedef struct {
-    MsImage *source, *mask, *mask_value, *output;
+    MsImage *source, *output;
+    MsMask *mask;
     MsImage *buffers[3]; // the transforms' images (width x height)
-    int has_mask, mask_alpha, invert_mask, blur_mask;
     int pad, edge_mode, mono, sides, gauss, half;
     float gamma, boost, threshold, radius[3], rel_height, power, bokeh;
     float brightness, offset_darks, mix, scale;
@@ -201,12 +202,7 @@ typedef struct {
 // transformed back; the result, on `api`.
 static int run(MsApi api, void *user) {
     const Job *j = user;
-    int status = 0;
-    if (j->has_mask)
-        status =
-            MS_KERNEL(MS_K_MASK, api, MS_IMAGE("mask", j->mask),
-                      MS_INT("mask_alpha", j->mask_alpha), MS_INT("invert_mask", j->invert_mask),
-                      MS_INT("blur_mask", j->blur_mask), MS_IMAGE("mask_value", j->mask_value));
+    int status = ms_mask_run(j->mask, api);
     MsImage *lens = j->buffers[0], *image = j->buffers[1], *free_image = j->buffers[2];
     if (status == 0)
         status =
@@ -234,7 +230,7 @@ static int run(MsApi api, void *user) {
     if (status != 0)
         return status;
     return MS_KERNEL(MS_K_RACK_DEFOCUS_FINISH, api, MS_IMAGE("data", free_image),
-                     MS_IMAGE("source", j->source), MS_IMAGE("mask_value", j->mask_value),
+                     MS_IMAGE("source", j->source), MS_IMAGE("mask_value", &j->mask->value),
                      MS_INT("pad_x", j->pad), MS_INT("pad_y", j->pad), MS_FLOAT("scale", j->scale),
                      MS_FLOAT("gamma", j->gamma), MS_FLOAT("brightness", j->brightness),
                      MS_FLOAT("offset_darks", j->offset_darks), MS_FLOAT("mix", j->mix),
@@ -253,15 +249,11 @@ static float power_of(double roundness) {
 
 static int render(const MsRender *r) {
     const double *v = r->values;
-    const int w = r->width, h = r->height, has_mask = r->connected[MASK];
+    const int w = r->width, h = r->height;
     const double width =
         v[DEFOCUS_WIDTH] > 0 ? (v[DEFOCUS_WIDTH] < 1e5 ? v[DEFOCUS_WIDTH] : 1e5) : 0;
     const double gauss = v[GAUSS_BLUR] > 0 ? (v[GAUSS_BLUR] < 1e5 ? v[GAUSS_BLUR] : 1e5) : 0;
-    Job j = {.has_mask = has_mask,
-             .mask_alpha = (int)v[MASK_USE],
-             .invert_mask = (int)v[INVERT_MASK],
-             .blur_mask = (int)floor(v[BLUR_MASK] + 0.5),
-             .edge_mode = (int)v[EDGE_MODE],
+    Job j = {.edge_mode = (int)v[EDGE_MODE],
              .mono = (int)v[MODE] == 1,
              .sides = (int)v[SHAPE] == 0 ? 3 : (int)v[SHAPE] + 2,
              .gauss = (int)floor(gauss + 0.5),
@@ -287,43 +279,38 @@ static int render(const MsRender *r) {
     const int nx = ms_fft_length(w + 2 * j.pad), ny = ms_fft_length(h + 2 * j.pad);
     j.scale = (float)(1.0 / ((double)nx * ny));
 
-    const size_t pixels = (size_t)w * h, size = (size_t)nx * ny * 4;
-    float *mask_value = has_mask ? malloc(pixels * sizeof(float)) : NULL;
+    const size_t size = (size_t)nx * ny * 4;
     float *buffers[3] = {malloc(size * sizeof(float)), malloc(size * sizeof(float)),
                          malloc(size * sizeof(float))};
-    int ok = (mask_value || !has_mask) && buffers[0] && buffers[1] && buffers[2];
+    MsImage source;
+    ms_image_rgba(&source, r->inputs[SOURCE].pixels, r->inputs[SOURCE].row, r->half, w, h);
+    MsMask mask = {0};
+    int ok = buffers[0] && buffers[1] && buffers[2];
+    if (!ok)
+        snprintf(r->err, r->err_size, "not enough memory");
+    else
+        ok = ms_mask_init(&mask, r, MASK, SOURCE, &source, v[MASK_USE], v[INVERT_MASK],
+                          v[BLUR_MASK]);
     if (ok) {
-        MsImage source, mask, value, output, images[3];
-        ms_image_rgba(&source, r->inputs[SOURCE].pixels, r->inputs[SOURCE].row, r->half, w, h);
-        ms_image_rgba(&mask, r->inputs[MASK].pixels, r->inputs[MASK].row, r->half, w, h);
-        const float no_mask = 1.0f;
-        if (has_mask)
-            ms_image(&value, mask_value, w, w, h, 1);
-        else
-            ms_image_constant(&value, &no_mask, w, h);
+        MsImage output, images[3];
         ms_image_rgba(&output, r->output, r->output_row, r->half, w, h);
         for (int i = 0; i < 3; ++i) {
             ms_image(&images[i], buffers[i], (ptrdiff_t)nx * 4, nx, ny, 4);
             j.buffers[i] = &images[i];
         }
-        // A Mask that is the Source's image in the host: the Source stands in (uploaded once).
-        const int mask_is_source = has_mask && ms_same_input(&r->inputs[MASK], &r->inputs[SOURCE]);
         j.source = &source;
-        j.mask = mask_is_source ? &source : &mask;
-        j.mask_value = &value;
+        j.mask = &mask;
         j.output = &output;
         // Inputs uploaded to the GPU: the Source, and the Mask or the one mask value.
-        MsImage *const inputs[] = {&source, has_mask ? j.mask : &value};
+        MsImage *const inputs[] = {&source, mask.input};
         MsImage *between[4] = {&images[0], &images[1], &images[2]};
         int between_count = 3;
-        if (has_mask)
-            between[between_count++] = &value;
+        if (mask.has_mask)
+            between[between_count++] = &mask.value;
         ok = ms_run(run, &j, inputs, 2, between, between_count, &output, r->info, r->err,
                     r->err_size);
-    } else {
-        snprintf(r->err, r->err_size, "not enough memory");
     }
-    free(mask_value);
+    ms_mask_free(&mask);
     for (int i = 0; i < 3; ++i)
         free(buffers[i]);
     return ok;

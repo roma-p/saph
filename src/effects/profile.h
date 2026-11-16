@@ -19,5 +19,9 @@ typedef struct {
 
 const MsProfile *ms_profile(MsApi api);
 
+// The RGBA blur (ms_blur) of total radii (rx, ry), in its prefix version for large ones
+// where the profile says so. Returns Halide's status.
+int ms_rgba_blur(MsApi api, MsImage *input, int rx, int ry, MsImage *output);
+
 // Benchmarks: replaces the profile of `api`.
 void ms_profile_set(MsApi api, const MsProfile *profile);

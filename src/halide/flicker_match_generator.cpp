@@ -76,7 +76,6 @@ class FlickerMatch : public Generator<FlickerMatch> {
             total.gpu_single_thread();
             total.update().gpu_single_thread();
             gain.gpu_single_thread();
-            output.bound(c, 0, 4).reorder(c, x, y).unroll(c).gpu_tile(x, y, xo, yo, xi, yi, 16, 16);
         } else {
             column.update()
                 .split(x, xo, xi, 8, TailStrategy::GuardWithIf)
@@ -84,8 +83,8 @@ class FlickerMatch : public Generator<FlickerMatch> {
                 .vectorize(xi)
                 .unroll(c)
                 .parallel(xo);
-            output.bound(c, 0, 4).reorder(c, x, y).unroll(c).vectorize(x, 8).parallel(y);
         }
+        ms::schedule_rgba(output, gpu);
     }
 };
 

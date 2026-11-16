@@ -20,10 +20,7 @@ namespace {
 
 Var x("x"), y("y"), c("c");
 
-using ms_noise::u32;
-
-// -1..1 from a 32-bit hash.
-Expr symmetric(Expr h) { return cast<float>(h >> u32(8)) * (2.0f / 16777216.0f) - 1.0f; }
+using ms_noise::symmetric;
 
 // A value noise between lattice points `cell` and `cell + 1`, `u` (0..1) past the first.
 Expr value_noise(Expr cell, Expr u, Expr salt, Expr seed) {
@@ -72,14 +69,10 @@ class Flicker : public Generator<Flicker> {
         ms::interleaved(source);
         ms::interleaved(output);
 
-        Var xo("xo"), yo("yo"), xi("xi"), yi("yi");
         gain.bound(c, 0, 4).compute_root();
-        if (gpu) {
+        if (gpu)
             gain.gpu_single_thread();
-            output.bound(c, 0, 4).reorder(c, x, y).unroll(c).gpu_tile(x, y, xo, yo, xi, yi, 16, 16);
-        } else {
-            output.bound(c, 0, 4).reorder(c, x, y).unroll(c).vectorize(x, 8).parallel(y);
-        }
+        ms::schedule_rgba(output, gpu);
     }
 };
 

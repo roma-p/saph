@@ -26,6 +26,7 @@
 #include "common/defines.h"
 #include "common/effect.h"
 #include "common/mask.h"
+#include "effects/mask_input.h"
 #include "engine/engine.h"
 
 // Inputs: clip, label in the host, value where there is no image, optional, mask.
@@ -250,8 +251,9 @@ static int power_of_2(double n) {
 // One render: images and settings of the kernels (src/halide/pixel_sort_generator.cpp,
 // mask_generator.cpp).
 typedef struct {
-    MsImage *source, *mask, *mask_value, *image, *soft, *lines[2], *output;
-    int blur_mask, mask_alpha, invert_mask, has_mask, downsample, reach_x, reach_y;
+    MsImage *source, *image, *soft, *lines[2], *output;
+    MsMask *mask;
+    int downsample, reach_x, reach_y;
     int mode, major, dir, offset, seed, sort_type, mask_post, mask_pre, above, reverse, ends;
     int soften[3], samples, count, show;
     float slope, cx, cy, inner, extent, vary, a0, span, step, restart, threshold, mix;
@@ -268,18 +270,14 @@ typedef struct {
 
 static int run(MsApi api, void *user) {
     const Job *j = user;
-    int status = 0;
-    if (j->has_mask)
-        status = MS_KERNEL(MS_K_MASK, api, MS_IMAGE("mask", j->mask),
-                           MS_INT("mask_alpha", j->mask_alpha), MS_INT("invert_mask", j->invert_mask),
-                           MS_INT("blur_mask", j->blur_mask), MS_IMAGE("mask_value", j->mask_value));
+    int status = ms_mask_run(j->mask, api);
     if (status == 0 && j->downsample)
         status = MS_KERNEL(MS_K_PIXEL_SORT_DOWN, api, MS_IMAGE("source", j->source),
                            MS_INT("reach_x", j->reach_x), MS_INT("reach_y", j->reach_y),
                            MS_IMAGE("image", j->image));
     if (status == 0)
         status = MS_KERNEL(MS_K_PIXEL_SORT_PREP, api, MS_IMAGE("image", j->image),
-                           MS_IMAGE("mask_value", j->mask_value), LINES_ARGS(j),
+                           MS_IMAGE("mask_value", &j->mask->value), LINES_ARGS(j),
                            MS_FLOAT("threshold", j->threshold), MS_INT("above", j->above),
                            MS_INT("reverse", j->reverse), MS_INT("ends", j->ends),
                            MS_INT("soften1", j->soften[0]), MS_INT("soften2", j->soften[1]),
@@ -302,7 +300,7 @@ static int run(MsApi api, void *user) {
     if (status == 0)
         status = MS_KERNEL(MS_K_PIXEL_SORT_OUT, api, MS_IMAGE("source", j->source),
                            MS_IMAGE("image", j->image), MS_IMAGE("soft", j->soft),
-                           MS_IMAGE("lines", j->lines[at]), MS_IMAGE("mask_value", j->mask_value),
+                           MS_IMAGE("lines", j->lines[at]), MS_IMAGE("mask_value", &j->mask->value),
                            LINES_ARGS(j), MS_INT("show", j->show), MS_INT("mask_pre", j->mask_pre),
                            MS_FLOAT("mix", j->mix), MS_IMAGE("output", j->output));
     return status;
@@ -373,12 +371,7 @@ static void lines(const double *v, int w, int sw, int sh, Job *j) {
 static int render(const MsRender *r) {
     const double *v = r->values;
     const int w = r->width, h = r->height, has_mask = r->connected[MASK];
-    Job j = {.blur_mask = (int)floor(v[BLUR_MASK] + 0.5),
-             // (the reference reads the Mask's luma whatever Mask Use says)
-             .mask_alpha = 0,
-             .invert_mask = (int)v[INVERT_MASK],
-             .has_mask = has_mask,
-             .seed = (int)floor(fmod(v[SEED] * 1000.0, 2147483647.0)),
+    Job j = {.seed = (int)floor(fmod(v[SEED] * 1000.0, 2147483647.0)),
              .sort_type = (int)v[SORT_TYPE],
              .mask_post = has_mask && (int)v[APPLY_MASK] == 0,
              .mask_pre = has_mask && (int)v[APPLY_MASK] == 1,
@@ -404,21 +397,19 @@ static int render(const MsRender *r) {
         j.soften[k] = (soften + k) / 3;
 
     const size_t pixels = (size_t)sw * sh, samples = (size_t)2 * j.samples * j.count;
-    float *mask_value = has_mask ? malloc((size_t)w * h * sizeof(float)) : NULL;
     float *small = j.downsample ? malloc(pixels * 4 * sizeof(float)) : NULL;
     float *soft = malloc(pixels * sizeof(float));
     uint32_t *buffers[2] = {malloc(samples * sizeof(uint32_t)), malloc(samples * sizeof(uint32_t))};
-    int ok = soft && buffers[0] && buffers[1] && (mask_value || !has_mask) &&
-             (small || !j.downsample);
+    MsImage source;
+    ms_image_rgba(&source, r->inputs[SOURCE].pixels, r->inputs[SOURCE].row, r->half, w, h);
+    MsMask mask = {0};
+    int ok = soft && buffers[0] && buffers[1] && (small || !j.downsample);
+    if (!ok)
+        snprintf(r->err, r->err_size, "not enough memory");
+    else // (the reference reads the Mask's luma whatever Mask Use says)
+        ok = ms_mask_init(&mask, r, MASK, SOURCE, &source, 0.0, v[INVERT_MASK], v[BLUR_MASK]);
     if (ok) {
-        const float no_mask = 1.0f;
-        MsImage source, mask, value, image, soft_image, line_images[2], output;
-        ms_image_rgba(&source, r->inputs[SOURCE].pixels, r->inputs[SOURCE].row, r->half, w, h);
-        ms_image_rgba(&mask, r->inputs[MASK].pixels, r->inputs[MASK].row, r->half, w, h);
-        if (has_mask)
-            ms_image(&value, mask_value, w, w, h, 1);
-        else
-            ms_image_constant(&value, &no_mask, w, h);
+        MsImage image, soft_image, line_images[2], output;
         ms_image(&image, small, (ptrdiff_t)sw * 4, sw, sh, 4);
         ms_image(&soft_image, soft, sw, sw, sh, 1);
         for (int k = 0; k < 2; ++k) {
@@ -426,27 +417,23 @@ static int render(const MsRender *r) {
             j.lines[k] = &line_images[k];
         }
         ms_image_rgba(&output, r->output, r->output_row, r->half, w, h);
-        const int mask_is_source = has_mask && ms_same_input(&r->inputs[MASK], &r->inputs[SOURCE]);
         j.source = &source;
-        j.mask = mask_is_source ? &source : &mask;
-        j.mask_value = &value;
+        j.mask = &mask;
         j.image = j.downsample ? &image : &source;
         j.soft = &soft_image;
         j.output = &output;
         // Inputs uploaded to the GPU: the Source, the Mask or the one mask value.
-        MsImage *const inputs[] = {&source, has_mask ? j.mask : &value};
+        MsImage *const inputs[] = {&source, mask.input};
         MsImage *between[5] = {&soft_image, &line_images[0], &line_images[1]};
         int between_count = 3;
-        if (has_mask)
-            between[between_count++] = &value;
+        if (mask.has_mask)
+            between[between_count++] = &mask.value;
         if (j.downsample)
             between[between_count++] = &image;
         ok = ms_run(run, &j, inputs, 2, between, between_count, &output, r->info, r->err,
                     r->err_size);
-    } else {
-        snprintf(r->err, r->err_size, "not enough memory");
     }
-    free(mask_value);
+    ms_mask_free(&mask);
     free(small);
     free(soft);
     free(buffers[0]);

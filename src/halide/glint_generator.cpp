@@ -216,10 +216,7 @@ class GlintCombine : public Generator<GlintCombine> {
             else
                 f.unroll(c).vectorize(x, 8).parallel(y);
         }
-        if (gpu)
-            output.bound(c, 0, 4).reorder(c, x, y).unroll(c).gpu_tile(x, y, xo, yo, xi, yi, 16, 16);
-        else
-            output.bound(c, 0, 4).reorder(c, x, y).unroll(c).vectorize(x, 8).parallel(y);
+        ms::schedule_rgba(output, gpu);
     }
 };
 

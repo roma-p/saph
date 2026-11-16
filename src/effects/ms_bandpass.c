@@ -13,6 +13,7 @@
 #include "common/defines.h"
 #include "common/effect.h"
 #include "common/mask.h"
+#include "effects/mask_input.h"
 #include "effects/profile.h"
 #include "engine/engine.h"
 #include "halide/ms_limits.h"
@@ -103,23 +104,18 @@ static const MsParam params[] = {
 // One render: images and settings of the kernels (src/halide/bandpass_generator.cpp,
 // mask_generator.cpp).
 typedef struct {
-    MsImage *source, *mask, *mask_value, *output;
-    int blur1_x, blur1_y, blur2_x, blur2_y, blur_mask; // total radii in pixels, rounded
+    MsImage *source, *output;
+    MsMask *mask;
+    int blur1_x, blur1_y, blur2_x, blur2_y; // total radii in pixels, rounded
     float brightness, saturation, offset_darks;
-    int mask_alpha, invert_mask, has_mask;
 } Job;
 
 // The mask value (with a Mask), then the band-pass, on `api`.
 static int run(MsApi api, void *user) {
     const Job *j = user;
-    if (j->has_mask) {
-        const int status =
-            MS_KERNEL(MS_K_MASK, api, MS_IMAGE("mask", j->mask),
-                      MS_INT("mask_alpha", j->mask_alpha), MS_INT("invert_mask", j->invert_mask),
-                      MS_INT("blur_mask", j->blur_mask), MS_IMAGE("mask_value", j->mask_value));
-        if (status != 0)
-            return status;
-    }
+    const int status = ms_mask_run(j->mask, api);
+    if (status != 0)
+        return status;
     // The staged GPU version holds a box's windows in on-chip memory: up to box radii of
     // MS_STAGED_RADIUS_X along x and MS_STAGED_RADIUS_Y along y. The largest box of a
     // blur of total radius t is (t + 2) / 3. The prefix version costs the same whatever the
@@ -136,7 +132,7 @@ static int run(MsApi api, void *user) {
                                 ? MS_K_BANDPASS_STAGED
                                 : MS_K_BANDPASS;
     return MS_KERNEL(kernel, api, MS_IMAGE("source", j->source),
-                     MS_IMAGE("mask_value", j->mask_value), MS_INT("blur1_x", j->blur1_x),
+                     MS_IMAGE("mask_value", &j->mask->value), MS_INT("blur1_x", j->blur1_x),
                      MS_INT("blur1_y", j->blur1_y), MS_INT("blur2_x", j->blur2_x),
                      MS_INT("blur2_y", j->blur2_y), MS_FLOAT("brightness", j->brightness),
                      MS_FLOAT("saturation", j->saturation),
@@ -145,46 +141,30 @@ static int run(MsApi api, void *user) {
 
 static int render(const MsRender *r) {
     const double *v = r->values;
-    const int w = r->width, h = r->height, has_mask = r->connected[MASK];
-    // The mask value, made from the Mask; without one, 1 for every pixel (strides 0).
-    float *mask_value = has_mask ? malloc((size_t)w * h * sizeof(float)) : NULL;
-    if (has_mask && !mask_value) {
-        snprintf(r->err, r->err_size, "not enough memory");
-        return 0;
-    }
-    const float no_mask = 1.0f;
-    MsImage source, mask, value, output;
+    const int w = r->width, h = r->height;
+    MsImage source, output;
     ms_image_rgba(&source, r->inputs[SOURCE].pixels, r->inputs[SOURCE].row, r->half, w, h);
-    ms_image_rgba(&mask, r->inputs[MASK].pixels, r->inputs[MASK].row, r->half, w, h);
-    if (has_mask)
-        ms_image(&value, mask_value, w, w, h, 1);
-    else
-        ms_image_constant(&value, &no_mask, w, h);
     ms_image_rgba(&output, r->output, r->output_row, r->half, w, h);
-    // A Mask that is the Source's image in the host: the Source stands in (uploaded once).
-    const int mask_is_source = has_mask && ms_same_input(&r->inputs[MASK], &r->inputs[SOURCE]);
+    MsMask mask;
+    if (!ms_mask_init(&mask, r, MASK, SOURCE, &source, v[MASK_USE], v[INVERT_MASK], v[BLUR_MASK]))
+        return 0;
     // Total blur radii, rounded as the blur does (src/halide/blur.h).
     Job j = {&source,
-             mask_is_source ? &source : &mask,
-             &value,
              &output,
+             &mask,
              (int)floor(v[BLUR1] * v[REL_X] + 0.5),
              (int)floor(v[BLUR1] * v[REL_Y] + 0.5),
              (int)floor(v[BLUR2] * v[REL_X] + 0.5),
              (int)floor(v[BLUR2] * v[REL_Y] + 0.5),
-             (int)floor(v[BLUR_MASK] + 0.5),
              (float)v[BRIGHTNESS],
              (float)v[SATURATION],
-             (float)v[OFFSET_DARKS],
-             (int)v[MASK_USE],
-             (int)v[INVERT_MASK],
-             has_mask};
+             (float)v[OFFSET_DARKS]};
     // Inputs uploaded to the GPU: the Source, and the Mask or the one mask value.
-    MsImage *const inputs[] = {&source, has_mask ? j.mask : &value};
-    MsImage *const between[] = {&value}; // made on the GPU from the Mask
-    const int ok = ms_run(run, &j, inputs, 2, between, has_mask, &output, r->info, r->err,
+    MsImage *const inputs[] = {&source, mask.input};
+    MsImage *const between[] = {&mask.value}; // made on the GPU from the Mask
+    const int ok = ms_run(run, &j, inputs, 2, between, mask.has_mask, &output, r->info, r->err,
                           r->err_size);
-    free(mask_value);
+    ms_mask_free(&mask);
     return ok;
 }
 

@@ -22,6 +22,7 @@
 #include "common/defines.h"
 #include "common/effect.h"
 #include "common/mask.h"
+#include "effects/mask_input.h"
 #include "engine/engine.h"
 
 // Inputs: clip, label in the host, value where there is no image, optional, mask.
@@ -211,25 +212,18 @@ static int levels_size(int length, int count) {
 // mask_generator.cpp).
 typedef struct {
     const Settings *s;
-    MsImage *source, *lens, *mask, *output; // lens: the Source if none
-    MsImage *shift, *mask_value, *largest;  // between the kernels
+    MsImage *source, *lens, *output;       // lens: the Source if none
+    MsMask *mask;
+    MsImage *shift, *largest;              // between the kernels
     MsImage *levels;                        // Filter: sized by run()
     int width, height;
 } Job;
-
-static int run_mask(MsApi api, const Job *j) {
-    const Settings *s = j->s;
-    return MS_KERNEL(MS_K_MASK, api, MS_IMAGE("mask", j->mask), MS_INT("mask_alpha", s->mask_alpha),
-                     MS_INT("invert_mask", s->invert_mask),
-                     MS_INT("blur_mask", floor(s->blur_mask + 0.5)),
-                     MS_IMAGE("mask_value", j->mask_value));
-}
 
 static int run_shift(MsApi api, const Job *j) {
     const Settings *s = j->s;
     const double gain = s->blur_lens > 0 ? 1.0 + s->blur_lens / 24.0 : 1.0; // a blurred lens
     return MS_KERNEL(
-        MS_K_DISTORT_SHIFT, api, MS_IMAGE("lens", j->lens), MS_IMAGE("mask_value", j->mask_value),
+        MS_K_DISTORT_SHIFT, api, MS_IMAGE("lens", j->lens), MS_IMAGE("mask_value", &j->mask->value),
         MS_INT("mask_lens", s->has_mask && s->mask_lens),
         MS_INT("blur_lens", floor(s->blur_lens + 0.5)), MS_FLOAT("amount", s->amount * gain),
         MS_FLOAT("rel_x", s->rel_x), MS_FLOAT("rel_y", s->rel_y), MS_FLOAT("cos_r", s->cos_r),
@@ -247,7 +241,7 @@ static int run_warp(MsApi api, const Job *j, MsImage *levels, int levels_x, int 
     const Settings *s = j->s;
     return MS_KERNEL(
         MS_K_DISTORT_WARP, api, MS_IMAGE("source", j->source), MS_IMAGE("shift", j->shift),
-        MS_IMAGE("mask_value", j->mask_value), MS_IMAGE("levels", levels),
+        MS_IMAGE("mask_value", &j->mask->value), MS_IMAGE("levels", levels),
         MS_INT("filter", s->filter), MS_INT("levels_x", levels_x), MS_INT("levels_y", levels_y),
         MS_INT("wrap_x", s->wrap_x), MS_INT("wrap_y", s->wrap_y), MS_FLOAT("crop_l", s->crop_l),
         MS_FLOAT("crop_r", s->crop_r), MS_FLOAT("crop_b", s->crop_b), MS_FLOAT("crop_t", s->crop_t),
@@ -261,7 +255,7 @@ static int run(MsApi api, void *user) {
     Job *j = user;
     if (!j->s->gpu && api != MS_API_CPU)
         return MS_RUN_DECLINE;
-    int status = j->s->has_mask ? run_mask(api, j) : 0;
+    int status = ms_mask_run(j->mask, api);
     if (status != 0)
         return status;
     status = run_shift(api, j);
@@ -304,59 +298,53 @@ static int process(const MsRender *r, const Settings *s) {
     // Filter, the levels (at most 4 times the image; only the part the levels need is
     // written, the rest never touched).
     float *shift = malloc(pixels * 4 * sizeof(float));
-    float *mask_value = s->has_mask ? malloc(pixels * sizeof(float)) : NULL;
     const size_t levels_floats = s->filter ? (size_t)levels_size(width, max_levels(width)) *
                                                  levels_size(height, max_levels(height)) * 4
                                            : 0;
     float *levels = levels_floats > 0 ? malloc(levels_floats * sizeof(float)) : NULL;
     float largest[2] = {0.0f, 0.0f};
-    int ok = shift && (mask_value || !s->has_mask) && (levels || !s->filter);
+    MsImage bsource;
+    const MsInput *source = &inputs[SOURCE];
+    ms_image_rgba(&bsource, source->pixels, source->row, half, width, height);
+    MsMask mask = {0};
+    int ok = shift && (levels || !s->filter);
+    if (!ok)
+        snprintf(r->err, r->err_size, "not enough memory");
+    else
+        ok = ms_mask_init(&mask, r, MASK, SOURCE, &bsource, s->mask_alpha, s->invert_mask,
+                          s->blur_mask);
     if (ok) {
-        MsImage bsource, blens, bmask, boutput, bshift, bmask_value, blargest, blevels;
-        const MsInput *source = &inputs[SOURCE];
-        // Without a Lens or a Mask, the Source stands in (only read without a Lens; the same
-        // image: on the GPU it is uploaded once).
+        MsImage blens, boutput, bshift, blargest, blevels;
+        // Without a Lens, the Source stands in (only read without a Lens; the same image: on
+        // the GPU it is uploaded once). A Lens that is the Source's image itself (the host
+        // gives the same pixels): the Source stands in, uploaded once.
         const MsInput *lens = &inputs[s->has_lens ? LENS : SOURCE];
-        const MsInput *mask = &inputs[s->has_mask ? MASK : SOURCE];
-        // A Lens or a Mask that is the Source's image itself (the host gives the same
-        // pixels): the Source stands in, uploaded once.
         const int lens_is_source = s->has_lens && ms_same_input(lens, source);
-        const int mask_is_source = s->has_mask && ms_same_input(mask, source);
-        ms_image_rgba(&bsource, source->pixels, source->row, half, width, height);
         ms_image_rgba(&blens, lens->pixels, lens->row, half, width, height);
-        ms_image_rgba(&bmask, mask->pixels, mask->row, half, width, height);
         ms_image_rgba(&boutput, r->output, r->output_row, half, width, height);
         ms_image(&bshift, shift, (ptrdiff_t)width * 4, width, height, 4);
-        const float no_mask = 1.0f; // without a mask: one value for every pixel (strides 0)
-        if (mask_value)
-            ms_image(&bmask_value, mask_value, width, width, height, 1);
-        else
-            ms_image_constant(&bmask_value, &no_mask, width, height);
         ms_image(&blargest, largest, 2, 2, 1, 1);
         blargest.b.dimensions = 1;
         ms_image(&blevels, levels, 4, 1, 1, 4); // sized by run()
         Job job = {.s = s,
                    .source = &bsource,
                    .lens = s->has_lens && !lens_is_source ? &blens : &bsource,
-                   .mask = mask_is_source ? &bsource : &bmask,
+                   .mask = &mask,
                    .output = &boutput,
                    .shift = &bshift,
-                   .mask_value = &bmask_value,
                    .largest = &blargest,
                    .levels = &blevels,
                    .width = width,
                    .height = height};
         // Uploaded: the Source, the Lens and Mask standing in (ms_run uploads an image given
         // twice once); without a mask, its one value (with one, it is made there).
-        MsImage *const in[] = {&bsource, job.lens, s->has_mask ? job.mask : &bmask_value};
-        MsImage *const between[] = {&bshift, &bmask_value, &blargest, &blevels};
+        MsImage *const in[] = {&bsource, job.lens, mask.input};
+        MsImage *const between[] = {&bshift, &mask.value, &blargest, &blevels};
         ok = ms_run(run, &job, in, ARRAY_SIZE(in), between, ARRAY_SIZE(between), &boutput, r->info,
                     r->err, r->err_size);
-    } else {
-        snprintf(r->err, r->err_size, "not enough memory");
     }
+    ms_mask_free(&mask);
     free(shift);
-    free(mask_value);
     free(levels);
     return ok;
 }

@@ -23,6 +23,7 @@
 // Images are packed RGBA floats (x, y, c), interleaved, bottom row first.
 
 #include "Halide.h"
+#include "hue.h"
 #include "noise.h"
 #include "shared.h"
 #include "tv_damage_layout.h"
@@ -34,12 +35,11 @@ namespace {
 Var x("x"), y("y"), c("c");
 
 using ms_noise::hash3;
-using ms_noise::u32;
+using ms_noise::symmetric;
+using ms_noise::uniform;
 
 const float TAU = 6.28318530718f;
 
-Expr uniform(Expr h) { return cast<float>(h >> u32(8)) * (1.0f / 16777216.0f); }
-Expr symmetric(Expr h) { return uniform(h) * 2.0f - 1.0f; }
 Expr luma(Expr r, Expr g, Expr b) { return (5.0f * r + 8.0f * g + 3.0f * b) / 16.0f; }
 
 // A setting.
@@ -62,15 +62,6 @@ Expr bilinear(Func in, Expr sx, Expr sy, Expr w, Expr h) {
     Expr top = at(x0, y0 + 1) * (1.0f - ax) + at(x0 + 1, y0 + 1) * ax;
     Expr bottom = at(x0, y0) * (1.0f - ax) + at(x0 + 1, y0) * ax;
     return bottom * (1.0f - ay) + top * ay;
-}
-
-void schedule_image(Func f, bool gpu) {
-    Var xo("xo"), yo("yo"), xi("xi"), yi("yi");
-    f.bound(c, 0, 4).reorder(c, x, y).unroll(c);
-    if (gpu)
-        f.gpu_tile(x, y, xo, yo, xi, yi, 16, 16);
-    else
-        f.vectorize(x, 8).parallel(y);
 }
 
 } // namespace
@@ -165,8 +156,8 @@ class TVDamageSource : public Generator<TVDamageSource> {
             hold.gpu_tile(y, yo, yi, 64);
         }
         ghosted.compute_root();
-        schedule_image(ghosted, gpu);
-        schedule_image(picture, gpu);
+        ms::schedule_rgba(ghosted, gpu);
+        ms::schedule_rgba(picture, gpu);
     }
 };
 
@@ -184,7 +175,7 @@ class TVDamageBright : public Generator<TVDamageBright> {
         ms::interleaved(picture);
         settings.dim(0).set_bounds(0, TV_FIELDS);
         ms::interleaved(bright);
-        schedule_image(bright, get_target().has_gpu_feature());
+        ms::schedule_rgba(bright, get_target().has_gpu_feature());
     }
 };
 
@@ -235,23 +226,8 @@ class TVDamageScreen : public Generator<TVDamageScreen> {
 
         // Colour correction: hue (HSV, luma kept), saturation, darks + max(lights - darks, 0) x c.
         Expr r = damaged(x, y, 0), g = damaged(x, y, 1), b = damaged(x, y, 2);
-        Expr mx = max(r, max(g, b)), mn = min(r, min(g, b)), d = mx - mn;
-        Expr safe = select(d > 0.0f, d, 1.0f);
-        Expr h6 = select(mx == r, (g - b) / safe, mx == g, (b - r) / safe + 2.0f,
-                         (r - g) / safe + 4.0f);
-        h6 = h6 + 6.0f * s(TV_HUE);
-        h6 = h6 - 6.0f * floor(h6 / 6.0f);
-        auto channel = [&](float n) { // HSV back: v - v s max(0, min(k, 4 - k, 1))
-            Expr kk = n + h6;
-            kk = kk - 6.0f * floor(kk / 6.0f);
-            return mx - d * max(0.0f, min(min(kk, 4.0f - kk), 1.0f));
-        };
         Expr l0 = luma(r, g, b);
-        Expr hr = channel(5.0f), hg = channel(3.0f), hb = channel(1.0f);
-        Expr l1 = luma(hr, hg, hb);
-        Expr keep = select(l1 != 0.0f, l0 / l1, 1.0f);
-        Expr shifted = select(s(TV_HUE) != 0.0f && d > 0.0f,
-                              select(c == 0, hr, c == 1, hg, hb) * keep, damaged(x, y, c));
+        Expr shifted = ms::hue_shifted(r, g, b, c, s(TV_HUE), damaged(x, y, c));
         Expr sat = select(mono, 0.0f, s(TV_SATURATION));
         Expr cc = l0 + sat * (shifted - l0);
         Expr darks = select(c == 0, s(TV_DARKS_R), c == 1, s(TV_DARKS_G), s(TV_DARKS_B));
@@ -299,8 +275,8 @@ class TVDamageScreen : public Generator<TVDamageScreen> {
         ms::interleaved(screen);
         const bool gpu = get_target().has_gpu_feature();
         damaged.compute_root();
-        schedule_image(damaged, gpu);
-        schedule_image(screen, gpu);
+        ms::schedule_rgba(damaged, gpu);
+        ms::schedule_rgba(screen, gpu);
     }
 };
 
@@ -379,7 +355,7 @@ class TVDamageFinal : public Generator<TVDamageFinal> {
         mask_value.dim(0).set_stride(Expr()); // without a mask: one value (stride 0)
         settings.dim(0).set_bounds(0, TV_FIELDS);
         ms::interleaved(output);
-        schedule_image(output, get_target().has_gpu_feature());
+        ms::schedule_rgba(output, get_target().has_gpu_feature());
     }
 };
 

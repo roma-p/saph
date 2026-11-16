@@ -26,3 +26,16 @@ void ms_profile_set(MsApi api, const MsProfile *profile) {
     if (api < MS_API_COUNT)
         profiles[api] = *profile;
 }
+
+int ms_rgba_blur(MsApi api, MsImage *input, int rx, int ry, MsImage *output) {
+    // The prefix version costs the same whatever the radius: for large blurs. The largest box
+    // of a blur of total radius t is (t + 2) / 3.
+    const MsProfile *p = ms_profile(api);
+    const int t = rx > ry ? rx : ry;
+    const MsKernel kernel =
+        ms_kernel_built(MS_K_BLUR_PREFIX, api) && p->blur_prefix && (t + 2) / 3 >= p->blur_prefix
+            ? MS_K_BLUR_PREFIX
+            : MS_K_BLUR;
+    return MS_KERNEL(kernel, api, MS_IMAGE("input", input), MS_INT("radius_x", rx),
+                     MS_INT("radius_y", ry), MS_IMAGE("output", output));
+}

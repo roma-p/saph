@@ -39,11 +39,10 @@ namespace {
 Var x("x"), y("y"), c("c"), i("i"), l("l");
 
 using ms_noise::u32;
+using ms_noise::uniform;
 
 const float TAU = 6.28318530718f;
 
-// 0..1 from a 32-bit hash.
-Expr uniform(Expr h) { return cast<float>(h >> u32(8)) * (1.0f / 16777216.0f); }
 
 // The sort value (Sort Type) of a pixel.
 Expr sort_value(Expr type, Expr r, Expr g, Expr b) {

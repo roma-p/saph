@@ -18,6 +18,7 @@
 #include "common/defines.h"
 #include "common/effect.h"
 #include "common/mask.h"
+#include "effects/mask_input.h"
 #include "effects/profile.h"
 #include "engine/engine.h"
 #include "halide/tv_damage_layout.h"
@@ -402,30 +403,15 @@ static void settings(const double *v, int w, int h, double time, float *s) {
 
 // One render: images and settings of the kernels.
 typedef struct {
-    MsImage *source, *mask, *mask_value, *settings, *picture, *bright, *narrow, *wide, *screen,
-        *cells, *output;
-    int blur_mask, mask_alpha, invert_mask, has_mask, orthicon, cells_on, narrow_radius,
+    MsImage *source, *settings, *picture, *bright, *narrow, *wide, *screen, *cells, *output;
+    MsMask *mask;
+    int orthicon, cells_on, narrow_radius,
         wide_radius, reach_x, reach_y, ghosts, octaves;
 } Job;
 
-static int blur(MsApi api, MsImage *in, int radius, MsImage *out) {
-    const MsProfile *p = ms_profile(api);
-    const MsKernel kernel = ms_kernel_built(MS_K_BLUR_PREFIX, api) && p->blur_prefix &&
-                                    (radius + 2) / 3 >= p->blur_prefix
-                                ? MS_K_BLUR_PREFIX
-                                : MS_K_BLUR;
-    return MS_KERNEL(kernel, api, MS_IMAGE("input", in), MS_INT("radius_x", radius),
-                     MS_INT("radius_y", radius), MS_IMAGE("output", out));
-}
-
 static int run(MsApi api, void *user) {
     const Job *j = user;
-    int status = 0;
-    if (j->has_mask)
-        status = MS_KERNEL(MS_K_MASK, api, MS_IMAGE("mask", j->mask),
-                           MS_INT("mask_alpha", j->mask_alpha),
-                           MS_INT("invert_mask", j->invert_mask), MS_INT("blur_mask", j->blur_mask),
-                           MS_IMAGE("mask_value", j->mask_value));
+    int status = ms_mask_run(j->mask, api);
     if (status == 0)
         status = MS_KERNEL(MS_K_TV_DAMAGE_SOURCE, api, MS_IMAGE("source", j->source),
                            MS_IMAGE("settings", j->settings), MS_INT("ghosts", j->ghosts),
@@ -434,9 +420,9 @@ static int run(MsApi api, void *user) {
         status = MS_KERNEL(MS_K_TV_DAMAGE_BRIGHT, api, MS_IMAGE("picture", j->picture),
                            MS_IMAGE("settings", j->settings), MS_IMAGE("bright", j->bright));
         if (status == 0)
-            status = blur(api, j->bright, j->narrow_radius, j->narrow);
+            status = ms_rgba_blur(api, j->bright, j->narrow_radius, j->narrow_radius, j->narrow);
         if (status == 0)
-            status = blur(api, j->bright, j->wide_radius, j->wide);
+            status = ms_rgba_blur(api, j->bright, j->wide_radius, j->wide_radius, j->wide);
     }
     if (status == 0)
         status = MS_KERNEL(MS_K_TV_DAMAGE_SCREEN, api, MS_IMAGE("picture", j->picture),
@@ -450,14 +436,14 @@ static int run(MsApi api, void *user) {
     if (status == 0)
         status = MS_KERNEL(MS_K_TV_DAMAGE_FINAL, api, MS_IMAGE("screen", j->screen),
                            MS_IMAGE("cells", j->cells_on ? j->cells : j->screen),
-                           MS_IMAGE("source", j->source), MS_IMAGE("mask_value", j->mask_value),
+                           MS_IMAGE("source", j->source), MS_IMAGE("mask_value", &j->mask->value),
                            MS_IMAGE("settings", j->settings), MS_IMAGE("output", j->output));
     return status;
 }
 
 static int render(const MsRender *r) {
     const double *v = r->values;
-    const int w = r->width, h = r->height, has_mask = r->connected[MASK];
+    const int w = r->width, h = r->height;
     float row[TV_FIELDS] = {0};
     settings(v, w, h, r->time, row);
     // TV pixels: square cells of w / TV Pixels.
@@ -472,25 +458,25 @@ static int render(const MsRender *r) {
     const int wide = (int)fmax(floor(3.0 * (13.5 * v[DARKS_WIDTH] * k - 0.5) + 0.5), narrow + 3);
 
     const size_t pixels = (size_t)w * h;
-    float *mask_value = has_mask ? malloc(pixels * sizeof(float)) : NULL;
     float *picture = malloc(pixels * 4 * sizeof(float));
     float *screen = malloc(pixels * 4 * sizeof(float));
     float *bright = orthicon ? malloc(pixels * 4 * sizeof(float)) : NULL;
     float *narrowed = orthicon ? malloc(pixels * 4 * sizeof(float)) : NULL;
     float *widened = orthicon ? malloc(pixels * 4 * sizeof(float)) : NULL;
     float *small = cells_on ? malloc((size_t)sw * sh * 4 * sizeof(float)) : NULL;
-    int ok = picture && screen && (mask_value || !has_mask) &&
-             (!orthicon || (bright && narrowed && widened)) && (small || !cells_on);
+    MsImage source;
+    ms_image_rgba(&source, r->inputs[SOURCE].pixels, r->inputs[SOURCE].row, r->half, w, h);
+    MsMask mask = {0};
+    int ok = picture && screen && (!orthicon || (bright && narrowed && widened)) &&
+             (small || !cells_on);
+    if (!ok)
+        snprintf(r->err, r->err_size, "not enough memory");
+    else
+        ok = ms_mask_init(&mask, r, MASK, SOURCE, &source, v[MASK_USE], v[INVERT_MASK],
+                          v[BLUR_MASK]);
     if (ok) {
-        const float no_mask = 1.0f;
-        MsImage source, mask, value, settings_image, picture_image, bright_image, narrow_image,
-            wide_image, screen_image, cells_image, output;
-        ms_image_rgba(&source, r->inputs[SOURCE].pixels, r->inputs[SOURCE].row, r->half, w, h);
-        ms_image_rgba(&mask, r->inputs[MASK].pixels, r->inputs[MASK].row, r->half, w, h);
-        if (has_mask)
-            ms_image(&value, mask_value, w, w, h, 1);
-        else
-            ms_image_constant(&value, &no_mask, w, h);
+        MsImage settings_image, picture_image, bright_image, narrow_image, wide_image,
+            screen_image, cells_image, output;
         ms_image(&settings_image, row, TV_FIELDS, TV_FIELDS, 1, 1);
         ms_image(&picture_image, picture, (ptrdiff_t)w * 4, w, h, 4);
         ms_image(&bright_image, bright, (ptrdiff_t)w * 4, w, h, 4);
@@ -499,10 +485,8 @@ static int render(const MsRender *r) {
         ms_image(&screen_image, screen, (ptrdiff_t)w * 4, w, h, 4);
         ms_image(&cells_image, small, (ptrdiff_t)sw * 4, sw, sh, 4);
         ms_image_rgba(&output, r->output, r->output_row, r->half, w, h);
-        const int mask_is_source = has_mask && ms_same_input(&r->inputs[MASK], &r->inputs[SOURCE]);
         Job j = {.source = &source,
-                 .mask = mask_is_source ? &source : &mask,
-                 .mask_value = &value,
+                 .mask = &mask,
                  .settings = &settings_image,
                  .picture = &picture_image,
                  .bright = &bright_image,
@@ -511,10 +495,6 @@ static int render(const MsRender *r) {
                  .screen = &screen_image,
                  .cells = &cells_image,
                  .output = &output,
-                 .blur_mask = (int)floor(v[BLUR_MASK] + 0.5),
-                 .mask_alpha = (int)v[MASK_USE],
-                 .invert_mask = (int)v[INVERT_MASK],
-                 .has_mask = has_mask,
                  .orthicon = orthicon,
                  .cells_on = cells_on,
                  .narrow_radius = narrow,
@@ -524,11 +504,11 @@ static int render(const MsRender *r) {
                  .ghosts = (int)row[TV_GHOSTS],
                  .octaves = (int)row[TV_HHOLD_OCTAVES]};
         // Inputs uploaded to the GPU: the Source, the Mask or the one mask value, the settings.
-        MsImage *const inputs[] = {&source, has_mask ? j.mask : &value, &settings_image};
+        MsImage *const inputs[] = {&source, mask.input, &settings_image};
         MsImage *between[7] = {&picture_image, &screen_image};
         int between_count = 2;
-        if (has_mask)
-            between[between_count++] = &value;
+        if (mask.has_mask)
+            between[between_count++] = &mask.value;
         if (orthicon) {
             between[between_count++] = &bright_image;
             between[between_count++] = &narrow_image;
@@ -538,10 +518,8 @@ static int render(const MsRender *r) {
             between[between_count++] = &cells_image;
         ok = ms_run(run, &j, inputs, 3, between, between_count, &output, r->info, r->err,
                     r->err_size);
-    } else {
-        snprintf(r->err, r->err_size, "not enough memory");
     }
-    free(mask_value);
+    ms_mask_free(&mask);
     free(picture);
     free(screen);
     free(bright);

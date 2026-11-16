@@ -1,5 +1,6 @@
 // MillSaph's seeded noise (the effects' randomness: their own, not the reference's):
 //   hash3     an integer hash of a lattice point
+//   uniform   0..1 from a hash (its 24 high bits), symmetric: -1..1
 //   perlin3   gradient noise in 3D (x, y and time, or an angle), about -0.9..0.9, sd 0.28
 //   fbm       octaves of perlin3, each twice the frequency and `persistence` x the amplitude
 // The same on the CPU and the GPU (32-bit integer hashing, float maths).
@@ -24,6 +25,10 @@ inline Expr hash3(Expr ix, Expr iy, Expr iz) {
     h = (h ^ (h >> u32(15))) * u32(0x846ca68b);
     return h ^ (h >> u32(16));
 }
+
+// 0..1 from a 32-bit hash (its 24 high bits); -1..1.
+inline Expr uniform(Expr h) { return cast<float>(h >> u32(8)) * (1.0f / 16777216.0f); }
+inline Expr symmetric(Expr h) { return uniform(h) * 2.0f - 1.0f; }
 
 // The dot product of one of Perlin's 12 gradients (by the hash) with (x, y, z).
 inline Expr gradient(Expr h, Expr x, Expr y, Expr z) {

@@ -16,6 +16,18 @@ template <typename B> void interleaved(B &&b) {
     b.dim(2).set_stride(1).set_bounds(0, 4);
 }
 
+// An RGBA output (x, y, c) computed per pixel, its 4 channels unrolled: 16 x 16 GPU tiles, or
+// 8-wide vectors and parallel rows on the CPU.
+template <typename F> void schedule_rgba(F &&f, bool gpu) {
+    Var x = f.args()[0], y = f.args()[1], c = f.args()[2];
+    Var xo("xo"), yo("yo"), xi("xi"), yi("yi");
+    f.bound(c, 0, 4).reorder(c, x, y).unroll(c);
+    if (gpu)
+        f.gpu_tile(x, y, xo, yo, xi, yi, 16, 16);
+    else
+        f.vectorize(x, 8).parallel(y);
+}
+
 // Running sums over a line in float (Metal has no double), chunk by chunk: the sum of the
 // chunks before each chunk is compensated (Kahan: the sum, and what its rounding left out),
 // strict (kept as is). The next (sum, left out) from the previous ones and the next chunk.

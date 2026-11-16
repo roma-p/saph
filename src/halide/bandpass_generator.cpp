@@ -67,13 +67,8 @@ class BandPass : public Generator<BandPass> {
         // Schedule: each box computed whole (RGB: 3 channels); d and l per pixel of the
         // output. (On the GPU, sliding windows (blur.h) were slower here than summing each
         // window: 213 vs 147 ms at 4K; staged windows: 82 ms.)
-        Var xo("xo"), yo("yo"), xi("xi"), yi("yi");
         ms_blur::schedule(rgb, gpu, 3);
-        if (gpu) {
-            output.bound(c, 0, 4).reorder(c, x, y).unroll(c).gpu_tile(x, y, xo, yo, xi, yi, 16, 16);
-        } else {
-            output.bound(c, 0, 4).reorder(c, x, y).unroll(c).vectorize(x, 8).parallel(y);
-        }
+        ms::schedule_rgba(output, gpu);
     }
 };
 

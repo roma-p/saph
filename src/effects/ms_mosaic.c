@@ -17,6 +17,7 @@
 #include "common/defines.h"
 #include "common/effect.h"
 #include "common/mask.h"
+#include "effects/mask_input.h"
 #include "effects/profile.h"
 #include "engine/engine.h"
 
@@ -129,42 +130,25 @@ static const MsParam params[] = {
 // One render: images and settings of the kernels (src/halide/mosaic_generator.cpp,
 // blur_generator.cpp, mask_generator.cpp).
 typedef struct {
-    MsImage *source, *mask, *mask_value, *smoothed, *output;
-    int smooth, blur_mask; // total radii in pixels, rounded
+    MsImage *source, *smoothed, *output;
+    MsMask *mask;
+    int smooth; // total radius in pixels, rounded
     float cell_w, cell_h, origin_x, origin_y, mix;
     int kept_x0, kept_x1, kept_y0, kept_y1; // pixels the cells read, included
-    int mask_alpha, invert_mask, has_mask;
 } Job;
 
 // The mask value (with a Mask), the smoothed Source (with Smooth Colors), then the cells,
 // on `api`.
 static int run(MsApi api, void *user) {
     const Job *j = user;
-    if (j->has_mask) {
-        const int status =
-            MS_KERNEL(MS_K_MASK, api, MS_IMAGE("mask", j->mask),
-                      MS_INT("mask_alpha", j->mask_alpha), MS_INT("invert_mask", j->invert_mask),
-                      MS_INT("blur_mask", j->blur_mask), MS_IMAGE("mask_value", j->mask_value));
-        if (status != 0)
-            return status;
-    }
-    if (j->smooth > 0) {
-        // The prefix version costs the same whatever the radius: for large blurs. The largest
-        // box of a blur of total radius t is (t + 2) / 3.
-        const MsProfile *p = ms_profile(api);
-        const MsKernel kernel = ms_kernel_built(MS_K_BLUR_PREFIX, api) && p->blur_prefix &&
-                                        (j->smooth + 2) / 3 >= p->blur_prefix
-                                    ? MS_K_BLUR_PREFIX
-                                    : MS_K_BLUR;
-        const int status = MS_KERNEL(kernel, api, MS_IMAGE("input", j->source),
-                                     MS_INT("radius_x", j->smooth), MS_INT("radius_y", j->smooth),
-                                     MS_IMAGE("output", j->smoothed));
-        if (status != 0)
-            return status;
-    }
+    int status = ms_mask_run(j->mask, api);
+    if (status == 0 && j->smooth > 0)
+        status = ms_rgba_blur(api, j->source, j->smooth, j->smooth, j->smoothed);
+    if (status != 0)
+        return status;
     return MS_KERNEL(MS_K_MOSAIC, api, MS_IMAGE("source", j->source),
                      MS_IMAGE("sampled", j->smooth > 0 ? j->smoothed : j->source),
-                     MS_IMAGE("mask_value", j->mask_value), MS_FLOAT("cell_w", j->cell_w),
+                     MS_IMAGE("mask_value", &j->mask->value), MS_FLOAT("cell_w", j->cell_w),
                      MS_FLOAT("cell_h", j->cell_h), MS_FLOAT("origin_x", j->origin_x),
                      MS_FLOAT("origin_y", j->origin_y), MS_INT("kept_x0", j->kept_x0),
                      MS_INT("kept_x1", j->kept_x1), MS_INT("kept_y0", j->kept_y0),
@@ -182,60 +166,46 @@ static void kept(int n, double a, double b, int *first, int *last) {
 
 static int render(const MsRender *r) {
     const double *v = r->values;
-    const int w = r->width, h = r->height, has_mask = r->connected[MASK];
+    const int w = r->width, h = r->height;
     const int smooth = (int)floor(v[SMOOTH] + 0.5);
-    const size_t pixels = (size_t)w * h;
-    // The mask value, made from the Mask; without one, 1 for every pixel (strides 0). The
-    // smoothed Source.
-    float *mask_value = has_mask ? malloc(pixels * sizeof(float)) : NULL;
-    float *smoothed = smooth > 0 ? malloc(pixels * 4 * sizeof(float)) : NULL;
-    if ((has_mask && !mask_value) || (smooth > 0 && !smoothed)) {
-        free(mask_value);
-        free(smoothed);
+    MsImage source, smooth_image, output;
+    ms_image_rgba(&source, r->inputs[SOURCE].pixels, r->inputs[SOURCE].row, r->half, w, h);
+    ms_image_rgba(&output, r->output, r->output_row, r->half, w, h);
+    MsMask mask;
+    if (!ms_mask_init(&mask, r, MASK, SOURCE, &source, v[MASK_USE], v[INVERT_MASK], v[BLUR_MASK]))
+        return 0;
+    // The smoothed Source.
+    float *smoothed = smooth > 0 ? malloc((size_t)w * h * 4 * sizeof(float)) : NULL;
+    if (smooth > 0 && !smoothed) {
+        ms_mask_free(&mask);
         snprintf(r->err, r->err_size, "not enough memory");
         return 0;
     }
-    const float no_mask = 1.0f;
-    MsImage source, mask, value, smooth_image, output;
-    ms_image_rgba(&source, r->inputs[SOURCE].pixels, r->inputs[SOURCE].row, r->half, w, h);
-    ms_image_rgba(&mask, r->inputs[MASK].pixels, r->inputs[MASK].row, r->half, w, h);
-    if (has_mask)
-        ms_image(&value, mask_value, w, w, h, 1);
-    else
-        ms_image_constant(&value, &no_mask, w, h);
     ms_image(&smooth_image, smoothed, (ptrdiff_t)w * 4, w, h, 4);
-    ms_image_rgba(&output, r->output, r->output_row, r->half, w, h);
-    // A Mask that is the Source's image in the host: the Source stands in (uploaded once).
-    const int mask_is_source = has_mask && ms_same_input(&r->inputs[MASK], &r->inputs[SOURCE]);
     const double cell_w = w / v[FREQUENCY];
     Job j = {.source = &source,
-             .mask = mask_is_source ? &source : &mask,
-             .mask_value = &value,
              .smoothed = &smooth_image,
              .output = &output,
+             .mask = &mask,
              .smooth = smooth,
-             .blur_mask = (int)floor(v[BLUR_MASK] + 0.5),
              .cell_w = (float)cell_w,
              .cell_h = (float)(cell_w * v[REL_HEIGHT]),
              .origin_x = (float)(w * 0.5 + v[SHIFT_X]),
              .origin_y = (float)(h * 0.5 + v[SHIFT_Y]),
-             .mix = (float)v[MIX],
-             .mask_alpha = (int)v[MASK_USE],
-             .invert_mask = (int)v[INVERT_MASK],
-             .has_mask = has_mask};
+             .mix = (float)v[MIX]};
     kept(w, v[CROP_LEFT], v[CROP_RIGHT], &j.kept_x0, &j.kept_x1);
     kept(h, v[CROP_BOTTOM], v[CROP_TOP], &j.kept_y0, &j.kept_y1);
     // Inputs uploaded to the GPU: the Source, and the Mask or the one mask value.
-    MsImage *const inputs[] = {&source, has_mask ? j.mask : &value};
+    MsImage *const inputs[] = {&source, mask.input};
     MsImage *between[2]; // made on the GPU: the mask value, the smoothed Source
     int between_count = 0;
-    if (has_mask)
-        between[between_count++] = &value;
+    if (mask.has_mask)
+        between[between_count++] = &mask.value;
     if (smooth > 0)
         between[between_count++] = &smooth_image;
     const int ok = ms_run(run, &j, inputs, 2, between, between_count, &output, r->info, r->err,
                           r->err_size);
-    free(mask_value);
+    ms_mask_free(&mask);
     free(smoothed);
     return ok;
 }
