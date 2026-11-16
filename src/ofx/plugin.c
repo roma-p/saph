@@ -12,7 +12,7 @@
 #include "ofx/image.h"
 #include "ofxOld.h" // kOfxParamDoubleTypeNormalisedX/Y: deprecated, but hosts show them in pixels
 
-#define MAX_EFFECTS 16 // number of entry points below
+#define MAX_EFFECTS 32 // number of entry points below
 
 static OfxPluginEntryPoint *ms_overlay_entry(int index); // (below)
 
@@ -468,6 +468,8 @@ static OfxStatus main_entry(const MsEffect *e, const char *action, const void *h
 // clang-format off
 ENTRY(0) ENTRY(1) ENTRY(2) ENTRY(3) ENTRY(4) ENTRY(5) ENTRY(6) ENTRY(7)
 ENTRY(8) ENTRY(9) ENTRY(10) ENTRY(11) ENTRY(12) ENTRY(13) ENTRY(14) ENTRY(15)
+ENTRY(16) ENTRY(17) ENTRY(18) ENTRY(19) ENTRY(20) ENTRY(21) ENTRY(22) ENTRY(23)
+ENTRY(24) ENTRY(25) ENTRY(26) ENTRY(27) ENTRY(28) ENTRY(29) ENTRY(30) ENTRY(31)
 
 // The same for the overlays' interacts.
 #define OVERLAY(i)                                                                                 \
@@ -477,15 +479,21 @@ ENTRY(8) ENTRY(9) ENTRY(10) ENTRY(11) ENTRY(12) ENTRY(13) ENTRY(14) ENTRY(15)
     }
 OVERLAY(0) OVERLAY(1) OVERLAY(2) OVERLAY(3) OVERLAY(4) OVERLAY(5) OVERLAY(6) OVERLAY(7)
 OVERLAY(8) OVERLAY(9) OVERLAY(10) OVERLAY(11) OVERLAY(12) OVERLAY(13) OVERLAY(14) OVERLAY(15)
+OVERLAY(16) OVERLAY(17) OVERLAY(18) OVERLAY(19) OVERLAY(20) OVERLAY(21) OVERLAY(22) OVERLAY(23)
+OVERLAY(24) OVERLAY(25) OVERLAY(26) OVERLAY(27) OVERLAY(28) OVERLAY(29) OVERLAY(30) OVERLAY(31)
 
 static OfxPluginEntryPoint *const overlays[MAX_EFFECTS] = {
     overlay_0, overlay_1, overlay_2,  overlay_3,  overlay_4,  overlay_5,  overlay_6,  overlay_7,
     overlay_8, overlay_9, overlay_10, overlay_11, overlay_12, overlay_13, overlay_14, overlay_15,
+    overlay_16, overlay_17, overlay_18, overlay_19, overlay_20, overlay_21, overlay_22, overlay_23,
+    overlay_24, overlay_25, overlay_26, overlay_27, overlay_28, overlay_29, overlay_30, overlay_31,
 };
 
 static OfxPluginEntryPoint *const entries[MAX_EFFECTS] = {
     entry_0, entry_1, entry_2,  entry_3,  entry_4,  entry_5,  entry_6,  entry_7,
     entry_8, entry_9, entry_10, entry_11, entry_12, entry_13, entry_14, entry_15,
+    entry_16, entry_17, entry_18, entry_19, entry_20, entry_21, entry_22, entry_23,
+    entry_24, entry_25, entry_26, entry_27, entry_28, entry_29, entry_30, entry_31,
 };
 // clang-format on
 

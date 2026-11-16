@@ -164,7 +164,7 @@ static OfxPropertySuiteV1 property_suite = {
 
 // ---------------------------------------------------------------- parameters
 
-#define MAX_PARAMS 64
+#define MAX_PARAMS 128
 
 typedef struct {
     char name[64];
