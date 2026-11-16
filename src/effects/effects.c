@@ -16,6 +16,7 @@ const MsEffect *const ms_effects[] = {
     &ms_glare_effect,
     &ms_lensflare_effect,
     &ms_jpegdamage_effect,
+    &ms_pixelsort_effect,
 };
 
 const int ms_effect_count = ARRAY_SIZE(ms_effects);

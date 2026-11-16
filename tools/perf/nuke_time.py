@@ -42,6 +42,8 @@ EFFECTS = [
      [("", {})]),
     ("JpegDamage", SAPPHIRE + "Stylize.S_JpegDamage_v1", MILLSAPH + "JpegDamage_v1", "quality",
      [("", {})]),
+    ("PixelSort", SAPPHIRE + "Stylize.S_PixelSort_v1", MILLSAPH + "PixelSort_v1", "threshold",
+     [("", {}), ("Radial", {"Mode": 1}), ("Circular", {"Mode": 2})]),
 ]
 # The photo-like image: gradients, a disc and a box with hard edges, a little noise.
 DISC = "pow(x/width-0.39,2)*256/81+pow(y/height-0.46,2)<0.077"

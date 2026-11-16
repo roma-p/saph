@@ -202,6 +202,7 @@ extern const MsEffect ms_glint_effect;
 extern const MsEffect ms_glare_effect;
 extern const MsEffect ms_lensflare_effect;
 extern const MsEffect ms_jpegdamage_effect;
+extern const MsEffect ms_pixelsort_effect;
 
 #ifdef __cplusplus
 }

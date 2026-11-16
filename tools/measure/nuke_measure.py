@@ -4,7 +4,7 @@
 #             the named effects: name, label, class, value at creation (the default), slider
 #             range, choices, tooltip, flags; and the number of inputs.
 #             -> ~/millsaph_measure/describe/<Effect>.json and .txt
-#   jobs      renders a jobs file (JSON, below) with the reference node and MillSaph's.
+#   jobs      renders jobs files (JSON, below; one or several) with the reference node and MillSaph's.
 #             -> <out>/reference/<job>.exr and <out>/millsaph/<job>.exr, to compare with
 #                tools/measure/compare.py <out>/reference <out>/millsaph
 #
@@ -60,7 +60,7 @@ EFFECTS = {
     "FlickerMatchColor": ("Time.S_FlickerMatchColor_v1", None),
     "TVDamage": ("Stylize.S_TVDamage_v1", None),
     "JpegDamage": ("Stylize.S_JpegDamage_v1", "JpegDamage_v1"),
-    "PixelSort": ("Stylize.S_PixelSort_v1", None),
+    "PixelSort": ("Stylize.S_PixelSort_v1", "PixelSort_v1"),
     "Mosaic": ("Stylize.S_Mosaic_v1", "Mosaic_v1"),
 }
 # MillSaph's input for each of the reference node's, where they differ (None: MillSaph has
@@ -391,10 +391,11 @@ def main(args):
     try:
         if args and args[0] == "describe":
             describe(args[1:])
-        elif len(args) == 2 and args[0] == "jobs":
-            jobs(args[1])
+        elif len(args) >= 2 and args[0] == "jobs":
+            for path in args[1:]:
+                jobs(path)
         else:
-            print("usage: nuke_measure.py describe <Effect ...|all> | jobs <file.json>")
+            print("usage: nuke_measure.py describe <Effect ...|all> | jobs <file.json ...>")
     finally:
         for n in list(created):
             drop(n)

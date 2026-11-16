@@ -170,6 +170,13 @@ ms_kernel(blur_prefix GENERATOR ms_blur PARAMS boxes=prefix GPU)
 ms_kernel(mosaic GENERATOR ms_mosaic CPU GPU)
 # MS_JpegDamage: the JPEG round trip.
 ms_kernel(jpeg_damage GENERATOR ms_jpeg_damage CPU GPU)
+# MS_PixelSort: the lines' values and spans, the bitonic network's passes, the result; the
+# image at the Sort Resolution.
+ms_kernel(pixel_sort_prep GENERATOR ms_pixel_sort_prep CPU GPU)
+ms_kernel(pixel_sort_step GENERATOR ms_pixel_sort_step CPU GPU)
+ms_kernel(pixel_sort_block GENERATOR ms_pixel_sort_block CPU GPU)
+ms_kernel(pixel_sort_out GENERATOR ms_pixel_sort_out CPU GPU)
+ms_kernel(pixel_sort_down GENERATOR ms_pixel_sort_down CPU GPU)
 # MS_Glow: the thresholded Source blurred, then combined.
 ms_kernel(glow_blur GENERATOR ms_glow_blur CPU GPU)
 ms_kernel(glow_combine GENERATOR ms_glow_combine CPU GPU)

@@ -48,7 +48,11 @@ def batch_scores(jobs_path):
             if not (os.path.exists(ref) and os.path.exists(ms)):
                 worst = None
                 break
-            s = score(exr.read(ref), exr.read(ms))
+            a, m = exr.read(ref), exr.read(ms)
+            if a.shape != m.shape:  # (e.g. a setting MillSaph does not have that enlarges it)
+                worst = None
+                break
+            s = score(a, m)
             worst = s if worst is None or s[0] > worst[0] else worst
         if worst:
             result[job["name"]] = {"p999": worst[0], "l1": worst[1], "energy": worst[2]}

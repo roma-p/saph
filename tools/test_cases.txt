@@ -78,3 +78,12 @@ JpegDamage
 JpegDamage !Mask quality=0.03 all_freq_scale=2 x_freq_scale=3 y_freq_scale=0.5 high_freq_scale=0 scale_lights=1.5 offset_darks=-0.2 saturation=1.5
 JpegDamage mask_use=1 invert_mask=1 blur_mask=0.02 quality=1
 JpegDamage --half --pad 3
+PixelSort
+PixelSort !Mask sort_angle=30 threshold=0.5 sort_direction=0 reverse_sort_direction=1 sort_type=7 randomly_restart_sort=0
+PixelSort !Mask sort_angle=-135 soften_threshold_mask=0 sort_type=8 seed=2
+PixelSort !Mask Mode=1 vary_radius=0.5 _start_angle=30 _degrees_sorted=200
+PixelSort !Mask Mode=2 vary_start=0.5 inner_radius=0.05 sort_type=2
+PixelSort !Mask downsample=1 sort_resolution=150 sort_angle=90
+PixelSort apply_mask=1 mask_use=1 invert_mask=1 mix_with_source=0.3
+PixelSort !Mask show=4
+PixelSort --half --pad 3

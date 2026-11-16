@@ -58,4 +58,7 @@ LensFlare_Atmosphere LensFlare !Occlusion atmosphere_amp=1
 LensFlare_Glow       LensFlare diffraction_glow=1
 JpegDamage           JpegDamage !Mask
 JpegDamage_Freq      JpegDamage !Mask quality=0.3 x_freq_scale=3 high_freq_scale=0
+PixelSort            PixelSort !Mask
+PixelSort_Radial     PixelSort !Mask Mode=1
+PixelSort_Circular   PixelSort !Mask Mode=2
 CASES

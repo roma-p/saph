@@ -736,6 +736,14 @@ int main(int argc, char **argv) {
         {"JpegDamage q0.5 freq", "MS_JpegDamage", "quality=0.5 x_freq_scale=3 high_freq_scale=0", NULL},
         {"JpegDamage mask", "MS_JpegDamage", "same blur_mask=0.005", NULL},
         {"JpegDamage half", "MS_JpegDamage", "half", NULL},
+        {"PixelSort", "MS_PixelSort", "", NULL},
+        {"PixelSort 30deg", "MS_PixelSort", "sort_angle=30", NULL},
+        {"PixelSort full", "MS_PixelSort", "threshold=0 soften_threshold_mask=0", NULL},
+        {"PixelSort radial", "MS_PixelSort", "Mode=1", NULL},
+        {"PixelSort circular", "MS_PixelSort", "Mode=2", NULL},
+        {"PixelSort down", "MS_PixelSort", "downsample=1", NULL},
+        {"PixelSort mask", "MS_PixelSort", "same", NULL},
+        {"PixelSort half", "MS_PixelSort", "half", NULL},
     };
 
     printf("%d x %d, best of %d renders after the first. GPU APIs built:", width, height,
