@@ -15,7 +15,7 @@
 # the reference's entries, matched to MillSaph's by name. Settings MillSaph does not have yet
 # are kept (applying skips them) and reported.
 # Needs ~/millsaph_measure/describe/<Effect>.json with both nodes (nuke_measure.py describe).
-import json, os, re, sys
+import base64, json, os, re, sys
 
 HOME = os.path.expanduser("~/millsaph_measure")
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..")
@@ -69,7 +69,36 @@ def texture(image):
     name = os.path.basename(str((image or {}).get("filename", ""))).lower()
     kind = next((k for word, k in TEXTURES if word in name), "dirt")
     seed = sum(ord(c) * (i + 1) for i, c in enumerate(name)) % 997
-    return {"generate": kind, "seed": seed}
+    out = {"generate": kind, "seed": seed}
+    mean = image_mean(image)
+    if mean:  # the texture as bright as the image it stands for
+        out["mean"] = mean
+    return out
+
+
+def image_mean(image):
+    # an image's mean where a lens shows it (bytes / 255 over its channels, as the lens reads
+    # them): in the disc inscribed in its centred square (an image fits by its shorter side),
+    # or None
+    try:
+        w, h, c = int(image["xdim"]), int(image["ydim"]), int(image.get("elnum", 3))
+        data = base64.b64decode(image["pixels"])
+        if int(image.get("channel_bytes", 1)) != 1 or len(data) < w * h * c or w * h * c <= 0:
+            return None
+    except (KeyError, TypeError, ValueError):
+        return None
+    side = min(w, h)
+    x0, y0, total, count = (w - side) // 2, (h - side) // 2, 0, 0
+    for y in range(side):
+        dy = (y + 0.5) / side - 0.5
+        half = (0.25 - dy * dy) ** 0.5 * side  # the disc's chord at that row
+        lo, hi = max(int(side / 2 - half + 0.5), 0), min(int(side / 2 + half + 0.5), side)
+        if hi <= lo:
+            continue
+        start = ((y0 + y) * w + x0 + lo) * c
+        total += sum(data[start:start + (hi - lo) * c])
+        count += (hi - lo) * c
+    return round(total / (255.0 * count), 5) if count and total else None
 
 
 # The settings MillSaph's styles and lenses read (the names in their sources), and "name": a

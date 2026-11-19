@@ -505,7 +505,7 @@ static MsMutex texture_lock = MS_MUTEX_INIT;
 static int same_texture(const MsLensTexture *a, const MsLensTexture *b) {
     return a->kind == b->kind && a->seed == b->seed && a->amount == b->amount &&
            a->scale == b->scale && a->detail == b->detail && a->sides == b->sides &&
-           a->width == b->width && a->height == b->height;
+           a->width == b->width && a->height == b->height && a->mean == b->mean;
 }
 
 // Texture t into `out` (its width x height x 3 floats): from the cache, or generated (on the
@@ -527,6 +527,24 @@ static int texture(const MsLensTexture *t, float *out) {
                                  MS_FLOAT("seed", t->seed), MS_FLOAT("amount", t->amount),
                                  MS_FLOAT("scale", t->scale), MS_FLOAT("detail", t->detail),
                                  MS_INT("sides", t->sides), MS_IMAGE("texture", &image));
+    if (status == 0 && t->mean > 0.0) { // scaled to the mean wanted (where the lens shows it:
+        double sum = 0.0; // in the disc inscribed in the texture), the image's it stands for
+        size_t count = 0;
+        const int side = t->width < t->height ? t->width : t->height;
+        for (int y = 0; y < t->height; ++y)
+            for (int x = 0; x < t->width; ++x) {
+                const double dx = (x + 0.5 - 0.5 * t->width) / side;
+                const double dy = (y + 0.5 - 0.5 * t->height) / side;
+                if (dx * dx + dy * dy > 0.25)
+                    continue;
+                const float *p = out + ((size_t)y * t->width + x) * 3;
+                sum += (double)p[0] + p[1] + p[2];
+                count += 3;
+            }
+        const float gain = sum > 0.0 ? (float)(t->mean * (double)count / sum) : 1.0f;
+        for (size_t i = 0; i < floats; ++i)
+            out[i] *= gain;
+    }
     float *copy = status == 0 ? malloc(floats * sizeof(float)) : NULL;
     if (!copy)
         return status;

@@ -410,6 +410,7 @@ static int generated(GlareBuilder *b, int image, int *w, int *h, size_t *start) 
                                 (int)ms_json_get(b->nodes, image, "sides", kind == 3 ? 6 : 0),
                                 side,
                                 side,
+                                ms_json_get(b->nodes, image, "mean", 0.0),
                                 t->texels,
                                 -1,
                                 3};
@@ -417,7 +418,8 @@ static int generated(GlareBuilder *b, int image, int *w, int *h, size_t *start) 
         const MsLensTexture *have = &t->list[i];
         if (have->kind == want.kind && have->seed == want.seed && have->amount == want.amount &&
             have->scale == want.scale && have->detail == want.detail &&
-            have->sides == want.sides && have->width == want.width) {
+            have->sides == want.sides && have->width == want.width &&
+            have->mean == want.mean) {
             *w = have->width, *h = have->height, *start = have->start;
             return 1;
         }

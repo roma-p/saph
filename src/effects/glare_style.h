@@ -28,13 +28,15 @@ typedef struct {
 
 // Lens Flare: MillSaph's own textures the lens asks for (an element's "image": {"generate":
 // "dirt" | "glint" | "ramp" | "iris", "seed", "amount", "scale", "detail", "sides",
-// "texels"}), each to generate (halide/lensflare_generator.cpp ms_lensflare_texture) into the
-// texels at `start`, after the lens's own images.
+// "texels", "mean"}), each to generate (halide/lensflare_generator.cpp ms_lensflare_texture)
+// into the texels at `start`, after the lens's own images, then scaled to that mean (when
+// given: the mean of the image it stands for, in the disc inscribed in its centred square).
 #define MS_LENS_MAX_GENERATED 16
 typedef struct {
     int kind; // GLARE_TEXTURE_*; -1: an image written in the element itself (its node)
     double seed, amount, scale, detail;
     int sides, width, height;
+    double mean; // > 0: the texels' mean (over the channels) wanted
     size_t start;
     int node, channels; // (an image in the element: its node, 1 or 3 channels)
 } MsLensTexture;
