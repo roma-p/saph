@@ -19,6 +19,9 @@ static double by_dist(const GlareBuilder *b, int e, double s, double d, const ch
                       const char *min_scale) {
     if (s == 0.0)
         return 1.0;
+    // (the distance less offset_distance x the frame's width, at least 0: 4 x it in units of
+    // a quarter width; measured at 4 offsets x 4 distances)
+    d = fmax(d - 4.0 * get(b, e, "offset_distance", 0.0), 0.0);
     const double f = get(b, e, inverted, 0.0) != 0.0 ? 1.0 - s * d : s * d;
     return fmax(f + get(b, e, min_scale, 0.0), 0.0);
 }
@@ -46,7 +49,8 @@ void ms_lens_place(const GlareBuilder *b, int e, float *row, double *size_k, dou
     // offset_mode "horizontal follow": at the hotspot's height. unscaled_offset (x, y): moved
     // by x, y x the frame's width; scaled_offset: by 2 x (hotspot - pivot) x it, y the
     // other way (no y when following); offset_x / y themselves and offset_distance: no
-    // change on a still (measured with the hotspot above left of the pivot)
+    // move on a still (measured with the hotspot above left of the pivot; offset_distance
+    // shortens the distance the *_by_dist scales read: by_dist)
     const int follow = ms_json_is(b->nodes, e, "offset_mode", "horizontal follow");
     double unscaled[2] = {0, 0}, scaled[2] = {0, 0};
     get_list(b, e, "unscaled_offset", unscaled, 2);
