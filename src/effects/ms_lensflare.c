@@ -26,6 +26,7 @@
 #include "common/effect.h"
 #include "common/mutex.h"
 #include "common/process.h"
+#include "effects/atmosphere.h"
 #include "effects/glare_style.h"
 #include "engine/engine.h"
 #include "lensflare_presets.h" // (generated from presets/lensflare)
@@ -692,23 +693,14 @@ static void frame_settings(const MsRender *r, Job *j) {
         j->gain[c] = (float)(v[BRIGHTNESS] * v[COLOR + c]);
 }
 
-// The Atmosphere: 1 + amp x MillSaph's noise, octaves of gradient noise from about 4 cycles
-// across the frame (x Atmosphere Freq) down to 2 pixels, each Atmosphere Detail x the one
-// before; amp 1: a standard deviation of about 0.2 at the default detail (as the
-// reference's), changing slowly over time (x Atmosphere Speed); 0.5575 = 0.157 / 0.2816, the
-// first octave's sd.
+// The Atmosphere (effects/atmosphere.h).
 static void atmosphere_settings(const MsRender *r, Job *j) {
     const double *v = r->values;
-    const double fw = r->frame_width;
-    const double cycles = 4.0 * fmax(v[ATMOSPHERE_FREQ], 1e-3);
-    if (v[ATMOSPHERE_AMP] > 0) {
-        const int octaves = (int)floor(log2(fmax(fw / (2.0 * cycles), 1.0))) + 1;
-        j->octaves = octaves < 12 ? octaves : 12;
-    }
-    j->amp = (float)(0.5575 * v[ATMOSPHERE_AMP]);
-    j->freq = (float)(cycles / fmax(fw, 1.0));
-    j->persistence = (float)v[ATMOSPHERE_DETAIL];
-    j->z = (float)(fmod(0.032 * v[ATMOSPHERE_SPEED] * r->time + 37.1 * v[ATMOSPHERE_SEED], 4096.0));
+    const MsAtmosphere a =
+        ms_atmosphere(v[ATMOSPHERE_AMP], v[ATMOSPHERE_FREQ], v[ATMOSPHERE_DETAIL],
+                      v[ATMOSPHERE_SEED], v[ATMOSPHERE_SPEED], r->frame_width, r->time);
+    j->amp = a.amp, j->freq = a.freq, j->persistence = a.persistence, j->z = a.z;
+    j->octaves = a.octaves;
 }
 
 // The Motion Blur: the elements at `samples` times spread evenly over the shutter (Shutter
@@ -983,4 +975,5 @@ const MsEffect ms_lensflare_effect = {
     release,
     {"hotspot", "pivot"}, // the axis in the viewer
     "lensflare", // presets (common/preset.h)
+    NULL, // not varying with its settings
 };

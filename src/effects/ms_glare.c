@@ -405,4 +405,5 @@ const MsEffect ms_glare_effect = {
     NULL,
     {NULL, NULL},
     "glare", // presets (common/preset.h)
+    NULL, // not varying with its settings
 };

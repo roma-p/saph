@@ -397,4 +397,5 @@ const MsEffect ms_distort_effect = {
     NULL,
     {NULL, NULL},
     "distort", // presets (common/preset.h)
+    NULL, // not varying with its settings
 };

@@ -9,6 +9,9 @@
 //     Screen, Difference or Overlay (Screen and Overlay above 1: the larger); Glow Under
 //     Source moves it towards the Source over the glow; the alpha is combined the same way
 //     with the glow's largest channel times Affect Alpha
+//   - the Atmosphere (effects/atmosphere.h): the glow (and Show Threshold's image) x
+//     1 + Atmosphere Amp x a noise over the frame, below 0 as well (as the reference's: after
+//     the blur, the same on every channel)
 // Glow Width is a "normalised" value, so hosts show it in pixels.
 
 #include <math.h>
@@ -18,6 +21,7 @@
 #include "common/defines.h"
 #include "common/effect.h"
 #include "common/mask.h"
+#include "effects/atmosphere.h"
 #include "engine/engine.h"
 
 // Inputs: clip, label in the host, value where there is no image, optional, mask.
@@ -55,6 +59,11 @@ enum {
     SOURCE_OPACITY,
     COMBINE,
     EDGE_MODE,
+    ATMOSPHERE_AMP,
+    ATMOSPHERE_FREQ,
+    ATMOSPHERE_DETAIL,
+    ATMOSPHERE_SEED,
+    ATMOSPHERE_SPEED,
     INVERT_MASK
 };
 static const MsParam params[] = {
@@ -154,6 +163,37 @@ static const MsParam params[] = {
                    .def = 1,
                    .entries = edge_entries,
                    .entry_count = ARRAY_SIZE(edge_entries)},
+    [ATMOSPHERE_AMP] = {.type = MS_PARAM_DOUBLE,
+                        .name = "atmosphere_amp",
+                        .label = "Atmosphere Amp",
+                        .hint = "How much a cloudy noise over the frame varies the glow (0: none).",
+                        .min = 0.0,
+                        .max = MS_UNBOUNDED,
+                        .display_max = 5.0},
+    [ATMOSPHERE_FREQ] = {.type = MS_PARAM_DOUBLE,
+                         .name = "atmosphere_freq",
+                         .label = "Atmosphere Freq",
+                         .hint = "The size of the Atmosphere's clouds (higher: smaller).",
+                         .def = 1.0,
+                         .min = 0.01,
+                         .max = MS_UNBOUNDED,
+                         .display_min = 0.1,
+                         .display_max = 20.0},
+    MS_FRACTION(ATMOSPHERE_DETAIL, "atmosphere_detail", "Atmosphere Detail",
+                "How much fine detail the Atmosphere has.", 0.6),
+    [ATMOSPHERE_SEED] = {.type = MS_PARAM_DOUBLE,
+                         .name = "atmosphere_seed",
+                         .label = "Atmosphere Seed",
+                         .hint = "Another Atmosphere for each value.",
+                         .def = 0.123,
+                         .display_max = 5.0},
+    [ATMOSPHERE_SPEED] = {.type = MS_PARAM_DOUBLE,
+                          .name = "atmosphere_speed",
+                          .label = "Atmosphere Speed",
+                          .hint = "How fast the Atmosphere changes over time.",
+                          .def = 1.0,
+                          .display_min = -5.0,
+                          .display_max = 5.0},
     [INVERT_MASK] = MS_PARAM_INVERT_MASK("Use the black areas of the Mask."),
 };
 
@@ -164,6 +204,7 @@ typedef struct {
     int r[2][3];   // total radius per axis (x, y) and channel: whole pixels
     float f[2][3]; // and the fraction past them
     float threshold, add[3], from_alpha, gain[3], source_opacity, under, affect_alpha;
+    MsAtmosphere atmosphere;
 } Job;
 
 // The glow (unless Show is Threshold), then the result, on `api`.
@@ -185,17 +226,20 @@ static int run(MsApi api, void *user) {
         if (status != 0)
             return status;
     }
-    return MS_KERNEL(MS_K_GLOW_COMBINE, api, MS_IMAGE("source", j->source),
-                     MS_IMAGE("glow", j->show_threshold ? j->source : j->glow),
-                     MS_IMAGE("mask", j->mask), MS_INT("has_mask", j->has_mask),
-                     MS_INT("invert_mask", j->invert_mask), MS_FLOAT("threshold", j->threshold),
-                     MS_FLOAT("add_r", j->add[0]), MS_FLOAT("add_g", j->add[1]),
-                     MS_FLOAT("add_b", j->add[2]), MS_FLOAT("from_alpha", j->from_alpha),
-                     MS_FLOAT("gain_r", j->gain[0]), MS_FLOAT("gain_g", j->gain[1]),
-                     MS_FLOAT("gain_b", j->gain[2]), MS_INT("combine", j->combine),
-                     MS_FLOAT("source_opacity", j->source_opacity), MS_FLOAT("under", j->under),
-                     MS_FLOAT("affect_alpha", j->affect_alpha),
-                     MS_INT("show_threshold", j->show_threshold), MS_IMAGE("output", j->output));
+    return MS_KERNEL(
+        MS_K_GLOW_COMBINE, api, MS_IMAGE("source", j->source),
+        MS_IMAGE("glow", j->show_threshold ? j->source : j->glow), MS_IMAGE("mask", j->mask),
+        MS_INT("has_mask", j->has_mask), MS_INT("invert_mask", j->invert_mask),
+        MS_FLOAT("threshold", j->threshold), MS_FLOAT("add_r", j->add[0]),
+        MS_FLOAT("add_g", j->add[1]), MS_FLOAT("add_b", j->add[2]),
+        MS_FLOAT("from_alpha", j->from_alpha), MS_FLOAT("gain_r", j->gain[0]),
+        MS_FLOAT("gain_g", j->gain[1]), MS_FLOAT("gain_b", j->gain[2]),
+        MS_INT("combine", j->combine), MS_FLOAT("source_opacity", j->source_opacity),
+        MS_FLOAT("under", j->under), MS_FLOAT("affect_alpha", j->affect_alpha),
+        MS_INT("show_threshold", j->show_threshold), MS_FLOAT("amp", j->atmosphere.amp),
+        MS_FLOAT("freq", j->atmosphere.freq), MS_FLOAT("persistence", j->atmosphere.persistence),
+        MS_FLOAT("z", j->atmosphere.z), MS_INT("octaves", j->atmosphere.octaves),
+        MS_IMAGE("output", j->output));
 }
 
 static int render(const MsRender *r) {
@@ -229,7 +273,10 @@ static int render(const MsRender *r) {
              .from_alpha = (float)v[FROM_ALPHA],
              .source_opacity = (float)v[SOURCE_OPACITY],
              .under = (float)v[UNDER_SOURCE],
-             .affect_alpha = (float)v[AFFECT_ALPHA]};
+             .affect_alpha = (float)v[AFFECT_ALPHA],
+             .atmosphere =
+                 ms_atmosphere(v[ATMOSPHERE_AMP], v[ATMOSPHERE_FREQ], v[ATMOSPHERE_DETAIL],
+                               v[ATMOSPHERE_SEED], v[ATMOSPHERE_SPEED], r->frame_width, r->time)};
     // Total radii: Subpixel keeps the fraction, else rounded.
     const double axis[2] = {v[WIDTH_X], v[WIDTH_Y]};
     const double channel[3] = {v[WIDTH_RED], v[WIDTH_GREEN], v[WIDTH_BLUE]};
@@ -265,6 +312,9 @@ static int identity(const double *v, const int *connected) {
            (combine == ADD || combine == SCREEN || combine == DIFFERENCE);
 }
 
+// An Atmosphere that moves: the result changes from frame to frame.
+static int varying(const double *v) { return v[ATMOSPHERE_AMP] > 0 && v[ATMOSPHERE_SPEED] != 0; }
+
 const MsEffect ms_glow_effect = {
     MS_ID("Glow"),
     "MS_Glow",
@@ -279,4 +329,5 @@ const MsEffect ms_glow_effect = {
     NULL,
     {NULL, NULL},
     "glow", // presets (common/preset.h)
+    varying,
 };

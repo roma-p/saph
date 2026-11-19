@@ -186,6 +186,9 @@ typedef struct {
     // Optional: the folder of the effect's presets (common/preset.h); the hosts then show a
     // Load Preset button.
     const char *presets;
+    // Optional: 1 when the result changes from frame to frame with these settings (values as
+    // MsRender.values; frame_varying: always). The hosts ask again when a parameter changes.
+    int (*varying)(const double *values);
 } MsEffect;
 
 // Every effect, in menu order (see effects/effects.c).

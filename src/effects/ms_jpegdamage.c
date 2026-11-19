@@ -330,4 +330,5 @@ const MsEffect ms_jpegdamage_effect = {
     NULL,
     {NULL, NULL},
     "jpegdamage", // presets (common/preset.h)
+    NULL, // not varying with its settings
 };

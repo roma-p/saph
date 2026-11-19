@@ -1,7 +1,8 @@
 // MS_Glow in Halide, two kernels (effects/ms_glow.c runs them in order):
 //   ms_glow_blur     the bright parts of the Source (the threshold below), blurred: 3 boxes
 //                    along x then 3 along y (blur.h), a total radius per channel and axis
-//   ms_glow_combine  the glow scaled by brightness x colour, combined with the Source
+//   ms_glow_combine  the glow scaled by brightness x colour and the Atmosphere, combined with
+//                    the Source
 //
 // The threshold of a pixel s (RGB): s mixed towards its alpha by Glow From Alpha, times the
 // Mask's RGB; then threshold.h's.
@@ -12,6 +13,7 @@
 
 #include "Halide.h"
 #include "blur.h"
+#include "noise.h"
 #include "shared.h"
 #include "threshold.h"
 
@@ -95,10 +97,18 @@ class GlowCombine : public Generator<GlowCombine> {
     Input<int> combine{"combine"}; // Mult, Add, Screen, Difference, Overlay
     Input<float> source_opacity{"source_opacity"}, under{"under"}, affect_alpha{"affect_alpha"};
     Input<int> show_threshold{"show_threshold"};
+    // The Atmosphere (effects/atmosphere.h): x 1 + amp x a noise (fbm of `octaves`, frequency
+    // `freq` per pixel, `persistence`, at time `z`); none with 0 octaves
+    Input<float> amp{"amp"}, freq{"freq"}, persistence{"persistence"}, z{"z"};
+    Input<int> octaves{"octaves"};
     Output<Buffer<float, 3>> output{"output"};
 
     void generate() {
         const bool gpu = get_target().has_gpu_feature();
+        Func atmosphere("atmosphere");
+        Expr n = ms_noise::fbm((cast<float>(x) + 0.5f) * freq, (cast<float>(y) + 0.5f) * freq, z,
+                               octaves, persistence, 12, "octave");
+        atmosphere(x, y) = select(octaves > 0, 1.0f + amp * n, 1.0f);
         Func src("src"), msk("msk");
         src(x, y, c) = source(x, y, c);
         msk(x, y, c) = mask(x, y, c);
@@ -107,7 +117,7 @@ class GlowCombine : public Generator<GlowCombine> {
 
         // The glow, and the Source scaled by Source Opacity.
         Func g("g");
-        g(x, y, c) = glow(x, y, c) * select(c == 0, gain_r, c == 1, gain_g, gain_b);
+        g(x, y, c) = glow(x, y, c) * select(c == 0, gain_r, c == 1, gain_g, gain_b) * atmosphere(x, y);
         Expr a = source(x, y, 3) * source_opacity;
         Expr s = source(x, y, c) * source_opacity;
         Expr gc = g(x, y, c);
@@ -129,13 +139,19 @@ class GlowCombine : public Generator<GlowCombine> {
         Expr ga = max(g(x, y, 0), max(g(x, y, 1), g(x, y, 2))) * affect_alpha;
         Expr alpha = combined(a, ga, false);
         Expr result = select(c == 3, alpha, rgb);
-        output(x, y, c) = select(show_threshold != 0, select(c == 3, 1.0f, th(x, y, c)), result);
+        output(x, y, c) =
+            select(show_threshold != 0, select(c == 3, 1.0f, th(x, y, c) * atmosphere(x, y)), result);
 
         ms::interleaved(source);
         ms::interleaved(glow);
         ms::interleaved(mask);
         ms::interleaved(output);
         ms::schedule_rgba(output, gpu);
+        // the Atmosphere once per pixel (not per channel)
+        if (gpu)
+            atmosphere.compute_at(output, Var("xi"));
+        else
+            atmosphere.compute_at(output, x).vectorize(x, 8);
     }
 };
 

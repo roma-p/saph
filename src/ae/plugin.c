@@ -715,7 +715,9 @@ static PF_Err main_entry(AeEffect *ae, PF_Cmd cmd, PF_InData *in_data, PF_OutDat
         return PF_Err_NONE;
     case PF_Cmd_GLOBAL_SETUP:
         out_data->my_version = VERSION;
-        out_data->out_flags = OUT_FLAGS | (e->frame_varying ? PF_OutFlag_NON_PARAM_VARY : 0);
+        // (MsEffect.varying: whatever the settings, After Effects asking once)
+        out_data->out_flags =
+            OUT_FLAGS | (e->frame_varying || e->varying ? PF_OutFlag_NON_PARAM_VARY : 0);
         out_data->out_flags2 = OUT_FLAGS_2;
         return PF_Err_NONE;
     case PF_Cmd_GLOBAL_SETDOWN:

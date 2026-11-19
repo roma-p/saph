@@ -467,4 +467,5 @@ const MsEffect ms_edgeawareblur_effect = {
     NULL,
     {NULL, NULL},
     "edgeawareblur", // presets (common/preset.h)
+    NULL, // not varying with its settings
 };

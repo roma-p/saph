@@ -683,6 +683,7 @@ int main(int argc, char **argv) {
         {"Glow", "MS_Glow", "", NULL},
         {"Glow small", "MS_Glow", "glow_width=0.005", NULL},
         {"Glow wide", "MS_Glow", "glow_width=0.25", NULL},
+        {"Glow atmosphere", "MS_Glow", "atmosphere_amp=1", NULL},
         {"Glow whole", "MS_Glow", "subpixel=0", NULL},
         {"Glow transparent", "MS_Glow", "edge_mode=0", NULL},
         {"Glow mask", "MS_Glow", "same", NULL},

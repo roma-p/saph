@@ -338,4 +338,5 @@ const MsEffect ms_rackdefocus_effect = {
     NULL,
     {NULL, NULL},
     "rackdefocus", // presets (common/preset.h)
+    NULL, // not varying with its settings
 };

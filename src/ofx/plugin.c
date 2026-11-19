@@ -45,6 +45,14 @@ static OfxStatus describe(const MsEffect *e, OfxImageEffectHandle effect) {
                 ms_prop->propSetPointer(props, kOfxImageEffectPluginPropOverlayInteractV1, 0,
                                         (void *)ms_overlay_entry(i));
 
+    // Settings that change whether the result varies over time: the host asks again
+    // (clip_preferences) when one changes.
+    for (int i = 0, n = 0; e->varying && i < e->param_count; ++i)
+        if (e->params[i].type != MS_PARAM_RGB_PART && e->params[i].type != MS_PARAM_POINT_Y &&
+            e->params[i].type != MS_PARAM_BUTTON && e->params[i].type != MS_PARAM_TEXT)
+            ms_prop->propSetString(props, kOfxImageEffectPropClipPreferencesSlaveParam, n++,
+                                   e->params[i].name);
+
     // Whole frames, no tiling.
     ms_prop->propSetInt(props, kOfxImageEffectPropSupportsTiles, 0, 0);
     ms_prop->propSetString(props, kOfxImageEffectPluginRenderThreadSafety, 0,
@@ -485,6 +493,25 @@ static OfxStatus instance_changed(const MsEffect *e, OfxImageEffectHandle effect
     return kOfxStatReplyDefault;
 }
 
+// An effect that changes over time by itself (always, or with these settings): the host
+// renders every frame. (MsEffect.varying: the values at frame 0.)
+static OfxStatus clip_preferences(const MsEffect *e, OfxImageEffectHandle effect,
+                                  OfxPropertySetHandle out_args) {
+    int varying = e->frame_varying;
+    OfxParamSetHandle params;
+    if (!varying && e->varying && e->param_count <= MS_MAX_PARAMS &&
+        ms_effect->getParamSet(effect, &params) == kOfxStatOK) {
+        double values[MS_MAX_PARAMS], scale[2] = {1.0, 1.0};
+        const char *texts[MS_MAX_PARAMS];
+        fill_values(e, params, 0.0, 1.0, 1.0, scale, values, texts);
+        varying = e->varying(values);
+    }
+    if (!varying)
+        return kOfxStatReplyDefault;
+    ms_prop->propSetInt(out_args, kOfxImageEffectFrameVarying, 0, 1);
+    return kOfxStatOK;
+}
+
 static OfxStatus main_entry(const MsEffect *e, const char *action, const void *handle,
                             OfxPropertySetHandle in_args, OfxPropertySetHandle out_args) {
     OfxImageEffectHandle effect = (OfxImageEffectHandle)handle;
@@ -504,11 +531,8 @@ static OfxStatus main_entry(const MsEffect *e, const char *action, const void *h
         return is_identity(e, effect, in_args, out_args);
     if (strcmp(action, kOfxActionInstanceChanged) == 0)
         return instance_changed(e, effect, in_args);
-    // An effect that changes over time by itself: the host renders every frame.
-    if (strcmp(action, kOfxImageEffectActionGetClipPreferences) == 0 && e->frame_varying) {
-        ms_prop->propSetInt(out_args, kOfxImageEffectFrameVarying, 0, 1);
-        return kOfxStatOK;
-    }
+    if (strcmp(action, kOfxImageEffectActionGetClipPreferences) == 0)
+        return clip_preferences(e, effect, out_args);
     return kOfxStatReplyDefault;
 }
 

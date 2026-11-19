@@ -300,4 +300,5 @@ const MsEffect ms_glint_effect = {
     NULL,
     {NULL, NULL},
     "glint", // presets (common/preset.h)
+    NULL, // not varying with its settings
 };

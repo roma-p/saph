@@ -230,4 +230,5 @@ const MsEffect ms_mosaic_effect = {
     NULL,
     {NULL, NULL},
     "mosaic", // presets (common/preset.h)
+    NULL, // not varying with its settings
 };

@@ -182,4 +182,5 @@ const MsEffect ms_bandpass_effect = {
     NULL,
     {NULL, NULL},
     "bandpass", // presets (common/preset.h)
+    NULL, // not varying with its settings
 };
