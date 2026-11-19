@@ -177,7 +177,9 @@ inline Expr stops_radius(const Field &field, const ElementFrame &m, Expr e, cons
         edge = select(f(GLARE_IRREGULAR) != 0.0f,
                       cos(0.5f * (v1 - v0)) / cos(turn_at - 0.5f * (v0 + v1)), edge);
     }
-    edge = edge + (1.0f - edge) * f(GLARE_ROUNDNESS);
+    // (a strongly negative roundness: thin spikes at the vertices, nothing between them; the
+    // edge kept above 0)
+    edge = max(edge + (1.0f - edge) * f(GLARE_ROUNDNESS), 1e-4f);
     Expr r1 = select(sides >= 3.0f, m.r0 / edge, m.r0);
     Expr lo = f(GLARE_RW_MIN), hi = f(GLARE_RW_MAX);
     // (their frequency across the sector's width; a whole turn: per turn)
