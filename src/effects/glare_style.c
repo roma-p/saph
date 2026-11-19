@@ -17,8 +17,9 @@ static void scale_gain(float *row, const double gain[3]) {
 // A rays element (its size `size` x S pixels; `bright`: its brightness, `gain` the Lens
 // Flare's factors there): floor(ray_number / 2) lines; the length L = 2 S size x Rays Length x
 // radius_range's largest, cut at L unstretched; the width without Rays Length. Lens Flare:
-// each line its own length in radius_range, min + (max - min) sqrt(u) (u: MillSaph's random by
-// the line and rand_seed; the reference's mean energies at [0.5, 1], [0.2, 0.6]), turned by
+// each line its own length in radius_range, min + (max - min) u (u: MillSaph's random by the
+// line and rand_seed's whole part; the reference's mean energies linear in min, x 0.21 to 0.64
+// at [0, 1] by the seed, 0.45 over 20 lines), turned by
 // jitter_angles x (u' - 0.5) x the lines' spacing (Glare: all at the largest).
 static void add_rays(GlareBuilder *b, int e, float *row, double size, double bright,
                      const double gain[3]) {

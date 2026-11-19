@@ -291,13 +291,14 @@ inline Expr rays_value(const Field &field, const ElementFrame &m, Expr dx, Expr 
     Expr L = f(GLARE_R), w = f(GLARE_RAY_WIDTH), lines = f(GLARE_LINES);
     RDom j(0, GLARE_MAX_LINES, "j");
     j.where(cast<float>(j) < lines);
-    // (each line's length and turn: MillSaph's random by the line and the seed)
-    Expr seed = cast<int>(f(GLARE_RAY_SEED) * 1000.0f);
+    // (each line's length and turn: MillSaph's random by the line and the seed, its whole
+    // part: the reference's lines the same from 0 to 0.48)
+    Expr seed = cast<int>(floor(f(GLARE_RAY_SEED))) * 1000;
     auto rnd = [&](int k) {
         return cast<float>(ms_noise::hash3(j, seed, k) & ms_noise::u32(0xffffff)) / 16777216.0f;
     };
     Expr lmin = f(GLARE_RAY_MIN);
-    Expr Lj = L * select(lmin < 1.0f, lmin + (1.0f - lmin) * sqrt(rnd(1)), 1.0f);
+    Expr Lj = L * select(lmin < 1.0f, lmin + (1.0f - lmin) * rnd(1), 1.0f);
     Expr spacing = PI / select(lines > 0.0f, lines, 1.0f);
     Expr ang = m.rot + cast<float>(j) * spacing + f(GLARE_RAY_JITTER) * (rnd(2) - 0.5f) * spacing;
     Expr ca = cos(ang), sa = sin(ang); // (Lens Flare's frame q: the screen's, the same angle)
