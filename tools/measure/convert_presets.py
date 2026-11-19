@@ -34,6 +34,9 @@ RENAME = {
                  "frequency": "interference_frequency", "band_frequency": "FF_band_frequency",
                  "band_height": "FF_band_height", "band_shift": "FF_band_shift"},
 }
+# the reference's default style and lens (its nodes' own): its Default presets
+DEFAULT_TEXT = {"Glare": ("Starstrike", "type", "style_"),
+                "LensFlare": ("Nikon AF Nikkor 85mm", "lens", "lens_")}
 # [x, y] settings that are two parameters
 SPLIT = {"blur_rel": ("blur_rel_x", "blur_rel_y"), "amount_rel": ("amount_rel_x", "amount_rel_y"),
          "dots_speed": ("dots_speed_x", "dots_speed_y"),
@@ -160,11 +163,14 @@ def convert(effect):
             params[k] = v
             if k not in ms:
                 missing.setdefault(k, []).append(name)
-        # (Glare's Default: the reference's own default style, Starstrike, not MillSaph's)
-        if effect == "Glare" and name == "Default" and "Starstrike" in presets:
-            params.setdefault("style_", json.dumps(
-                own_textures(dict(presets["Starstrike"]["params"]["type"])),
-                separators=(",", ":"), ensure_ascii=False))
+        # (the Default of Glare and Lens Flare: the reference's own default style or lens,
+        # not MillSaph's)
+        if name == "Default" and effect in DEFAULT_TEXT:
+            source, key, knob = DEFAULT_TEXT[effect]
+            if source in presets:
+                params.setdefault(knob, json.dumps(
+                    own_textures(dict(presets[source]["params"][key])),
+                    separators=(",", ":"), ensure_ascii=False))
         out = {"name": name, "tags": p.get("tags_v8", []), "converted": True, "params": params}
         path = os.path.join(out_dir, slug(name) + ".json")
         with open(path, "w", encoding="utf-8") as f:
