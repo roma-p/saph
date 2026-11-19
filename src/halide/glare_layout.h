@@ -66,7 +66,8 @@ enum {
     GLARE_SHADOW_INVERT,  // 1: masked by 1 - the shadow
     GLARE_SHADOW_OPACITY, // 1 - shadow_transparency
     GLARE_HIDDEN,         // 1: a shadow's row, not drawn
-    GLARE_TURNED_FRAME,   // 1 (Lens Flare): stretched in its own turned frame (Glare: along x, y)
+    GLARE_TURNED_FRAME,   // 1 (Lens Flare): stretched in its own turned frame (Glare: along x,
+                          // y; 2: Glare's renderer 8, the stretch alone turned)
     GLARE_ATMOSPHERE,     // 1 (Lens Flare): x the Atmosphere (not ignore_atmosphere)
     GLARE_RN_OCTAVES,     // Lens Flare, radius noise (r_noise): octaves (0: none)
     GLARE_RN_MIN,         // its radius scale at the noise's 0 and 1

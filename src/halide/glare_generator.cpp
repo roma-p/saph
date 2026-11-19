@@ -66,8 +66,11 @@ class GlareKernel : public Generator<GlareKernel> {
         ms_glare::Field field = [&](Expr i, Expr el) {
             return rows(clamp(i, 0, GLARE_FIELDS - 1), clamp(el, 0, GLARE_MAX_ELEMENTS - 1));
         };
+        // The noises around the noisy polar flares (glare_elements.h), each its own slot.
+        ms_glare::PolarNoises pn;
+        ms_glare::polar_noises(pn, field, [](Expr el) { return el; });
         Func element("element");
-        element(x, y, c, e) = ms_glare::element_value(field, dx, dy, c, e);
+        element(x, y, c, e) = ms_glare::element_value(field, dx, dy, c, e, &pn.angular);
         // The sum of the elements, each where it reaches.
         Func sum_of("sum_of");
         RDom el(0, count, "el");
@@ -88,6 +91,20 @@ class GlareKernel : public Generator<GlareKernel> {
             kernel.unroll(c).gpu_tile(x, y, xo, yo, xi, yi, 16, 16);
         else
             kernel.unroll(c).parallel(y);
+        // (the noises of every element: none but the noisy ones cost anything, their octaves
+        // and taps empty)
+        const int ANGLES = ms_glare::NOISE_ANGLES;
+        pn.noises.compute_root().bound(pn.i, 0, ANGLES).bound(pn.e, 0, GLARE_MAX_ELEMENTS)
+            .bound(pn.which, 0, 2);
+        pn.thresholded.compute_root().bound(pn.i, 0, ANGLES).bound(pn.e, 0, GLARE_MAX_ELEMENTS);
+        if (gpu) {
+            Var io("io"), ii("ii");
+            pn.noises.gpu_tile(pn.i, io, ii, 64);
+            pn.thresholded.gpu_tile(pn.i, io, ii, 64);
+        } else {
+            pn.noises.parallel(pn.e).vectorize(pn.i, 8);
+            pn.thresholded.parallel(pn.e).vectorize(pn.i, 8);
+        }
     }
 };
 

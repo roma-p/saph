@@ -49,6 +49,52 @@ using Field = std::function<Expr(Expr, Expr)>;
 // noise (0..1), which 1, noise_brightness's thresholded noise (lensflare_generator.cpp).
 using Angular = std::function<Expr(int, Expr, Expr)>;
 
+// The noises around noisy elements (MillSaph's, lensflare_style.c ms_lens_polar_noises):
+// NOISE_ANGLES angles a turn, from -pi, for each noise slot e of `nf` (a row of fields); which
+// 0, the radius noise (0..1), which 1, noise_brightness's, thresholded and averaged over
+// blur_theta_map x a turn (NOISE_TAPS angles). `angular` reads them for an element, its slot
+// `slot_of(element)`, linearly between the angles; noises and thresholded to schedule.
+const int NOISE_ANGLES = 4096, NOISE_TAPS = 24;
+struct PolarNoises {
+    Var i{"i"}, e{"e"}, which{"which"};
+    Func raw{"raw"}, thresholded{"thresholded"}, noises{"noises"};
+    Angular angular;
+};
+inline void polar_noises(PolarNoises &p, const Field &nf, std::function<Expr(Expr)> slot_of) {
+    const int ANGLES = NOISE_ANGLES, TAPS = NOISE_TAPS;
+    Var i = p.i, e = p.e, which = p.which;
+    Expr at = -PI + (cast<float>(i) + 0.5f) * (2.0f * PI / ANGLES);
+    auto around = [&](int rho, int seed, int octaves, int scale, float mean, float shift) {
+        Expr n = ms_noise::fbm(cos(at) * nf(rho, e) + shift, sin(at) * nf(rho, e) + 3.3f,
+                               nf(seed, e), nf(octaves, e), 0.43f, 8,
+                               "octave" + std::to_string(rho));
+        return clamp(mean + nf(scale, e) * n, 0.0f, 1.0f);
+    };
+    p.raw(i, e, which) = select(which == 0,
+                                around(GLARE_RN_RHO, GLARE_RN_SEED, GLARE_RN_OCTAVES,
+                                       GLARE_RN_SCALE, 0.47f, 11.1f),
+                                around(GLARE_NB_RHO, GLARE_NB_SEED, GLARE_NB_OCTAVES,
+                                       GLARE_NB_SCALE, 0.5f, 7.7f));
+    p.thresholded(i, e) =
+        threshold(p.raw(i, e, 1), nf(GLARE_NB_WIDTH, e), nf(GLARE_NB_SOFT, e));
+    RDom tap(0, TAPS, "tap");
+    Expr blur = nf(GLARE_NB_BLUR, e);
+    Expr step = cast<int>(round(blur * ANGLES * ((cast<float>(tap) + 0.5f) / TAPS - 0.5f)));
+    Expr averaged =
+        select(blur > 0.0f, sum(p.thresholded((i + step + 4 * ANGLES) % ANGLES, e)) / TAPS,
+               p.thresholded(i, e));
+    p.noises(i, e, which) = select(which == 0, p.raw(i, e, 0), averaged);
+    Func noises = p.noises;
+    p.angular = [noises, slot_of](int k, Expr a, Expr el) {
+        Func n = noises;
+        Expr t = (a + PI) * (NOISE_ANGLES / (2.0f * PI)) - 0.5f;
+        Expr t0 = floor(t), w = t - t0;
+        Expr i0 = (cast<int>(t0) + NOISE_ANGLES) % NOISE_ANGLES, i1 = (i0 + 1) % NOISE_ANGLES;
+        Expr row = clamp(slot_of(el), 0, GLARE_MAX_ELEMENTS - 1);
+        return n(i0, row, k) * (1.0f - w) + n(i1, row, k) * w;
+    };
+}
+
 // Element e's stops_profile at radius r, channel c, read from a table (Lens Flare,
 // lensflare_generator.cpp): the same profile, interpolated.
 using Profile = std::function<Expr(Expr, Expr, Expr)>;
@@ -71,12 +117,18 @@ inline ElementFrame element_frame(const Field &field, Expr dx, Expr dy, Expr e) 
     m.sx = dx / f(GLARE_SCALE_X), m.sy = dy / f(GLARE_SCALE_Y);
     // (Lens Flare: scaled by rel_width, rel_height in the screen's frame (q), then turned by
     // its rotation and stretched in that frame)
-    m.turned = f(GLARE_TURNED_FRAME) != 0.0f;
+    m.turned = f(GLARE_TURNED_FRAME) == 1.0f;
     m.cr = cos(m.rot), m.sr = sin(m.rot);
     m.qx = dx / max(f(GLARE_REL_X), 1e-6f), m.qy = dy / max(f(GLARE_REL_Y), 1e-6f);
     Expr tx = m.qx * m.cr + m.qy * m.sr, ty = -m.qx * m.sr + m.qy * m.cr;
-    Expr ex = select(m.turned, tx / f(GLARE_SCALE_X), m.sx * m.cr + m.sy * m.sr);
-    Expr ey = select(m.turned, ty / f(GLARE_SCALE_Y), -m.sx * m.sr + m.sy * m.cr);
+    // (Glare's renderer 8 (2): Rel Width / Height along x, y, turned, then the stretch: the
+    // angle frame's point over the stretch alone, SCALE / ANGLE)
+    Expr spun = f(GLARE_TURNED_FRAME) == 2.0f;
+    Expr gx = dx / f(GLARE_ANGLE_X), gy = dy / f(GLARE_ANGLE_Y);
+    Expr sx2 = (gx * m.cr + gy * m.sr) * f(GLARE_ANGLE_X) / f(GLARE_SCALE_X);
+    Expr sy2 = (-gx * m.sr + gy * m.cr) * f(GLARE_ANGLE_Y) / f(GLARE_SCALE_Y);
+    Expr ex = select(m.turned, tx / f(GLARE_SCALE_X), spun, sx2, m.sx * m.cr + m.sy * m.sr);
+    Expr ey = select(m.turned, ty / f(GLARE_SCALE_Y), spun, sy2, -m.sx * m.sr + m.sy * m.cr);
     // (Lens Flare, stretch_distort of strength k: the shape (not its image), in units of R,
     // from y to y + k (0.213 - 0.311 y + 0.515 y^2), x x (1 + 0.472 k y); fitted at 7
     // stretches and strengths, 1-5 % of the pixels)

@@ -26,6 +26,9 @@ typedef struct GlareBuilder {
     double shadow_r, shadow_x, shadow_y;
     int images; // Lens Flare: the lens's "images" (-1: none)
     MsLensTextures *textures; // Lens Flare: the generated textures (NULL: none)
+    // Glare: a style of the reference's renderer 8 or later ("renderer_version"): the elements'
+    // stretch (but the rays') along their rotation (GLARE_TURNED_FRAME 2)
+    int turned;
 } GlareBuilder;
 
 static inline double get(const GlareBuilder *b, int e, const char *key, double fallback) {

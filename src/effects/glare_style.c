@@ -159,7 +159,7 @@ static void add_stops(GlareBuilder *b, int e, float *row, double size, double st
     row[GLARE_RW_MIN] = row[GLARE_RW_MAX] = 1.0f;
     if (polar || fancy)
         add_sector(b, e, row, R);
-    if (polar && g->lens)
+    if (polar) // (Glare's too: its styles of 2026 use them)
         ms_lens_polar_noises(b, e, row);
     if (polar)
         add_waves(b, e, row);
@@ -205,7 +205,10 @@ void ms_style_add_element(GlareBuilder *b, int e) {
     const double s = fmax(get(b, e, "stretch", 1.0) * stretch_k, 1e-6), stretch = 1.0 / sqrt(s);
     // (Lens Flare: always taller, whatever stretch_direction and stretch_offset_inverted;
     // measured on spots and polar flares at 3 rotations)
-    const int wider = !g->lens && ms_json_is(b->nodes, e, "stretch_direction", "wider");
+    // (Glare's renderer 8 styles, but rays: always taller, the stretch along the element's
+    // rotation; measured on a fancy spot at 0, 30, 90 degrees, either direction)
+    const int spun = b->turned && !is_type(b, e, "rays");
+    const int wider = !g->lens && !spun && ms_json_is(b->nodes, e, "stretch_direction", "wider");
     const int blob = is_type(b, e, "blob");
     const double kx = blob ? stretch : wider ? sqrt(s) : stretch;
     const double ky = blob ? stretch : wider ? stretch : sqrt(s);
@@ -213,6 +216,8 @@ void ms_style_add_element(GlareBuilder *b, int e) {
     // (Lens Flare: rel_width, rel_height in the screen's frame, whatever the rotation, the
     // stretch in the element's own; measured on Big Red's and Photonic's streaks: turned
     // rays and polygons squeezed flat)
+    if (spun)
+        row[GLARE_TURNED_FRAME] = 2.0f;
     row[GLARE_SCALE_X] = (float)(g->lens ? kx : rel_w * kx);
     row[GLARE_SCALE_Y] = (float)(g->lens ? ky : rel_h * ky);
     row[GLARE_ANGLE_X] = (float)(g->lens ? 1.0 : rel_w);
@@ -277,8 +282,9 @@ int ms_glare_style(const char *text, MsJson *nodes, int max_nodes, const MsGlare
     const int value = ms_json_member(nodes, 0, "value");
     if (value >= 0)
         root = value;
-    GlareBuilder b = {nodes, g, rows, 0, max_rows, -1, 0.0, 0, 0.0, 0.0, 0.0, -1, NULL};
+    GlareBuilder b = {nodes, g, rows, 0, max_rows, -1, 0.0, 0, 0.0, 0.0, 0.0, -1, NULL, 0};
     b.shadow = g->lens ? first_element(&b, ms_json_member(nodes, root, "shadow"), 0) : -1;
+    b.turned = !g->lens && ms_json_get(nodes, root, "renderer_version", 0.0) >= 8.0;
     b.images = g->lens ? ms_json_member(nodes, root, "images") : -1;
     if (textures) { // the generated ones after the lens's own images
         textures->count = 0;

@@ -172,40 +172,15 @@ class LensFlareDraw : public Generator<LensFlareDraw> {
             ms_glare::element_value(field, dx, dy, c, e, nullptr, Expr(), &lookup) * atmo *
             brighter;
         shadowed(x, y, c, e) = element(x, y, c, e) * mask;
-        // The noises around each noisy element (MillSaph's, glare_style.c): ANGLES angles
-        // a turn, from -pi; the radius noise (0..1) and noise_brightness's, thresholded and
-        // averaged over blur_theta_map x a turn (TAPS angles).
-        const int ANGLES = 4096, TAPS = 24;
-        Var i("i"), which("which");
-        Func raw("raw"), thresholded("thresholded"), noises("noises");
-        Expr at = -ms_glare::PI + (cast<float>(i) + 0.5f) * (2.0f * ms_glare::PI / ANGLES);
-        auto around = [&](int rho, int seed, int octaves, int scale, float mean, float shift) {
-            Expr n = ms_noise::fbm(cos(at) * noise_field(rho, e) + shift,
-                                   sin(at) * noise_field(rho, e) + 3.3f, noise_field(seed, e),
-                                   noise_field(octaves, e), 0.43f, 8,
-                                   "octave" + std::to_string(rho));
-            return clamp(mean + noise_field(scale, e) * n, 0.0f, 1.0f);
-        };
-        raw(i, e, which) = select(which == 0,
-                                  around(GLARE_RN_RHO, GLARE_RN_SEED, GLARE_RN_OCTAVES,
-                                         GLARE_RN_SCALE, 0.47f, 11.1f),
-                                  around(GLARE_NB_RHO, GLARE_NB_SEED, GLARE_NB_OCTAVES,
-                                         GLARE_NB_SCALE, 0.5f, 7.7f));
-        thresholded(i, e) = ms_glare::threshold(raw(i, e, 1), noise_field(GLARE_NB_WIDTH, e),
-                                                noise_field(GLARE_NB_SOFT, e));
-        RDom tap(0, TAPS, "tap");
-        Expr blur = noise_field(GLARE_NB_BLUR, e);
-        Expr step = cast<int>(round(blur * ANGLES * ((cast<float>(tap) + 0.5f) / TAPS - 0.5f)));
-        Expr averaged = select(blur > 0.0f, sum(thresholded((i + step + 4 * ANGLES) % ANGLES, e)) / TAPS,
-                               thresholded(i, e));
-        noises(i, e, which) = select(which == 0, raw(i, e, 0), averaged);
-        ms_glare::Angular angular = [&](int k, Expr a, Expr el) {
-            Expr t = (a + ms_glare::PI) * (ANGLES / (2.0f * ms_glare::PI)) - 0.5f;
-            Expr t0 = floor(t), w = t - t0;
-            Expr i0 = (cast<int>(t0) + ANGLES) % ANGLES, i1 = (i0 + 1) % ANGLES;
-            Expr row = clamp(cast<int>(field(GLARE_NOISE_SLOT, el)), 0, GLARE_MAX_ELEMENTS - 1);
-            return noises(i0, row, k) * (1.0f - w) + noises(i1, row, k) * w;
-        };
+        // The noises around each noisy element (glare_elements.h), one slot per noise row.
+        ms_glare::PolarNoises pn;
+        ms_glare::polar_noises(pn, noise_field, [&](Expr el) {
+            return cast<int>(field(GLARE_NOISE_SLOT, el));
+        });
+        const int ANGLES = ms_glare::NOISE_ANGLES;
+        Var i = pn.i, which = pn.which;
+        Func thresholded = pn.thresholded, noises = pn.noises;
+        ms_glare::Angular angular = pn.angular;
         // The element's image (if any) at the pixel: bilinear between its texels, 0 off it.
         Expr tx = cast<float>(x) + 0.5f - field(GLARE_TEX_X, e);
         Expr ty = cast<float>(y) + 0.5f - field(GLARE_TEX_Y, e);
