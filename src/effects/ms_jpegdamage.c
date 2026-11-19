@@ -6,7 +6,9 @@
 //   - the Frequency settings scale the dequantised coefficients (the decoder's steps): All
 //     every one but the mean; X those across (any horizontal frequency u: by the setting
 //     below 1, by 1 + (s - 1) (u - v) / u above), Y the same down; Low, Mid, High by
-//     max(u, v): 0-1 low, 2 half low half mid, 3-4 mid, 5 half mid half high, 6-7 high
+//     max(u, v): 0-1 low, 2 half low half mid, 3-4 mid, 5 half mid half high, 6-7 high;
+//     their product g taken as 1 + a (g - 1) on the luma (a: Affect Luma) and on the chroma
+//     (a: Affect Chroma)
 //   - Saturation, Scale Lights and Offset Darks on the result; the Mask mixes it over the
 //     Source
 //   - Res Factor r: the image compressed at max(floor(r Res Rel X), 1) x floor(r) times less
@@ -41,6 +43,8 @@ enum {
     LOW_FREQ,
     MID_FREQ,
     HIGH_FREQ,
+    AFFECT_LUMA,
+    AFFECT_CHROMA,
     ERROR_RATE,
     ERROR_DENSITY,
     ERROR_AMP,
@@ -98,6 +102,22 @@ static const MsParam params[] = {
     SCALE(LOW_FREQ, "low_freq_scale", "Low Freq Scale", "Scales the blocks' low frequencies."),
     SCALE(MID_FREQ, "mid_freq_scale", "Mid Freq Scale", "Scales the blocks' middle frequencies."),
     SCALE(HIGH_FREQ, "high_freq_scale", "High Freq Scale", "Scales the blocks' high frequencies."),
+    [AFFECT_LUMA] = {.type = MS_PARAM_DOUBLE,
+                     .name = "affect_luma",
+                     .label = "Affect Luma",
+                     .hint = "How much the Frequency settings change the luma (0: not at all).",
+                     .def = 1.0,
+                     .min = 0.0,
+                     .max = MS_UNBOUNDED,
+                     .display_max = 10.0},
+    [AFFECT_CHROMA] = {.type = MS_PARAM_DOUBLE,
+                       .name = "affect_chroma",
+                       .label = "Affect Chroma",
+                       .hint = "How much the Frequency settings change the colours (0: not at all).",
+                       .def = 0.5,
+                       .min = 0.0,
+                       .max = MS_UNBOUNDED,
+                       .display_max = 10.0},
     [ERROR_RATE] = {.type = MS_PARAM_DOUBLE,
                     .name = "error_rate",
                     .label = "Error Rate",
@@ -214,6 +234,8 @@ static void tables(const double *v, float steps[8][8][2], float decoder[8][8][2]
                 double gain = (low * v[LOW_FREQ] + (1.0 - low - high) * v[MID_FREQ] +
                                high * v[HIGH_FREQ]) *
                               v[ALL_FREQ] * axis_gain(v[X_FREQ], u, vv) * axis_gain(v[Y_FREQ], vv, u);
+                // Affect Luma / Affect Chroma: that much of the change on the table's plane
+                gain = 1.0 + v[t == 0 ? AFFECT_LUMA : AFFECT_CHROMA] * (gain - 1.0);
                 if (u == 0 && vv == 0)
                     gain = 1.0;
                 steps[vv][u][t] = (float)s;
