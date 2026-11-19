@@ -1,0 +1,36 @@
+{
+ "name": "Glistening Goblins",
+ "tags": [
+  "Glowing",
+  "Green",
+  "Lighting"
+ ],
+ "converted": true,
+ "params": {
+  "brightness": 4.720001,
+  "color": [
+   0.203922,
+   0.643137,
+   0.827451
+  ],
+  "combine": 2,
+  "expand_borders": 0,
+  "glow_from_alpha": 0,
+  "glow_under_source": 0,
+  "invert_mask": 0,
+  "show": 0,
+  "subpixel": 1,
+  "threshold": 0.449997,
+  "threshold_add_color": [
+   0,
+   0,
+   0
+  ],
+  "glow_width": 0.0046875,
+  "width_blue": 1.399994,
+  "width_green": 13.48999,
+  "width_red": 1,
+  "width_x": 1,
+  "width_y": 1
+ }
+}

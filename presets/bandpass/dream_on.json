@@ -1,0 +1,19 @@
+{
+ "name": "Dream On",
+ "tags": [
+  "Abstract",
+  "Color Correction",
+  "Gray",
+  "Grey",
+  "Muted"
+ ],
+ "converted": true,
+ "params": {
+  "blur_amount1": 0.0953125,
+  "blur_amount2": 0.0,
+  "blur_rel_x": 1.169998,
+  "blur_rel_y": 1.179993,
+  "offset_darks": 0.5,
+  "saturation": 1
+ }
+}

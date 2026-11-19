@@ -1,0 +1,27 @@
+{
+ "name": "Horror Strobe",
+ "tags": [
+  "Blue",
+  "Extreme",
+  "Red",
+  "Time",
+  "Animated"
+ ],
+ "converted": true,
+ "params": {
+  "amplitude": 0.5,
+  "blue_amp": 10,
+  "brightness": 1,
+  "green_amp": 10,
+  "rand_color_amp": 0,
+  "rand_freq": 10,
+  "rand_luma_amp": 1,
+  "red_amp": 0,
+  "seed": 0.123,
+  "wave_amp": 0,
+  "wave_b_phase": 10,
+  "wave_freq": 7,
+  "wave_g_phase": 0,
+  "wave_r_phase": 0
+ }
+}

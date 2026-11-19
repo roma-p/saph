@@ -1,0 +1,20 @@
+{
+ "name": "Metal Strip Treatment",
+ "tags": [
+  "Abstract",
+  "Geometric",
+  "Simulation"
+ ],
+ "converted": true,
+ "params": {
+  "blur_mask": 0.0,
+  "invert_mask": 0,
+  "mask_use": 0,
+  "mix_with_source": 0,
+  "pixel_frequency": 844,
+  "pixel_rel_height": 90,
+  "pixel_shift_x": 0,
+  "pixel_shift_y": -0.035011,
+  "smooth_colors": 0.0
+ }
+}

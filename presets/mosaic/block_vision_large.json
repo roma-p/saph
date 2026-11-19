@@ -1,0 +1,20 @@
+{
+ "name": "Block Vision - Large",
+ "tags": [
+  "Abstract",
+  "Geometric",
+  "Extreme",
+  "Background"
+ ],
+ "converted": true,
+ "params": {
+  "blur_mask": 0.10625,
+  "invert_mask": 0,
+  "mask_use": 0,
+  "pixel_frequency": 10,
+  "pixel_rel_height": 1,
+  "pixel_shift_x": 0,
+  "pixel_shift_y": 0,
+  "smooth_colors": 0.0078125
+ }
+}

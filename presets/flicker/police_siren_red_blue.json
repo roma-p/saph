@@ -1,0 +1,27 @@
+{
+ "name": "Police Siren Red & Blue",
+ "tags": [
+  "Blue",
+  "Dark",
+  "Red",
+  "Time",
+  "Animated"
+ ],
+ "converted": true,
+ "params": {
+  "amplitude": 1,
+  "blue_amp": 10,
+  "brightness": 0.5,
+  "green_amp": 5,
+  "rand_color_amp": 0,
+  "rand_freq": 5,
+  "rand_luma_amp": 0.1,
+  "red_amp": 0,
+  "seed": 0.122986,
+  "wave_amp": 0,
+  "wave_b_phase": 0,
+  "wave_freq": 1,
+  "wave_g_phase": 0,
+  "wave_r_phase": 0
+ }
+}

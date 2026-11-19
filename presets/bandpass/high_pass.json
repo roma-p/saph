@@ -1,0 +1,22 @@
+{
+ "name": "High-Pass",
+ "tags": [
+  "Abstract",
+  "Color Correction",
+  "Dark",
+  "Grey",
+  "Multicolored",
+  "Muted",
+  "Sharp",
+  "Gray"
+ ],
+ "converted": true,
+ "params": {
+  "blur_amount1": 0.000520875,
+  "blur_amount2": 0.0015625,
+  "blur_rel_x": 1,
+  "blur_rel_y": 1,
+  "offset_darks": 0.559998,
+  "saturation": -2
+ }
+}

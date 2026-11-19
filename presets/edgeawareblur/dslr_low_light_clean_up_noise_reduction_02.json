@@ -1,0 +1,20 @@
+{
+ "name": "DSLR Low Light clean up+noise reduction_02",
+ "tags": [
+  "Blurred",
+  "Subtle"
+ ],
+ "converted": true,
+ "params": {
+  "blur_amount": 0.002073625,
+  "blur_rel_x": 0.75,
+  "blur_rel_y": 0.75,
+  "blur_type": 0,
+  "edge_smooth": 0.000933125,
+  "edge_threshold": 0.080002,
+  "filter": 3,
+  "invert_mask": 0,
+  "mask_use": 0,
+  "use_alpha_edges": 0
+ }
+}

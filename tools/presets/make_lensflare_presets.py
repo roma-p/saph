@@ -1,4 +1,4 @@
-# Writes MillSaph's own Lens Flare presets (presets/lensflare/*.json): looks built from the
+# Writes MillSaph's own Lens Flare presets (presets/lensflare/*.json, tagged MillSaph): looks built from the
 # element types the engine draws and MillSaph's generated textures.
 import json, os, sys
 
@@ -165,10 +165,13 @@ P["Polar Shimmer"] = [
     *ghosts(0.45, -0.45, 4, 0.1, 0.05, [(0.6, 0.8, 1), (0.8, 0.6, 1)], kind="poly", sides=8),
 ]
 
+# each a preset file (src/common/preset.h): its lens as the Lens text, tagged MillSaph (the
+# Lens Flare's Preset menu lists these, CMakeLists.txt)
 for name, elements in P.items():
     lens = {"value": {"metadata": {"preset-name": name, "author": "MillSaph"}, "elements": elements}}
+    preset = {"name": name, "tags": ["MillSaph"], "params": {"lens_": json.dumps(lens, indent=1)}}
     fn = name.lower().replace(" ", "_").replace("-", "_") + ".json"
     with open(os.path.join(OUT, fn), "w") as f:
-        json.dump(lens, f, indent=1)
+        json.dump(preset, f, indent=1)
         f.write("\n")
 print(len(P), "presets")

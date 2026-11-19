@@ -1,0 +1,31 @@
+{
+ "name": "Unclear Intentions",
+ "tags": [
+  "Blurred",
+  "Bright",
+  "Saturated"
+ ],
+ "converted": true,
+ "params": {
+  "bokeh": 0.449997,
+  "boost_highlights": 2,
+  "brightness": 0.75,
+  "color_fringing": 0.130005,
+  "defocus_width": 0.0249375,
+  "edge_mode": 2,
+  "gauss_blur": 0.00234375,
+  "lens_noise": 6,
+  "mix_with_source": 0,
+  "noise_freq": 40,
+  "noise_freq_rel_x": 1,
+  "noise_seed": 0.122986,
+  "offset_darks": -0.199997,
+  "rel_height": 1,
+  "rotate": 0,
+  "roundness": -0.029999,
+  "shape": 4,
+  "show_shape": 0,
+  "soft_borders": 0,
+  "use_gamma": 2.050003
+ }
+}

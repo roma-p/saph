@@ -1,0 +1,17 @@
+{
+ "name": "Bogus Boogie",
+ "tags": [
+  "Abstract",
+  "Color Correction",
+  "Multicolored"
+ ],
+ "converted": true,
+ "params": {
+  "blur_amount1": 0.007875,
+  "blur_amount2": 0.01575,
+  "blur_rel_x": 3.399994,
+  "blur_rel_y": 3.460007,
+  "offset_darks": 0.520004,
+  "saturation": 2.039993
+ }
+}

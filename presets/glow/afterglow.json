@@ -1,0 +1,38 @@
+{
+ "name": "Afterglow",
+ "tags": [
+  "Blurred",
+  "Glowing",
+  "Lighting",
+  "Bright",
+  "Type"
+ ],
+ "converted": true,
+ "params": {
+  "brightness": 2,
+  "color": [
+   1,
+   1,
+   1
+  ],
+  "combine": 2,
+  "expand_borders": 0,
+  "glow_from_alpha": 0,
+  "glow_under_source": 0,
+  "invert_mask": 0,
+  "show": 0,
+  "subpixel": 1,
+  "threshold": 0,
+  "threshold_add_color": [
+   0,
+   0,
+   0
+  ],
+  "glow_width": 0.1078125,
+  "width_blue": 1.399994,
+  "width_green": 1.199997,
+  "width_red": 1,
+  "width_x": 0,
+  "width_y": 1
+ }
+}

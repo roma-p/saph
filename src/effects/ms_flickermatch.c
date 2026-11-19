@@ -139,6 +139,7 @@ const MsEffect ms_flickermatch_effect = {
     0,
     NULL,
     {NULL, NULL},
+    "flickermatch", // presets (common/preset.h)
 };
 
 const MsEffect ms_flickermatchcolor_effect = {
@@ -155,4 +156,5 @@ const MsEffect ms_flickermatchcolor_effect = {
     0,
     NULL,
     {NULL, NULL},
+    "flickermatchcolor", // presets (common/preset.h)
 };

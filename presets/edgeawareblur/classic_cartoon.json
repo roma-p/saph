@@ -1,0 +1,22 @@
+{
+ "name": "Classic Cartoon",
+ "tags": [
+  "Artistic",
+  "Blurred",
+  "Cartoon",
+  "Subtle"
+ ],
+ "converted": true,
+ "params": {
+  "blur_amount": 0.0186625,
+  "blur_rel_x": 1,
+  "blur_rel_y": 1,
+  "blur_type": 0,
+  "edge_smooth": 0.002592,
+  "edge_threshold": 0.050003,
+  "filter": 2,
+  "invert_mask": 0,
+  "mask_use": 0,
+  "use_alpha_edges": 0
+ }
+}

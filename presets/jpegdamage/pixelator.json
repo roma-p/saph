@@ -1,0 +1,33 @@
+{
+ "name": "Pixelator",
+ "tags": [
+  "Damage",
+  "Dark",
+  "Distorted",
+  "Extreme",
+  "Type"
+ ],
+ "converted": true,
+ "params": {
+  "affect_chroma": 1,
+  "affect_luma": 1.199997,
+  "all_freq_scale": 0.5,
+  "err_block_density": 0,
+  "error_amp": 0,
+  "error_coherence": 0,
+  "error_rate": 0,
+  "high_freq_scale": 0,
+  "jitter_frames": 0,
+  "low_freq_scale": 1,
+  "mid_freq_scale": 0,
+  "offset_darks": 0,
+  "quality": 1,
+  "rand_seed": 0,
+  "res_factor": 2,
+  "res_rel_x": 0.01,
+  "saturation": 0.990005,
+  "scale_lights": 1,
+  "x_freq_scale": 2.199997,
+  "y_freq_scale": 7.5
+ }
+}

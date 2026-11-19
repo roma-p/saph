@@ -1,0 +1,29 @@
+{
+ "name": "Blurry Eyes",
+ "tags": [
+  "Blurred"
+ ],
+ "converted": true,
+ "params": {
+  "bokeh": 0.070007,
+  "boost_highlights": 0,
+  "brightness": 1,
+  "color_fringing": 0.130005,
+  "defocus_width": 0.014,
+  "edge_mode": 2,
+  "gauss_blur": 0.0,
+  "lens_noise": 0.5,
+  "mix_with_source": 0,
+  "noise_freq": 40,
+  "noise_freq_rel_x": 1,
+  "noise_seed": 0.122986,
+  "offset_darks": 0,
+  "rel_height": 1,
+  "rotate": 0,
+  "roundness": 0,
+  "shape": 0,
+  "show_shape": 0,
+  "soft_borders": 0,
+  "use_gamma": 4.869995
+ }
+}

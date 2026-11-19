@@ -1,0 +1,35 @@
+{
+ "name": "High Res Blocks",
+ "tags": [
+  "Damage",
+  "Distorted",
+  "v2022.5"
+ ],
+ "converted": true,
+ "params": {
+  "affect_chroma": 0,
+  "affect_luma": 1,
+  "all_freq_scale": 2.899994,
+  "blur_mask": 0.00625,
+  "combine_masks": 0,
+  "err_block_density": 0.75,
+  "error_amp": 1,
+  "error_coherence": 1,
+  "error_rate": 0,
+  "high_freq_scale": 1,
+  "invert_mask": 0,
+  "jitter_frames": 1,
+  "low_freq_scale": 1,
+  "mask_use": 0,
+  "mid_freq_scale": 0,
+  "offset_darks": -0.449997,
+  "quality": 0.024002,
+  "rand_seed": 0.122986,
+  "res_factor": 10,
+  "res_rel_x": 4,
+  "saturation": 1,
+  "scale_lights": 1,
+  "x_freq_scale": 1,
+  "y_freq_scale": 115
+ }
+}

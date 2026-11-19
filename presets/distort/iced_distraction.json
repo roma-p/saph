@@ -1,0 +1,19 @@
+{
+ "name": "Iced Distraction",
+ "tags": [
+  "Distorted"
+ ],
+ "converted": true,
+ "params": {
+  "amount": -4,
+  "amount_rel_x": 0.539993,
+  "amount_rel_y": 0.419998,
+  "blur_lens": 0.010416625,
+  "blur_mask": 0.0,
+  "filter": 1,
+  "fine": 0,
+  "invert_mask": 0,
+  "mask_use": 0,
+  "rotate_warp_dir": -44
+ }
+}

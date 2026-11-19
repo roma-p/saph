@@ -278,4 +278,5 @@ const MsEffect ms_glow_effect = {
     0,
     NULL,
     {NULL, NULL},
+    "glow", // presets (common/preset.h)
 };

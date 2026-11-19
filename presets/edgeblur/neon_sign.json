@@ -1,0 +1,17 @@
+{
+ "name": "Neon Sign",
+ "tags": [
+  "Blurred",
+  "Type"
+ ],
+ "converted": true,
+ "params": {
+  "blur_width": 0.092708375,
+  "edge_strength": 0.979996,
+  "edge_threshold": 0,
+  "edge_width": 0.0204375,
+  "matte_use": 0,
+  "show": 0,
+  "subpixel": 1
+ }
+}

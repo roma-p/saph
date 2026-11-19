@@ -1,0 +1,17 @@
+{
+ "name": "Grid Blur",
+ "tags": [
+  "Blurred",
+  "Extreme"
+ ],
+ "converted": true,
+ "params": {
+  "blur_width": 0.0390625,
+  "edge_strength": 80.619995,
+  "edge_threshold": 0.039993,
+  "edge_width": 0.015625,
+  "matte_use": 0,
+  "show": 0,
+  "subpixel": 1
+ }
+}

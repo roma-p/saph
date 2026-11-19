@@ -1,0 +1,25 @@
+{
+ "name": "Campfire",
+ "tags": [
+  "Energetic",
+  "Animated",
+  "Time"
+ ],
+ "converted": true,
+ "params": {
+  "amplitude": 0.300003,
+  "blue_amp": 1,
+  "brightness": 0.710007,
+  "green_amp": 1,
+  "rand_color_amp": 0,
+  "rand_freq": 9.5,
+  "rand_luma_amp": 1,
+  "red_amp": 1,
+  "seed": 0,
+  "wave_amp": 0.5,
+  "wave_b_phase": 0,
+  "wave_freq": 1,
+  "wave_g_phase": 0,
+  "wave_r_phase": 0
+ }
+}

@@ -1,0 +1,17 @@
+{
+ "name": "Video Soft Edge Text",
+ "tags": [
+  "Blurred",
+  "Subtle"
+ ],
+ "converted": true,
+ "params": {
+  "blur_width": 0.625,
+  "edge_strength": 2,
+  "edge_threshold": 2.5,
+  "edge_width": 0.00625,
+  "matte_use": 1,
+  "show": 0,
+  "subpixel": 1
+ }
+}

@@ -1,0 +1,42 @@
+{
+ "name": "SPF 15",
+ "tags": [
+  "Glowing",
+  "Lighting",
+  "White"
+ ],
+ "converted": true,
+ "params": {
+  "blur_glint": 0.10078125,
+  "brightness": 5.050003,
+  "brightness_diag1": 1,
+  "brightness_diag2": 1,
+  "brightness_x": 1,
+  "brightness_y": 1,
+  "expand_borders": 0,
+  "glint_from_alpha": 0,
+  "glint_under_source": 0,
+  "hue_shift": 0,
+  "invert_mask": 0,
+  "scale_colors": [
+   1,
+   1,
+   1
+  ],
+  "size": 0.140625,
+  "size_blue": 1.5,
+  "size_diag1": 0.75,
+  "size_diag2": 0.75,
+  "size_green": 1,
+  "size_red": 0.5,
+  "size_x": 1,
+  "size_y": 1,
+  "threshold": 0.699997,
+  "threshold_add_color": [
+   0.078431,
+   0.909804,
+   0.215686
+  ],
+  "threshold_blur": 0.001575
+ }
+}

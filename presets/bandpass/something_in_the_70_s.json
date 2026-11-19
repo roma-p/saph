@@ -1,0 +1,18 @@
+{
+ "name": "Something in The 70's",
+ "tags": [
+  "Abstract",
+  "Color Correction",
+  "Vintage",
+  "Multicolored"
+ ],
+ "converted": true,
+ "params": {
+  "blur_amount1": 0.0,
+  "blur_amount2": 0.14934375,
+  "blur_rel_x": 1.100006,
+  "blur_rel_y": 1,
+  "offset_darks": 0.5,
+  "saturation": 1
+ }
+}

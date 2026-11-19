@@ -74,7 +74,7 @@ if(NOT EXISTS ${third_party}/AfterEffectsSDK/Examples/Headers/AE_Effect.h)
   endif()
 endif()
 
-# The Lens Flare editor (src/editor; MILLSAPH_EDITOR): Dear ImGui (MIT) for its interface,
+# The Lens Flare editor and the preset window (src/editor; MILLSAPH_EDITOR): Dear ImGui (MIT) for their interface,
 # GLFW (zlib) for its window, nlohmann/json (MIT) to read and write lenses keeping their
 # fields and order. Sources, built with the editor.
 if(MILLSAPH_EDITOR)
@@ -86,6 +86,10 @@ if(MILLSAPH_EDITOR)
     file(RENAME ${CMAKE_BINARY_DIR}/imgui_unpack/imgui-${imgui_version} ${third_party}/imgui)
     file(REMOVE ${archive})
   endif()
+  # stb_image (public domain): the preset window reads its thumbnails (PNG) with it.
+  set(stb_commit 013ac3beddff3dbffafd5177e7972067cd2b5083)
+  download(https://raw.githubusercontent.com/nothings/stb/${stb_commit}/stb_image.h
+           ${third_party}/stb/stb_image.h)
   set(glfw_version 3.4)
   if(NOT EXISTS ${third_party}/glfw/CMakeLists.txt)
     set(archive ${CMAKE_BINARY_DIR}/glfw.zip)

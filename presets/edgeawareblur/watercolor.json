@@ -1,0 +1,14 @@
+{
+ "name": "Watercolor",
+ "tags": [
+  "Artistic",
+  "Blurred"
+ ],
+ "converted": true,
+ "params": {
+  "blur_amount": 0.0774,
+  "edge_smooth": 0.0,
+  "edge_threshold": 0.3,
+  "filter": 0
+ }
+}

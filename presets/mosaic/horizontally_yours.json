@@ -1,0 +1,19 @@
+{
+ "name": "Horizontally Yours",
+ "tags": [
+  "Geometric",
+  "Abstract",
+  "Background"
+ ],
+ "converted": true,
+ "params": {
+  "blur_mask": 0.0,
+  "invert_mask": 0,
+  "mask_use": 0,
+  "pixel_frequency": 1,
+  "pixel_rel_height": 0.01,
+  "pixel_shift_x": 9,
+  "pixel_shift_y": -0.1875,
+  "smooth_colors": 0.0171875
+ }
+}

@@ -1,0 +1,18 @@
+{
+ "name": "On The Flip Side",
+ "tags": [
+  "Color Correction",
+  "Dark",
+  "Glowing",
+  "Multicolored"
+ ],
+ "converted": true,
+ "params": {
+  "blur_amount1": 0.0,
+  "blur_amount2": 0.05546875,
+  "blur_rel_x": 1,
+  "blur_rel_y": 1,
+  "offset_darks": -0.110001,
+  "saturation": 1
+ }
+}

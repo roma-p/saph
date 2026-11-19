@@ -168,4 +168,5 @@ const MsEffect ms_edgeblur_effect = {
     0,
     NULL,
     {NULL, NULL},
+    "edgeblur", // presets (common/preset.h)
 };

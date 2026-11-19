@@ -982,4 +982,5 @@ const MsEffect ms_lensflare_effect = {
     1, // the Atmosphere changes over time
     release,
     {"hotspot", "pivot"}, // the axis in the viewer
+    "lensflare", // presets (common/preset.h)
 };

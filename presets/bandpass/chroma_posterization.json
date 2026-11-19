@@ -1,0 +1,20 @@
+{
+ "name": "Chroma-Posterization",
+ "tags": [
+  "Abstract",
+  "Artistic",
+  "Cartoon",
+  "Color Correction",
+  "Saturated",
+  "Extreme"
+ ],
+ "converted": true,
+ "params": {
+  "blur_amount1": 0.023958375,
+  "blur_amount2": 0.000520875,
+  "blur_rel_x": 3,
+  "blur_rel_y": 3,
+  "offset_darks": -0.720001,
+  "saturation": 1.139999
+ }
+}

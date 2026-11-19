@@ -1,0 +1,32 @@
+{
+ "name": "Dot Matrix",
+ "tags": [
+  "Abstract",
+  "Damage",
+  "Extreme",
+  "Monochrome"
+ ],
+ "converted": true,
+ "params": {
+  "affect_chroma": 0,
+  "affect_luma": 0,
+  "all_freq_scale": 0,
+  "err_block_density": 0,
+  "error_amp": 0,
+  "error_coherence": 0,
+  "error_rate": 0,
+  "high_freq_scale": 0,
+  "jitter_frames": 0,
+  "low_freq_scale": 0,
+  "mid_freq_scale": 0,
+  "offset_darks": 0,
+  "quality": 0.01,
+  "rand_seed": 0,
+  "res_factor": 1,
+  "res_rel_x": 3.799988,
+  "saturation": 0,
+  "scale_lights": 1,
+  "x_freq_scale": 0,
+  "y_freq_scale": 0
+ }
+}

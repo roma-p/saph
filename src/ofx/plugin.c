@@ -7,6 +7,7 @@
 
 #include "common/defines.h"
 #include "common/effect.h"
+#include "common/preset.h"
 #include "engine/engine.h"
 #include "ofx/host.h"
 #include "ofx/image.h"
@@ -135,6 +136,13 @@ static OfxStatus describe_in_context(const MsEffect *e, OfxImageEffectHandle eff
     ms_define_clips(effect, in_args, e->clips, e->clip_count);
     if (ms_effect->getParamSet(effect, &params) != kOfxStatOK)
         return kOfxStatFailed;
+    if (e->presets) { // first, as hosts show the parameters in order
+        static const MsParam load = {.type = MS_PARAM_BUTTON,
+                                     .name = MS_LOAD_PRESET,
+                                     .label = "Load Preset",
+                                     .hint = "Picks one of the effect's presets in a window."};
+        define_param(params, &load);
+    }
     for (int i = 0; i < e->param_count; ++i)
         define_param(params, &e->params[i]);
     return kOfxStatOK;
@@ -397,8 +405,26 @@ static double host_value(MsHost *host, const char *name) {
     return host_get_value(host, name, &ok);
 }
 
+// (a part of a parameter: a POINT's y, its name with "_y"; an RGB's green or blue, "_green",
+// "_blue"; the parameter's other values kept)
 static int host_set_value(MsHost *host, const char *name, double value) {
+    static const struct {
+        const char *suffix;
+        int index;
+    } parts[] = {{"_y", 1}, {"_green", 1}, {"_blue", 2}};
     OfxParamHandle param = param_named(host, name);
+    int index = 0;
+    char base[96];
+    const size_t n = strlen(name);
+    for (size_t i = 0; !param && i < sizeof parts / sizeof parts[0]; ++i) {
+        const size_t k = strlen(parts[i].suffix);
+        if (n > k && n - k < sizeof base && strcmp(name + n - k, parts[i].suffix) == 0) {
+            memcpy(base, name, n - k);
+            base[n - k] = 0;
+            param = param_named(host, base);
+            index = parts[i].index;
+        }
+    }
     OfxPropertySetHandle props;
     char *type = NULL;
     if (!param || ms_param->paramGetPropertySet(param, &props) != kOfxStatOK ||
@@ -407,7 +433,29 @@ static int host_set_value(MsHost *host, const char *name, double value) {
     if (strcmp(type, kOfxParamTypeChoice) == 0 || strcmp(type, kOfxParamTypeBoolean) == 0 ||
         strcmp(type, kOfxParamTypeInteger) == 0)
         return ms_param->paramSetValue(param, (int)value) == kOfxStatOK;
+    if (strcmp(type, kOfxParamTypeDouble2D) == 0) {
+        double v[2] = {0, 0};
+        ms_param->paramGetValue(param, &v[0], &v[1]);
+        v[index] = value;
+        return ms_param->paramSetValue(param, v[0], v[1]) == kOfxStatOK;
+    }
+    if (strcmp(type, kOfxParamTypeRGB) == 0) {
+        double v[3] = {0, 0, 0};
+        ms_param->paramGetValue(param, &v[0], &v[1], &v[2]);
+        v[index] = value;
+        return ms_param->paramSetValue(param, v[0], v[1], v[2]) == kOfxStatOK;
+    }
     return ms_param->paramSetValue(param, value) == kOfxStatOK;
+}
+
+// The project's frame in canonical pixels (POINT values).
+static int host_frame_size(MsHost *host, double size[2]) {
+    OfxPropertySetHandle props;
+    return ms_effect->getPropertySet((OfxImageEffectHandle)host->data, &props) == kOfxStatOK &&
+           ms_prop->propGetDouble(props, kOfxImageEffectPropProjectSize, 0, &size[0]) ==
+               kOfxStatOK &&
+           ms_prop->propGetDouble(props, kOfxImageEffectPropProjectSize, 1, &size[1]) ==
+               kOfxStatOK;
 }
 
 // A parameter changed: a button pressed runs its press (errors shown by the host).
@@ -418,12 +466,18 @@ static OfxStatus instance_changed(const MsEffect *e, OfxImageEffectHandle effect
         strcmp(type, kOfxTypeParameter) != 0 ||
         ms_prop->propGetString(in_args, kOfxPropName, 0, &name) != kOfxStatOK)
         return kOfxStatReplyDefault;
+    MsHost host = {host_get_text, host_set_text, host_value, host_set_value, effect,
+                   host_frame_size};
+    char err[512] = "";
+    if (e->presets && strcmp(name, MS_LOAD_PRESET) == 0) {
+        if (!ms_load_preset(e, &host, err, sizeof err) && ms_message)
+            ms_message->message(effect, kOfxMessageError, NULL, "%s: %s", e->label, err);
+        return kOfxStatOK;
+    }
     for (int i = 0; i < e->param_count; ++i) {
         const MsParam *p = &e->params[i];
         if (p->type != MS_PARAM_BUTTON || !p->press || strcmp(p->name, name) != 0)
             continue;
-        MsHost host = {host_get_text, host_set_text, host_value, host_set_value, effect};
-        char err[512] = "";
         if (!p->press(&host, err, sizeof err) && ms_message)
             ms_message->message(effect, kOfxMessageError, NULL, "%s: %s", e->label, err);
         return kOfxStatOK;

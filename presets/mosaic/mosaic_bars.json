@@ -1,0 +1,19 @@
+{
+ "name": "Mosaic Bars",
+ "tags": [
+  "Abstract",
+  "Geometric",
+  "Background"
+ ],
+ "converted": true,
+ "params": {
+  "blur_mask": 0.0,
+  "invert_mask": 0,
+  "mask_use": 0,
+  "pixel_frequency": 40,
+  "pixel_rel_height": 23,
+  "pixel_shift_x": 0,
+  "pixel_shift_y": -0.5625,
+  "smooth_colors": 0.0
+ }
+}

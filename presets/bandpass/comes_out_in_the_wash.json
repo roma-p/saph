@@ -1,0 +1,20 @@
+{
+ "name": "Comes Out In The Wash",
+ "tags": [
+  "Abstract",
+  "Artistic",
+  "Blurred",
+  "Color Correction",
+  "Dark",
+  "Extreme"
+ ],
+ "converted": true,
+ "params": {
+  "blur_amount1": 0.00525,
+  "blur_amount2": 0.019270875,
+  "blur_rel_x": 0,
+  "blur_rel_y": 34.369995,
+  "offset_darks": 0.5,
+  "saturation": 1
+ }
+}

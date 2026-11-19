@@ -65,6 +65,18 @@ twice as fast). An input plugged into the same image as the Source is copied onc
 Images narrower or shorter than 16 pixels are not supported yet: the render fails with a
 message.
 
+## Presets
+
+Every effect has a Load Preset button: it opens MillSaph's preset window
+(`millsaph_preset_browser`, next to the plugin: thumbnails, search, tags) and applies the
+preset picked there (every parameter back to its default, then the preset's; `src/common/preset.c`).
+The presets are files, `presets/<effect>/*.json` (`{"name", "tags", "params"}`), copied into
+the bundle's `Contents/Resources/presets/` with a thumbnail each, rendered at build time by
+`millsaph_thumbnails` (`tools/presets/thumbnails.cpp`) on MillSaph's own test picture.
+Most are written by `tools/measure/convert_presets.py` (the reference's presets in MillSaph's
+settings, `tools/measure/README.md`); the Lens Flare's MillSaph lenses by
+`tools/presets/make_lensflare_presets.py`.
+
 ## Build settings
 
 All settings are environment variables. `build.sh` / `build.bat` set them to the

@@ -1,0 +1,20 @@
+{
+ "name": "Obscure Tweak",
+ "tags": [
+  "Distorted",
+  "Extreme"
+ ],
+ "converted": true,
+ "params": {
+  "amount": 0.399994,
+  "amount_rel_x": 4,
+  "amount_rel_y": 0,
+  "blur_lens": 0.052083375,
+  "blur_mask": 0.0,
+  "filter": 1,
+  "fine": 0,
+  "invert_mask": 0,
+  "mask_use": 0,
+  "rotate_warp_dir": -20
+ }
+}

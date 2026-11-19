@@ -1,0 +1,31 @@
+{
+ "name": "Minor Digital Dropout",
+ "tags": [
+  "Damage",
+  "Multicolored",
+  "Saturated"
+ ],
+ "converted": true,
+ "params": {
+  "affect_chroma": 5,
+  "affect_luma": 0,
+  "all_freq_scale": 0.5,
+  "err_block_density": 0.75,
+  "error_amp": 1,
+  "error_coherence": 0.1,
+  "error_rate": 0,
+  "high_freq_scale": 0,
+  "jitter_frames": 0,
+  "low_freq_scale": 0.5,
+  "mid_freq_scale": 0,
+  "offset_darks": 0,
+  "quality": 0.25,
+  "rand_seed": 0.123,
+  "res_factor": 1,
+  "res_rel_x": 0.5,
+  "saturation": 1.25,
+  "scale_lights": 1,
+  "x_freq_scale": 1,
+  "y_freq_scale": 100
+ }
+}

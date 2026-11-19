@@ -1,0 +1,30 @@
+{
+ "name": "Okay Bokeh",
+ "tags": [
+  "Blurred",
+  "Bright"
+ ],
+ "converted": true,
+ "params": {
+  "bokeh": -0.630005,
+  "boost_highlights": 3.600006,
+  "brightness": 1,
+  "color_fringing": 0,
+  "defocus_width": 0.0061875,
+  "edge_mode": 2,
+  "gauss_blur": 0.0,
+  "lens_noise": 0,
+  "mix_with_source": 0,
+  "noise_freq": 40,
+  "noise_freq_rel_x": 1,
+  "noise_seed": 0.122986,
+  "offset_darks": 0,
+  "rel_height": 1,
+  "rotate": 0,
+  "roundness": 7.710007,
+  "shape": 0,
+  "show_shape": 0,
+  "soft_borders": 0,
+  "use_gamma": 2.050003
+ }
+}

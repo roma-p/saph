@@ -1,0 +1,17 @@
+{
+ "name": "Comic Edges",
+ "tags": [
+  "Blurred",
+  "Subtle"
+ ],
+ "converted": true,
+ "params": {
+  "blur_width": 0.08828125,
+  "edge_strength": 3.149994,
+  "edge_threshold": 1.75,
+  "edge_width": 0.001,
+  "matte_use": 0,
+  "show": 0,
+  "subpixel": 1
+ }
+}

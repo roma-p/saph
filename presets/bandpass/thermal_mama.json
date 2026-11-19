@@ -1,0 +1,17 @@
+{
+ "name": "Thermal Mama",
+ "tags": [
+  "Color Correction",
+  "Multicolored",
+  "Dark"
+ ],
+ "converted": true,
+ "params": {
+  "blur_amount1": 0.007875,
+  "blur_amount2": 0.01575,
+  "blur_rel_x": 1,
+  "blur_rel_y": 1,
+  "offset_darks": -0.199997,
+  "saturation": 2.300003
+ }
+}

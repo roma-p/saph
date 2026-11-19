@@ -1,0 +1,19 @@
+{
+ "name": "DNA Transcription Template",
+ "tags": [
+  "Abstract",
+  "Extreme",
+  "Geometric"
+ ],
+ "converted": true,
+ "params": {
+  "blur_mask": 0.0,
+  "invert_mask": 0,
+  "mask_use": 0,
+  "pixel_frequency": 511,
+  "pixel_rel_height": 36,
+  "pixel_shift_x": 0,
+  "pixel_shift_y": 0,
+  "smooth_colors": 0.0
+ }
+}

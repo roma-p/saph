@@ -1,0 +1,31 @@
+{
+ "name": "Digital Disturbance",
+ "tags": [
+  "Damage",
+  "Abstract",
+  "Multicolored"
+ ],
+ "converted": true,
+ "params": {
+  "affect_chroma": 5,
+  "affect_luma": 1,
+  "all_freq_scale": 0.5,
+  "err_block_density": 0.75,
+  "error_amp": 1,
+  "error_coherence": 0.1,
+  "error_rate": 0,
+  "high_freq_scale": 1,
+  "jitter_frames": 0,
+  "low_freq_scale": 1,
+  "mid_freq_scale": 1,
+  "offset_darks": 0,
+  "quality": 0.75,
+  "rand_seed": 0.123,
+  "res_factor": 1,
+  "res_rel_x": 1,
+  "saturation": 1.25,
+  "scale_lights": 1.1,
+  "x_freq_scale": 1,
+  "y_freq_scale": 100
+ }
+}

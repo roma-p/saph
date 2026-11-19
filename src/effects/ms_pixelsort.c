@@ -461,4 +461,5 @@ const MsEffect ms_pixelsort_effect = {
     0,
     NULL,
     {NULL, NULL},
+    "pixelsort", // presets (common/preset.h)
 };

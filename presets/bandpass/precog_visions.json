@@ -1,0 +1,21 @@
+{
+ "name": "Precog Visions",
+ "tags": [
+  "Abstract",
+  "Artistic",
+  "Blurred",
+  "Color Correction",
+  "Dark",
+  "Extreme",
+  "Glowing"
+ ],
+ "converted": true,
+ "params": {
+  "blur_amount1": 0.00525,
+  "blur_amount2": 0.019270875,
+  "blur_rel_x": 0.240005,
+  "blur_rel_y": 6.669998,
+  "offset_darks": 0.5,
+  "saturation": 0.520004
+ }
+}

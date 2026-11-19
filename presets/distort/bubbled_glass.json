@@ -1,0 +1,19 @@
+{
+ "name": "Bubbled Glass",
+ "tags": [
+  "Distorted"
+ ],
+ "converted": true,
+ "params": {
+  "amount": -2,
+  "amount_rel_x": 0.380005,
+  "amount_rel_y": 0.419998,
+  "blur_lens": 0.005208375,
+  "blur_mask": 0.0,
+  "filter": 1,
+  "fine": 0,
+  "invert_mask": 0,
+  "mask_use": 0,
+  "rotate_warp_dir": 0
+ }
+}

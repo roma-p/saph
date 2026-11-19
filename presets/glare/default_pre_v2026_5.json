@@ -1,0 +1,39 @@
+{
+ "name": "Default (pre-v2026.5)",
+ "tags": [],
+ "converted": true,
+ "params": {
+  "blur_glare": 0.0,
+  "brightness": 1,
+  "combine_masks": 0,
+  "convolve": 0,
+  "dilation_quality": 0,
+  "expand_borders": 0,
+  "glare_from_alpha": 0,
+  "glare_res": 0,
+  "glare_under_source": 0,
+  "hue_shift": 0,
+  "invert_mask": 0,
+  "mask_type": 0,
+  "rays_length": 1,
+  "rays_num_scale": 1,
+  "rays_thickness": 1,
+  "rel_height": 1,
+  "rotate": 0,
+  "saturation": 1,
+  "scale_colors": [
+   1,
+   1,
+   1
+  ],
+  "size": 0.1,
+  "threshold": 0.799988,
+  "threshold_add_color": [
+   0,
+   0,
+   0
+  ],
+  "threshold_blur": 0.0028,
+  "style_": "{\"elements\":[{\"angle_width\":360,\"arc_edge_softness\":0,\"brightness\":0.5,\"brightness_response\":1,\"children\":[{\"brightness\":0.5,\"brightness_response\":1,\"colors\":[0,0,0,0,0,0,0,0,1,0,1,1,0,1,0,1,1,0,1,0,0,0,0,0],\"disabled\":false,\"name\":\"Rainbow Ring child\",\"radii\":[0.599,0.6,0.68,0.76,0.8,0.84,0.92,1],\"rel_height\":1,\"rel_width\":1,\"size\":0.5,\"tint\":[1,1,1],\"type\":\"spot\",\"width_response\":1}],\"colors\":[0,0,0,0,0,0,0,0,1,0,1,1,0,1,0,1,1,0,1,0,0,0,0,0],\"disabled\":false,\"name\":\"Rainbow Ring\",\"radii\":[0.599,0.6,0.68,0.76,0.8,0.84,0.92,1],\"random_side_lengths\":0,\"rel_height\":1,\"rel_width\":1,\"rotate\":0,\"roundness\":0,\"sides\":6,\"size\":0.5,\"tint\":[1,1,1],\"type\":\"container\",\"width_response\":1},{\"angle_width\":360,\"arc_edge_softness\":0,\"brightness\":0.5,\"brightness_response\":1,\"children\":[{\"brightness\":0.5,\"brightness_response\":1,\"colors\":[1,1,1,0,0,0],\"disabled\":false,\"name\":\"Center Glow child\",\"radii\":[0,1],\"rel_height\":1,\"rel_width\":1,\"size\":0.12,\"tint\":[1,1,1],\"type\":\"spot\",\"width_response\":1}],\"colors\":[1,1,1,0,0,0],\"disabled\":false,\"name\":\"Center Glow\",\"radii\":[0,1],\"random_side_lengths\":0,\"rel_height\":1,\"rel_width\":1,\"rotate\":0,\"roundness\":0,\"sides\":6,\"size\":0.12,\"tint\":[1,1,1],\"type\":\"container\",\"width_response\":1},{\"brightness\":1,\"brightness_response\":1,\"color\":[0.5,0.5,0.5],\"disabled\":false,\"jitter_angles\":0.5,\"name\":\"Rays\",\"radius_range\":[0.4,1],\"rand_seed\":654,\"ray_number\":20,\"ray_width\":0.04,\"rel_height\":1,\"rel_width\":1,\"rotate\":0,\"size\":1,\"type\":\"rays\",\"width_response\":1}],\"name\":\"Rainbow Rays\"}"
+ }
+}

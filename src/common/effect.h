@@ -58,6 +58,9 @@ struct MsHost {
     double (*get_value)(MsHost *host, const char *name); // DOUBLE, WIDTH, CHOICE, BOOL...
     int (*set_value)(MsHost *host, const char *name, double value);
     void *data; // the host's
+    // Optional (NULL: unknown): the project's frame in pixels (POINT values are in pixels of
+    // it, presets hold fractions); returns 0 when the host cannot say.
+    int (*frame_size)(MsHost *host, double size[2]);
 };
 
 // One parameter. Unset fields are 0, so tables use designated initializers.
@@ -180,6 +183,9 @@ typedef struct {
     // Optional: a viewer overlay, a line between these two POINT parameters (the hosts' own
     // handles for them where they have some, else the overlay's).
     const char *overlay[2];
+    // Optional: the folder of the effect's presets (common/preset.h); the hosts then show a
+    // Load Preset button.
+    const char *presets;
 } MsEffect;
 
 // Every effect, in menu order (see effects/effects.c).

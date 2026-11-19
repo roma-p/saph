@@ -176,4 +176,5 @@ const MsEffect ms_flicker_effect = {
     1,
     NULL,
     {NULL, NULL},
+    "flicker", // presets (common/preset.h)
 };

@@ -1,0 +1,21 @@
+{
+ "name": "Fluorescent Tube",
+ "tags": [
+  "Blurred",
+  "Dark",
+  "Glowing",
+  "Type",
+  "Monochrome",
+  "Black"
+ ],
+ "converted": true,
+ "params": {
+  "blur_width": 0.015625,
+  "edge_strength": 0.649994,
+  "edge_threshold": 0.042862,
+  "edge_width": 0.009375,
+  "matte_use": 0,
+  "show": 1,
+  "subpixel": 1
+ }
+}

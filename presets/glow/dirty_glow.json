@@ -1,0 +1,45 @@
+{
+ "name": "Dirty Glow",
+ "tags": [
+  "Blurred",
+  "Dark",
+  "Glowing",
+  "Lighting",
+  "Noise",
+  "Animated"
+ ],
+ "converted": true,
+ "params": {
+  "atmosphere_amp": 0.880005,
+  "atmosphere_detail": 0.960007,
+  "atmosphere_freq": 5.899994,
+  "atmosphere_seed": 0.122986,
+  "atmosphere_speed": -1,
+  "brightness": 2.029999,
+  "color": [
+   1,
+   1,
+   1
+  ],
+  "combine": 2,
+  "edge_mode": 0,
+  "expand_borders": 0,
+  "glow_from_alpha": 0,
+  "glow_under_source": 1,
+  "invert_mask": 0,
+  "show": 0,
+  "subpixel": 1,
+  "threshold": 0.270004,
+  "threshold_add_color": [
+   0,
+   0,
+   0
+  ],
+  "glow_width": 0.01328125,
+  "width_blue": 1.399994,
+  "width_green": 1.199997,
+  "width_red": 1,
+  "width_x": 1,
+  "width_y": 1
+ }
+}

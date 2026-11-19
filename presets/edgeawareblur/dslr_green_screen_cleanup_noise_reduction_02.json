@@ -1,0 +1,20 @@
+{
+ "name": "DSLR Green-Screen cleanup+noise reduction_02",
+ "tags": [
+  "Blurred",
+  "Subtle"
+ ],
+ "converted": true,
+ "params": {
+  "blur_amount": 0.0015625,
+  "blur_rel_x": 0.75,
+  "blur_rel_y": 0.75,
+  "blur_type": 0,
+  "edge_smooth": 0.001197875,
+  "edge_threshold": 0.070007,
+  "filter": 3,
+  "invert_mask": 0,
+  "mask_use": 0,
+  "use_alpha_edges": 0
+ }
+}

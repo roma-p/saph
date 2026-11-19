@@ -1,0 +1,22 @@
+{
+ "name": "Printer Errors",
+ "tags": [
+  "Abstract",
+  "Artistic",
+  "Cartoon",
+  "Color Correction",
+  "Damage",
+  "Dark",
+  "Saturated",
+  "Extreme"
+ ],
+ "converted": true,
+ "params": {
+  "blur_amount1": 0.003125,
+  "blur_amount2": 0.0105,
+  "blur_rel_x": 5.190002,
+  "blur_rel_y": 10.910004,
+  "offset_darks": -5,
+  "saturation": 2
+ }
+}

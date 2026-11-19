@@ -1,0 +1,27 @@
+{
+ "name": "Phoenix",
+ "tags": [
+  "Glowing",
+  "Energetic",
+  "Extreme",
+  "Animated",
+  "Time"
+ ],
+ "converted": true,
+ "params": {
+  "amplitude": 3.440002,
+  "blue_amp": 1.100006,
+  "brightness": 1.509995,
+  "green_amp": 1,
+  "rand_color_amp": 0,
+  "rand_freq": 30,
+  "rand_luma_amp": 1,
+  "red_amp": 1,
+  "seed": 0.122986,
+  "wave_amp": 0,
+  "wave_b_phase": 0,
+  "wave_freq": 1.399994,
+  "wave_g_phase": -2.119995,
+  "wave_r_phase": -2.100006
+ }
+}

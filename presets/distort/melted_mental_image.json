@@ -1,0 +1,21 @@
+{
+ "name": "Melted Mental Image",
+ "tags": [
+  "Abstract",
+  "Distorted",
+  "Extreme"
+ ],
+ "converted": true,
+ "params": {
+  "amount": 0.800003,
+  "amount_rel_x": 8,
+  "amount_rel_y": 0,
+  "blur_lens": 0.104166625,
+  "blur_mask": 0.0,
+  "filter": 1,
+  "fine": 0,
+  "invert_mask": 0,
+  "mask_use": 0,
+  "rotate_warp_dir": -40
+ }
+}

@@ -1,0 +1,28 @@
+{
+ "name": "Night Club",
+ "tags": [
+  "Abstract",
+  "Energetic",
+  "Extreme",
+  "Animated",
+  "Multicolored",
+  "Time"
+ ],
+ "converted": true,
+ "params": {
+  "amplitude": 1.179993,
+  "blue_amp": 1,
+  "brightness": 1,
+  "green_amp": 1,
+  "rand_color_amp": 0.5,
+  "rand_freq": 30,
+  "rand_luma_amp": 0.300003,
+  "red_amp": 1,
+  "seed": 0.122986,
+  "wave_amp": 0,
+  "wave_b_phase": 0,
+  "wave_freq": 5,
+  "wave_g_phase": 0,
+  "wave_r_phase": 0
+ }
+}

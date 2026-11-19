@@ -1,0 +1,33 @@
+{
+ "name": "Radial Smear",
+ "tags": [
+  "Distorted",
+  "v2022.0"
+ ],
+ "converted": true,
+ "params": {
+  "_degrees_sorted": 360,
+  "_inner_radius": 0.037037,
+  "_start_angle": 0,
+  "blur_mask": 0.00625,
+  "center": [
+   0.5,
+   0.5
+  ],
+  "combine_masks": 0,
+  "invert_mask": 0,
+  "mask_use": 0,
+  "mix_with_source": 0,
+  "randomly_restart_sort": 0,
+  "ray_length": 0.2962965,
+  "reverse_sort_direction": 1,
+  "seed": 0.272995,
+  "show": 0,
+  "soft_borders": 0,
+  "soften_threshold_mask": 0.012346,
+  "sort_direction": 1,
+  "sort_type": 0,
+  "threshold": 0.329987,
+  "vary_radius": 0.099991
+ }
+}

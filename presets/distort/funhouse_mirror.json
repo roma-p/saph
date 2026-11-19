@@ -1,0 +1,21 @@
+{
+ "name": "Funhouse Mirror",
+ "tags": [
+  "Abstract",
+  "Distorted",
+  "Extreme"
+ ],
+ "converted": true,
+ "params": {
+  "amount": -50,
+  "amount_rel_x": 1.369995,
+  "amount_rel_y": 0.039993,
+  "blur_lens": 0.175520875,
+  "blur_mask": 0.0,
+  "filter": 1,
+  "fine": 0,
+  "invert_mask": 0,
+  "mask_use": 0,
+  "rotate_warp_dir": -137
+ }
+}

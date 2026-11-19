@@ -307,4 +307,5 @@ const MsEffect ms_jpegdamage_effect = {
     1, // the errors change over time (Jitter Frames)
     NULL,
     {NULL, NULL},
+    "jpegdamage", // presets (common/preset.h)
 };

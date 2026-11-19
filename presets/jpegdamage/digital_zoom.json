@@ -1,0 +1,33 @@
+{
+ "name": "Digital Zoom",
+ "tags": [
+  "Abstract",
+  "Background",
+  "Damage",
+  "Extreme",
+  "Geometric"
+ ],
+ "converted": true,
+ "params": {
+  "affect_chroma": 3.07,
+  "affect_luma": 0.659997,
+  "all_freq_scale": 0,
+  "err_block_density": 0,
+  "error_amp": 0,
+  "error_coherence": 0,
+  "error_rate": 0,
+  "high_freq_scale": 3.48,
+  "jitter_frames": 68,
+  "low_freq_scale": 1,
+  "mid_freq_scale": 4.41,
+  "offset_darks": 0,
+  "quality": 1,
+  "rand_seed": 0.696,
+  "res_factor": 3,
+  "res_rel_x": 1.927,
+  "saturation": 1,
+  "scale_lights": 1,
+  "x_freq_scale": 10.389997,
+  "y_freq_scale": 11.97
+ }
+}

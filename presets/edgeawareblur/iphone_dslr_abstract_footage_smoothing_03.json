@@ -1,0 +1,20 @@
+{
+ "name": "iPhone+DSLR abstract footage smoothing_03",
+ "tags": [
+  "Blurred",
+  "Subtle"
+ ],
+ "converted": true,
+ "params": {
+  "blur_amount": 0.002083375,
+  "blur_rel_x": 1,
+  "blur_rel_y": 1,
+  "blur_type": 1,
+  "edge_smooth": 0.000520875,
+  "edge_threshold": 0.100006,
+  "filter": 3,
+  "invert_mask": 0,
+  "mask_use": 0,
+  "use_alpha_edges": 0
+ }
+}

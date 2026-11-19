@@ -1,0 +1,46 @@
+{
+ "name": "Dreamy Glint",
+ "tags": [
+  "Bright",
+  "Glint",
+  "Lighting",
+  "Warm",
+  "v2022.0"
+ ],
+ "converted": true,
+ "params": {
+  "blur_glint": 0.0,
+  "brightness": 0.770004,
+  "brightness_diag1": 0.800003,
+  "brightness_diag2": 0.839996,
+  "brightness_x": 1,
+  "brightness_y": 0.449997,
+  "combine_masks": 0,
+  "expand_borders": 0,
+  "glint_from_alpha": 0,
+  "glint_under_source": 0,
+  "hue_shift": 0,
+  "invert_mask": 0,
+  "mask_type": 0,
+  "scale_colors": [
+   1,
+   1,
+   1
+  ],
+  "size": 0.006770875,
+  "size_blue": 0.75,
+  "size_diag1": 0.759994,
+  "size_diag2": 1.339996,
+  "size_green": 1,
+  "size_red": 1.25,
+  "size_x": 0,
+  "size_y": 3.580002,
+  "threshold": 0.509994,
+  "threshold_add_color": [
+   0,
+   0,
+   0
+  ],
+  "threshold_blur": 0.0
+ }
+}

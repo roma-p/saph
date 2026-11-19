@@ -1,0 +1,26 @@
+{
+ "name": "True Sort",
+ "tags": [
+  "Abstract",
+  "Artistic",
+  "Damage"
+ ],
+ "converted": true,
+ "params": {
+  "blur_mask": 0.00625,
+  "combine_masks": 0,
+  "invert_mask": 0,
+  "mask_use": 0,
+  "mix_with_source": 0,
+  "randomly_restart_sort": 0,
+  "reverse_sort_direction": 0,
+  "seed": 0.272995,
+  "show": 0,
+  "soft_borders": 0,
+  "soften_threshold_mask": 0,
+  "sort_angle": -90,
+  "sort_direction": 1,
+  "sort_type": 0,
+  "threshold": 0.139999
+ }
+}

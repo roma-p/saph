@@ -1,0 +1,19 @@
+{
+ "name": "Embossed Brain Process",
+ "tags": [
+  "Distorted"
+ ],
+ "converted": true,
+ "params": {
+  "amount": -1,
+  "amount_rel_x": 0.210007,
+  "amount_rel_y": 0.179993,
+  "blur_lens": 0.002604125,
+  "blur_mask": 0.0,
+  "filter": 1,
+  "fine": 0,
+  "invert_mask": 0,
+  "mask_use": 0,
+  "rotate_warp_dir": 0
+ }
+}

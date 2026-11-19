@@ -1,0 +1,14 @@
+{
+ "name": "Grain Remove",
+ "tags": [
+  "Blurred",
+  "Subtle"
+ ],
+ "converted": true,
+ "params": {
+  "blur_amount": 0.004166625,
+  "edge_smooth": 0.0006945,
+  "edge_threshold": 0.1,
+  "filter": 1
+ }
+}

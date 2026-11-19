@@ -1,0 +1,14 @@
+{
+ "name": "Wrinkle Remover",
+ "tags": [
+  "Blurred",
+  "Subtle"
+ ],
+ "converted": true,
+ "params": {
+  "blur_amount": 0.004166625,
+  "edge_smooth": 0.000833375,
+  "edge_threshold": 0.25,
+  "filter": 2
+ }
+}

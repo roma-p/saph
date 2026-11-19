@@ -84,4 +84,5 @@ const MsEffect ms_test_effect = {
     0,
     NULL,
     {NULL, NULL},
+    NULL, // no presets
 };

@@ -1,0 +1,21 @@
+{
+ "name": "Sharp Gauss",
+ "tags": [
+  "Blurred",
+  "Subtle"
+ ],
+ "converted": true,
+ "params": {
+  "blur_amount": 0.0078125,
+  "blur_rel_x": 1,
+  "blur_rel_y": 1,
+  "blur_type": 0,
+  "edge_smooth": 0.000390625,
+  "edge_threshold": 0.029999,
+  "filter": 2,
+  "invert_mask": 0,
+  "mask_use": 0,
+  "subpixel": 1,
+  "use_alpha_edges": 0
+ }
+}

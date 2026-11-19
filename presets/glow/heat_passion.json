@@ -1,0 +1,37 @@
+{
+ "name": "Heat Passion",
+ "tags": [
+  "Glowing",
+  "Lighting",
+  "Yellow",
+  "Warm"
+ ],
+ "converted": true,
+ "params": {
+  "brightness": 3.630005,
+  "color": [
+   0.847059,
+   0.592157,
+   0.098039
+  ],
+  "combine": 2,
+  "expand_borders": 0,
+  "glow_from_alpha": 0,
+  "glow_under_source": 0,
+  "invert_mask": 0,
+  "show": 0,
+  "subpixel": 1,
+  "threshold": 0.350006,
+  "threshold_add_color": [
+   0,
+   0,
+   0
+  ],
+  "glow_width": 0.028125,
+  "width_blue": 1.399994,
+  "width_green": 1.199997,
+  "width_red": 1,
+  "width_x": 1,
+  "width_y": 1
+ }
+}

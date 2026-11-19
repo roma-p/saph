@@ -1,0 +1,40 @@
+{
+ "name": "Realistic Glint 1",
+ "tags": [
+  "Lighting"
+ ],
+ "converted": true,
+ "params": {
+  "blur_glint": 0.00078125,
+  "brightness": 2.779999,
+  "brightness_diag1": 1,
+  "brightness_diag2": 1,
+  "brightness_x": 1,
+  "brightness_y": 1,
+  "expand_borders": 0,
+  "glint_from_alpha": 0,
+  "glint_under_source": 0,
+  "hue_shift": 0,
+  "invert_mask": 0,
+  "scale_colors": [
+   1,
+   1,
+   1
+  ],
+  "size": 0.046875,
+  "size_blue": 1,
+  "size_diag1": 2.199997,
+  "size_diag2": 1.199997,
+  "size_green": 1,
+  "size_red": 1,
+  "size_x": 1.5,
+  "size_y": 1,
+  "threshold": 0.979996,
+  "threshold_add_color": [
+   0,
+   0,
+   0
+  ],
+  "threshold_blur": 0.0
+ }
+}

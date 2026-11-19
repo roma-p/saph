@@ -1,0 +1,41 @@
+{
+ "name": "Glowing With Pride",
+ "tags": [
+  "Lighting",
+  "Glowing"
+ ],
+ "converted": true,
+ "params": {
+  "blur_glint": 0.0,
+  "brightness": 1,
+  "brightness_diag1": 1,
+  "brightness_diag2": 1,
+  "brightness_x": 1,
+  "brightness_y": 1,
+  "expand_borders": 0,
+  "glint_from_alpha": 0,
+  "glint_under_source": 0,
+  "hue_shift": 0,
+  "invert_mask": 0,
+  "scale_colors": [
+   1,
+   1,
+   1
+  ],
+  "size": 0.11796875,
+  "size_blue": 1.059998,
+  "size_diag1": 4.899994,
+  "size_diag2": 6.770004,
+  "size_green": 0.289993,
+  "size_red": 0.160004,
+  "size_x": 0,
+  "size_y": 0,
+  "threshold": 0.699997,
+  "threshold_add_color": [
+   0,
+   0,
+   0
+  ],
+  "threshold_blur": 0.12109375
+ }
+}

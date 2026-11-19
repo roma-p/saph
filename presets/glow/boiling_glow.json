@@ -1,0 +1,44 @@
+{
+ "name": "Boiling Glow",
+ "tags": [
+  "Animated",
+  "Glowing",
+  "Lighting",
+  "Noise",
+  "White"
+ ],
+ "converted": true,
+ "params": {
+  "atmosphere_amp": 1.089996,
+  "atmosphere_detail": 0.899994,
+  "atmosphere_freq": 1,
+  "atmosphere_seed": 0.122986,
+  "atmosphere_speed": 1,
+  "brightness": 2.240005,
+  "color": [
+   1,
+   1,
+   1
+  ],
+  "combine": 2,
+  "edge_mode": 0,
+  "expand_borders": 0,
+  "glow_from_alpha": 0,
+  "glow_under_source": 0,
+  "invert_mask": 0,
+  "show": 0,
+  "subpixel": 1,
+  "threshold": 0.5,
+  "threshold_add_color": [
+   0,
+   0,
+   0
+  ],
+  "glow_width": 0.028125,
+  "width_blue": 1.399994,
+  "width_green": 1.199997,
+  "width_red": 1,
+  "width_x": 1,
+  "width_y": 3.100006
+ }
+}

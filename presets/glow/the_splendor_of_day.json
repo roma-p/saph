@@ -1,0 +1,37 @@
+{
+ "name": "The Splendor of Day",
+ "tags": [
+  "Extreme",
+  "Glowing",
+  "Lighting",
+  "Yellow"
+ ],
+ "converted": true,
+ "params": {
+  "brightness": 2.320007,
+  "color": [
+   1,
+   1,
+   1
+  ],
+  "combine": 1,
+  "expand_borders": 0,
+  "glow_from_alpha": 0,
+  "glow_under_source": 0,
+  "invert_mask": 0,
+  "show": 0,
+  "subpixel": 1,
+  "threshold": 0.360001,
+  "threshold_add_color": [
+   0,
+   0,
+   0
+  ],
+  "glow_width": 0.028125,
+  "width_blue": 13.98999,
+  "width_green": 2.580002,
+  "width_red": 1,
+  "width_x": 1,
+  "width_y": 1
+ }
+}

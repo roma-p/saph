@@ -404,4 +404,5 @@ const MsEffect ms_glare_effect = {
     0,
     NULL,
     {NULL, NULL},
+    "glare", // presets (common/preset.h)
 };

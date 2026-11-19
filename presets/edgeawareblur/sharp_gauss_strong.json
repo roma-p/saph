@@ -1,0 +1,22 @@
+{
+ "name": "Sharp Gauss - Strong",
+ "tags": [
+  "Artistic",
+  "Blurred",
+  "Extreme"
+ ],
+ "converted": true,
+ "params": {
+  "blur_amount": 0.075,
+  "blur_rel_x": 1,
+  "blur_rel_y": 1,
+  "blur_type": 0,
+  "edge_smooth": 0.000703125,
+  "edge_threshold": 0.449997,
+  "filter": 2,
+  "invert_mask": 0,
+  "mask_use": 0,
+  "subpixel": 1,
+  "use_alpha_edges": 0
+ }
+}
