@@ -53,6 +53,7 @@ enum {
     SPACING,
     VARY,
     SHIFT,
+    GHOST_BLUR,
     H_FREQ,
     H_TIME,
     H_OCTAVES,
@@ -174,6 +175,13 @@ static const MsParam params[] = {
            0.0, 1.0),
     SLIDER(SHIFT, "shift", "Shift", "The ghosts' side and distance (0: none).", 0.5, ANY,
            MS_UNBOUNDED, -1.0, 1.0),
+    [GHOST_BLUR] = {.type = MS_PARAM_WIDTH,
+                    .name = "blur_",
+                    .label = "Blur",
+                    .hint = "Softens the ghosts across (wide: fainter ghosts).",
+                    .min = 0.0,
+                    .max = MS_UNBOUNDED,
+                    .display_max = 0.25},
     AMOUNT(H_FREQ, "h_frequency", "H Frequency", "How many waves down the rows.", 1.25, 5.0),
     AMOUNT(H_TIME, "h_time_vary", "H Time Vary", "How fast the rows' moves change.", 0.5, 5.0),
     SLIDER(H_OCTAVES, "h_octaves", "H Octaves", "Detail of the rows' moves.", 3.0, 1.0, 10.0, 1.0,
@@ -312,6 +320,29 @@ static void static_share(double density, double *share, double *boost) {
     *boost = 1.0;
 }
 
+// Ghost Blur b (pixels; k: the image's width / 320): each ghost spread across by a gaussian of
+// sd b / 24, cut at 1 pixel (2 from sd 1.2), and fainter from b = 20 k (none from 120 k), as
+// the reference's (the ghost of a line at 320 wide: sides 0.13, 0.21, 0.25 at b 12, 16, 20;
+// then 0.87, 0.75, 0.55, 0.44, 0.14 of it at 24, 32, 48, 64, 80).
+static void ghost_blur(double b, double k, float *s) {
+    static const double at[] = {20, 24, 32, 48, 64, 80, 120}, kept[] = {1, 0.874, 0.746, 0.553,
+                                                                          0.436, 0.135, 0};
+    const double sd = fmax(b, 0.0) / 24.0, ref = fmax(b, 0.0) / fmax(k, 1e-6);
+    double w1 = 0.0, w2 = 0.0;
+    if (sd > 0.05) {
+        w1 = exp(-0.5 / (sd * sd));
+        w2 = sd >= 1.2 ? exp(-2.0 / (sd * sd)) : 0.0;
+    }
+    const double total = 1.0 + 2.0 * w1 + 2.0 * w2;
+    double fade = ref <= at[0] ? 1.0 : 0.0;
+    for (int i = 0; i + 1 < ARRAY_SIZE(at); ++i)
+        if (ref > at[i] && ref <= at[i + 1])
+            fade = kept[i] + (kept[i + 1] - kept[i]) * (ref - at[i]) / (at[i + 1] - at[i]);
+    s[TV_GHOST_WEIGHT] *= (float)fade;
+    s[TV_GHOST_BLUR1] = (float)(w1 / total);
+    s[TV_GHOST_BLUR2] = (float)(w2 / total);
+}
+
 // The settings row (tv_damage_layout.h) from the parameters, for an image w x h at `time`.
 static void settings(const double *v, int w, int h, double time, float *s) {
     const double k = w / 320.0, master = fmax(v[MASTER], 0.0);
@@ -337,6 +368,7 @@ static void settings(const double *v, int w, int h, double time, float *s) {
     s[TV_GHOST_STEP] = (float)(v[SPACING] * v[SHIFT] * w * 0.5);
     s[TV_GHOST_VARY] = (float)v[VARY];
     s[TV_GHOST_NEGATIVE] = (float)v[NEGATIVE];
+    ghost_blur(v[GHOST_BLUR], k, s);
     // Horizontal hold: from master x hold 0.1, 28 pixels per unit at 320.
     const double hold = fmax(master * v[HHOLD] - 0.1, 0.0) * 28.0 * k;
     s[TV_HHOLD_AMP] = (float)hold;

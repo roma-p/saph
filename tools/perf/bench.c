@@ -755,6 +755,7 @@ int main(int argc, char **argv) {
         {"Flicker color wave", "MS_Flicker", "rand_color_amp=1 wave_amp=1 wave_g_phase=0.3", NULL},
         {"Flicker half", "MS_Flicker", "half", NULL},
         {"TVDamage", "MS_TVDamage", "", NULL},
+        {"TVDamage ghost blur", "MS_TVDamage", "blur_=0.06", NULL},
         {"TVDamage orthicon", "MS_TVDamage", "orthicon=1 fast_forward_amount=1", NULL},
         {"TVDamage fish off", "MS_TVDamage", "fish_eye=1 turn_off=0.2 downsample=0", NULL},
         {"TVDamage mask", "MS_TVDamage", "same", NULL},

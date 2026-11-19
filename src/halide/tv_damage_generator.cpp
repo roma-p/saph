@@ -1,7 +1,8 @@
 // MS_TVDamage in Halide, called by effects/ms_tvdamage.c with its settings in one row
 // (tv_damage_layout.h). In order:
-//   - PictureSource (ms_tv_damage_source): the reception: ghosts (copies shifted right, their
-//     weight taken from the picture, or subtracted: negative ghosts), then where each pixel
+//   - PictureSource (ms_tv_damage_source): the reception: ghosts (copies shifted right, spread
+//     across by Blur, their weight taken from the picture, or subtracted: negative ghosts),
+//     then where each pixel
 //     reads: the vertical hold's roll with its black bar (and sync dashes), the horizontal
 //     hold's row moves (fractal noise over the rows and time, wrapped, a black border at the
 //     wrap), the fast forward's torn bands (rows stretched sideways, black past the right)
@@ -96,7 +97,14 @@ class TVDamageSource : public Generator<TVDamageSource> {
         taken() = sum(select(sign > 0.0f, weight, 0.0f));
         Expr scale = min(1.0f, 0.85f / max(taken(), 1e-6f));
         Expr gx = cast<float>(x) - offset, g0 = floor(gx), ga = gx - g0;
-        Expr shifted = in(cast<int>(g0), y, c) * (1.0f - ga) + in(cast<int>(g0) + 1, y, c) * ga;
+        // (Blur: the shifted picture's 1 and 2 pixels to the sides weighted in)
+        auto at = [&](Expr dx) {
+            Expr i = cast<int>(g0) + dx;
+            return in(i, y, c) * (1.0f - ga) + in(i + 1, y, c) * ga;
+        };
+        Expr b1 = s(TV_GHOST_BLUR1), b2 = s(TV_GHOST_BLUR2);
+        Expr shifted = at(0) * (1.0f - 2.0f * (b1 + b2)) + (at(-1) + at(1)) * b1 +
+                       select(b2 > 0.0f, (at(-2) + at(2)) * b2, 0.0f);
         Func ghosted("ghosted");
         ghosted(x, y, c) = select(c < 3,
                                   in(x, y, c) * (1.0f - taken() * scale) +

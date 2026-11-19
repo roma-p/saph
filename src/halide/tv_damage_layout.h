@@ -28,6 +28,8 @@ enum {
     TV_GHOST_STEP,     // the distance between ghosts, in pixels
     TV_GHOST_VARY,     // Vary Position
     TV_GHOST_NEGATIVE, // the share of negative ghosts
+    TV_GHOST_BLUR1,    // Blur: each ghost's weight 1 and 2 pixels to the sides (the rest in the
+    TV_GHOST_BLUR2,    // middle)
     // horizontal hold
     TV_HHOLD_AMP,     // the rows' largest move, in pixels (0: none)
     TV_HHOLD_FREQ,    // noise cycles over the height
