@@ -8,8 +8,12 @@
 //     pixel's coverage, weighted by Bokeh (x = (d / radius)^2: 1 - b x, or 1 + b - b x below 0),
 //     its radius per channel R 2^-f, R, R 2^f by Color Fringing f, blurred by Gauss Blur, summing
 //     to 1
+//   - Rotate turns the lens (counterclockwise, before Rel Height); Lens Noise: each pixel x
+//     max(0, 1 - Lens Noise x max(0, n)), n a noise in the lens' frame (MillSaph's), Noise Freq
+//     cycles across its radius (Noise Freq Rel X: no effect, as the reference's)
 //   - inverse gamma, Brightness x b + Offset Darks x (1 - b) on the colours, then Mix With
 //     Source and the Mask
+//   - Show Shape: the lens alone in the middle of the image, at most 1
 // Defocus Width, Gauss Blur and Blur Mask are "normalised" values, so hosts show them in
 // pixels.
 
@@ -42,8 +46,14 @@ enum {
     DEFOCUS_WIDTH,
     REL_HEIGHT,
     SHAPE,
+    SHOW_SHAPE,
     ROUNDNESS,
+    ROTATE,
     BOKEH,
+    LENS_NOISE,
+    NOISE_FREQ,
+    NOISE_FREQ_REL_X,
+    NOISE_SEED,
     GAUSS_BLUR,
     USE_GAMMA,
     BOOST,
@@ -87,6 +97,10 @@ static const MsParam params[] = {
                .hint = "The shape of the lens: a circle, or a polygon.",
                .entries = shape_entries,
                .entry_count = ARRAY_SIZE(shape_entries)},
+    [SHOW_SHAPE] = {.type = MS_PARAM_BOOL,
+                    .name = "show_shape",
+                    .label = "Show Shape",
+                    .hint = "Shows the lens itself, in the middle of the image."},
     [ROUNDNESS] = {.type = MS_PARAM_DOUBLE,
                    .name = "roundness",
                    .label = "Roundness",
@@ -95,6 +109,12 @@ static const MsParam params[] = {
                    .max = 1.0,
                    .display_min = -1.0,
                    .display_max = 1.0},
+    [ROTATE] = {.type = MS_PARAM_ANGLE,
+                .name = "rotate",
+                .label = "Rotate",
+                .hint = "Turns the lens (degrees, counterclockwise).",
+                .display_min = -360.0,
+                .display_max = 360.0},
     [BOKEH] = {.type = MS_PARAM_DOUBLE,
                .name = "bokeh",
                .label = "Bokeh",
@@ -103,6 +123,37 @@ static const MsParam params[] = {
                .max = 1.0,
                .display_min = -1.0,
                .display_max = 1.0},
+    [LENS_NOISE] = {.type = MS_PARAM_DOUBLE,
+                    .name = "lens_noise",
+                    .label = "Lens Noise",
+                    .hint = "Dark specks across the lens (0: none).",
+                    .min = 0.0,
+                    .max = MS_UNBOUNDED,
+                    .display_max = 5.0},
+    [NOISE_FREQ] = {.type = MS_PARAM_DOUBLE,
+                    .name = "noise_freq",
+                    .label = "Noise Freq",
+                    .hint = "How fine the Lens Noise is: its cycles across the lens' radius.",
+                    .def = 40.0,
+                    .min = 0.01,
+                    .max = MS_UNBOUNDED,
+                    .display_min = 0.1,
+                    .display_max = 50.0},
+    [NOISE_FREQ_REL_X] = {.type = MS_PARAM_DOUBLE,
+                          .name = "noise_freq_rel_x",
+                          .label = "Noise Freq Rel X",
+                          .hint = "No effect (kept for the presets that set it).",
+                          .def = 1.0,
+                          .min = 0.01,
+                          .max = MS_UNBOUNDED,
+                          .display_min = 0.1,
+                          .display_max = 10.0},
+    [NOISE_SEED] = {.type = MS_PARAM_DOUBLE,
+                    .name = "noise_seed",
+                    .label = "Noise Seed",
+                    .hint = "Another Lens Noise for each value.",
+                    .def = 0.123,
+                    .display_max = 5.0},
     [GAUSS_BLUR] = {.type = MS_PARAM_WIDTH,
                     .name = "gauss_blur",
                     .label = "Gauss Blur",
@@ -193,8 +244,9 @@ typedef struct {
     MsImage *source, *output;
     MsMask *mask;
     MsImage *buffers[3]; // the transforms' images (width x height)
-    int pad, edge_mode, mono, sides, gauss, half;
+    int pad, edge_mode, mono, sides, gauss, half, show, cx, cy, noise_octaves;
     float gamma, boost, threshold, radius[3], rel_height, power, bokeh;
+    float turn_cos, turn_sin, noise_amp, noise_freq, noise_z;
     float brightness, offset_darks, mix, scale;
 } Job;
 
@@ -205,12 +257,18 @@ static int run(MsApi api, void *user) {
     int status = ms_mask_run(j->mask, api);
     MsImage *lens = j->buffers[0], *image = j->buffers[1], *free_image = j->buffers[2];
     if (status == 0)
-        status =
-            MS_KERNEL(MS_K_RACK_DEFOCUS_KERNEL, api, MS_FLOAT("radius_r", j->radius[0]),
-                      MS_FLOAT("radius_g", j->radius[1]), MS_FLOAT("radius_b", j->radius[2]),
-                      MS_FLOAT("rel_height", j->rel_height), MS_INT("sides", j->sides),
-                      MS_FLOAT("power", j->power), MS_FLOAT("bokeh", j->bokeh),
-                      MS_INT("gauss", j->gauss), MS_INT("half", j->half), MS_IMAGE("kernel", lens));
+        status = MS_KERNEL(MS_K_RACK_DEFOCUS_KERNEL, api, MS_FLOAT("radius_r", j->radius[0]),
+                           MS_FLOAT("radius_g", j->radius[1]), MS_FLOAT("radius_b", j->radius[2]),
+                           MS_FLOAT("rel_height", j->rel_height), MS_INT("sides", j->sides),
+                           MS_FLOAT("power", j->power), MS_FLOAT("bokeh", j->bokeh),
+                           MS_INT("gauss", j->gauss), MS_INT("half", j->half),
+                           MS_FLOAT("turn_cos", j->turn_cos), MS_FLOAT("turn_sin", j->turn_sin),
+                           MS_FLOAT("noise_amp", j->noise_amp),
+                           MS_FLOAT("noise_freq", j->noise_freq), MS_FLOAT("noise_z", j->noise_z),
+                           MS_INT("noise_octaves", j->noise_octaves), MS_IMAGE("kernel", lens));
+    if (status == 0 && j->show) // Show Shape: the lens alone
+        return MS_KERNEL(MS_K_RACK_DEFOCUS_SHOW, api, MS_IMAGE("lens", lens), MS_INT("cx", j->cx),
+                         MS_INT("cy", j->cy), MS_IMAGE("output", j->output));
     if (status == 0)
         status = ms_fft(api, &lens, &image, 0);
     // `image` is free again (the scratch of the lens' transform).
@@ -247,6 +305,24 @@ static float power_of(double roundness) {
     return (float)(roundness >= 0 ? pow(1.0 - roundness, 1.7) : 1.0 - 4.6 * roundness);
 }
 
+// Lens Noise: an fbm (persistence 0.5) of standard deviation about 0.125 x Lens Noise, Noise
+// Freq cycles across the lens' radius, octaves down to 2 pixels; finer than 2 pixels, weaker as
+// the pixels average it (1 / sqrt(1 + (f / 1.2)^2), f in cycles per pixel: the reference's
+// 0.0875 at 1.3). 0.28: one octave's standard deviation (noise.h).
+static void lens_noise(const double *v, double radius, Job *j) {
+    const double f = v[NOISE_FREQ] / fmax(radius, 1e-6); // cycles per pixel
+    int octaves = (int)floor(log2(fmax(0.5 / f, 1.0))) + 1;
+    octaves = octaves < 8 ? octaves : 8;
+    double var = 0.0;
+    for (int k = 0; k < octaves; ++k)
+        var += pow(0.25, k);
+    const double sd = 0.28 * sqrt(var);
+    j->noise_amp = (float)(v[LENS_NOISE] * 0.125 / sqrt(1.0 + (f / 1.2) * (f / 1.2)) / sd);
+    j->noise_freq = (float)f;
+    j->noise_z = (float)fmod(37.1 * v[NOISE_SEED], 4096.0);
+    j->noise_octaves = octaves;
+}
+
 static int render(const MsRender *r) {
     const double *v = r->values;
     const int w = r->width, h = r->height;
@@ -262,6 +338,11 @@ static int render(const MsRender *r) {
              .rel_height = (float)v[REL_HEIGHT],
              .power = (int)v[SHAPE] == 0 ? CIRCLE : power_of(v[ROUNDNESS]),
              .bokeh = (float)v[BOKEH],
+             .show = v[SHOW_SHAPE] != 0,
+             .cx = w / 2,
+             .cy = h / 2,
+             .turn_cos = (float)cos(v[ROTATE] * M_PI / 180.0),
+             .turn_sin = (float)sin(v[ROTATE] * M_PI / 180.0),
              .brightness = (float)v[BRIGHTNESS],
              .offset_darks = (float)v[OFFSET_DARKS],
              .mix = (float)v[MIX]};
@@ -271,6 +352,7 @@ static int render(const MsRender *r) {
     j.radius[0] = (float)(width / fringe);
     j.radius[1] = (float)width;
     j.radius[2] = (float)(width * fringe);
+    lens_noise(v, width, &j);
     // The lens' square, and as much padding around the Source (no wrapping around within).
     const double widest =
         (fringe > 1 ? width * fringe : width / fringe) * (v[REL_HEIGHT] > 1 ? v[REL_HEIGHT] : 1);
@@ -338,5 +420,5 @@ const MsEffect ms_rackdefocus_effect = {
     NULL,
     {NULL, NULL},
     "rackdefocus", // presets (common/preset.h)
-    NULL, // not varying with its settings
+    NULL,          // not varying with its settings
 };

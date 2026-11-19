@@ -2,19 +2,22 @@
 // effects/fft.c the transforms with fft_generator.cpp):
 //   ms_rack_defocus_prepare   the Source padded by the Edge Mode into the transform's size,
 //                             Mono's luma, Use Gamma, Boost Highlights
-//   ms_rack_defocus_kernel    the lens: its shape's coverage of each pixel, Bokeh, Color
-//                             Fringing (a radius per channel), Gauss Blur; summing to 1,
-//                             centred on pixel (0, 0) of the transform (wrapped around)
+//   ms_rack_defocus_kernel    the lens: its shape's coverage of each pixel (turned by Rotate),
+//                             Bokeh, Color Fringing (a radius per channel), Lens Noise, Gauss
+//                             Blur; summing to 1, centred on pixel (0, 0) of the transform
+//                             (wrapped around)
 //   ms_rack_defocus_multiply  the product of the two transforms, each holding two real
 //                             images (R + i G, B + i A) separated first
 //   ms_rack_defocus_finish    back into the image: inverse gamma, Brightness, Offset Darks,
 //                             Mix With Source, the Mask
+//   ms_rack_defocus_show      Show Shape: the lens in the middle of the image, at most 1
 //
 // Images are packed RGBA floats (x, y, c), interleaved, bottom row first; the transforms
 // 4 floats per pixel (two complex numbers).
 
 #include "Halide.h"
 #include "blur.h"
+#include "noise.h"
 #include "shared.h"
 
 using namespace Halide;
@@ -79,6 +82,13 @@ class RackDefocusKernel : public Generator<RackDefocusKernel> {
     Input<float> bokeh{"bokeh"};
     Input<int> gauss{"gauss"}; // Gauss Blur: total radius in whole pixels
     Input<int> half{"half"};   // the lens within [-half, half] in x and y
+    // Rotate: the lens turned by this angle (cos, sin; counterclockwise), before Rel Height
+    Input<float> turn_cos{"turn_cos"}, turn_sin{"turn_sin"};
+    // Lens Noise: each pixel's coverage x max(0, 1 - noise_amp x max(0, fbm)), the fbm of
+    // `noise_octaves` (persistence 0.5) at noise_freq cycles per pixel in the lens' frame, at
+    // time noise_z (the seed); none with noise_amp 0
+    Input<float> noise_amp{"noise_amp"}, noise_freq{"noise_freq"}, noise_z{"noise_z"};
+    Input<int> noise_octaves{"noise_octaves"};
     Output<Buffer<float, 3>> kernel{"kernel"};
 
     void generate() {
@@ -100,7 +110,12 @@ class RackDefocusKernel : public Generator<RackDefocusKernel> {
         auto bokeh_weight = [&](Expr q) { // q = (d / r)^2
             return select(bokeh >= 0.0f, 1.0f - bokeh * q, 1.0f + bokeh - bokeh * q);
         };
-        Expr px = cast<float>(x - half), py = cast<float>(y - half) / rel_height;
+        // A point of the kernel (y already divided by Rel Height) into the lens' frame: turned
+        // back by Rotate.
+        auto lens_u = [&](Expr u, Expr v) { return u * turn_cos + v * turn_sin; };
+        auto lens_v = [&](Expr u, Expr v) { return v * turn_cos - u * turn_sin; };
+        Expr sx = cast<float>(x - half), sy = cast<float>(y - half) / rel_height;
+        Expr px = lens_u(sx, sy), py = lens_v(sx, sy);
         Expr dc = sqrt(px * px + py * py), ec = edge_toward(px, py);
         // Half a pixel's diagonal, plus how much a polygon's edge can move across a pixel.
         Expr margin = 2.0f * max(1.0f, 1.0f / rel_height);
@@ -111,8 +126,9 @@ class RackDefocusKernel : public Generator<RackDefocusKernel> {
                       max(r * r, 1e-12f);
         RDom s(0, S, 0, S, "s");
         s.where(r > 0.0f && sampled);
-        Expr u = px + (cast<float>(s.x) + 0.5f) / S - 0.5f;
-        Expr v = py + ((cast<float>(s.y) + 0.5f) / S - 0.5f) / rel_height;
+        Expr su = sx + (cast<float>(s.x) + 0.5f) / S - 0.5f;
+        Expr sv = sy + ((cast<float>(s.y) + 0.5f) / S - 0.5f) / rel_height;
+        Expr u = lens_u(su, sv), v = lens_v(su, sv);
         Expr d = sqrt(u * u + v * v);
         // No radius: the pixel itself (Gauss Blur alone).
         Func cover("cover");
@@ -120,9 +136,15 @@ class RackDefocusKernel : public Generator<RackDefocusKernel> {
                                 whole_in && !sampled, float(S * S) * bokeh_weight(q_mean), 0.0f);
         cover(x, y, c) +=
             select(d <= edge_toward(u, v), bokeh_weight(d * d / max(r * r, 1e-12f)), 0.0f);
+        // Lens Noise, at the pixel's centre in the lens' frame.
+        Func noisy("noisy");
+        Expr n = ms_noise::fbm(px * noise_freq, py * noise_freq, noise_z, noise_octaves, 0.5f, 8,
+                               "lens_octave");
+        noisy(x, y, c) = cover(x, y, c) *
+                         select(noise_amp > 0.0f, max(1.0f - noise_amp * max(n, 0.0f), 0.0f), 1.0f);
         // Gauss Blur: blur.h's 3 boxes, zero outside the lens' square.
         std::vector<ms_blur::Box> boxes;
-        Func blurred = ms_blur::blur3_subpixel(cover, gauss, 0.0f, gauss, gauss, 0.0f, gauss,
+        Func blurred = ms_blur::blur3_subpixel(noisy, gauss, 0.0f, gauss, gauss, 0.0f, gauss,
                                                Expr(1), size, size, gpu, "gauss", boxes);
         // Its sum: per row, then the rows.
         Func rows("rows"), total("total");
@@ -144,6 +166,11 @@ class RackDefocusKernel : public Generator<RackDefocusKernel> {
         kernel.dim(2).set_stride(1).set_bounds(0, 4);
         Var xo("xo"), yo("yo"), xi("xi"), yi("yi");
         cover.bound(c, 0, 4).compute_root(); // R, G, B (and G again: whole float4)
+        noisy.bound(c, 0, 4).compute_root();
+        if (gpu)
+            noisy.gpu_tile(x, y, xo, yo, xi, yi, 16, 16);
+        else
+            noisy.parallel(y);
         if (gpu) {
             cover.gpu_tile(x, y, xo, yo, xi, yi, 16, 16);
             cover.update().gpu_tile(x, y, xo, yo, xi, yi, 16, 16);
@@ -240,7 +267,39 @@ class RackDefocusFinish : public Generator<RackDefocusFinish> {
     }
 };
 
+// Show Shape: the lens (ms_rack_defocus_kernel's, wrapped around pixel (0, 0)) centred on
+// (cx, cy), each channel divided by its largest value.
+class RackDefocusShow : public Generator<RackDefocusShow> {
+  public:
+    Input<Buffer<float, 3>> lens{"lens"};
+    Input<int> cx{"cx"}, cy{"cy"};
+    Output<Buffer<float, 3>> output{"output"};
+
+    void generate() {
+        const bool gpu = get_target().has_gpu_feature();
+        Expr nx = lens.width(), ny = lens.height();
+        Func largest("largest");
+        RDom r(0, nx, 0, ny, "r");
+        largest(c) = 0.0f;
+        largest(c) = max(largest(c), lens(r.x, r.y, c));
+        Expr dx = ((x - cx) % nx + nx) % nx, dy = ((y - cy) % ny + ny) % ny;
+        output(x, y, c) = lens(dx, dy, c) / max(largest(c), 1e-30f);
+
+        lens.dim(0).set_stride(4);
+        lens.dim(2).set_stride(1).set_bounds(0, 4);
+        ms::interleaved(output);
+        largest.bound(c, 0, 4).compute_root();
+        if (gpu) {
+            Var xo("xo"), xi("xi");
+            largest.gpu_tile(c, xo, xi, 4);
+            largest.update().gpu_tile(c, xo, xi, 4);
+        }
+        tiles(output, gpu);
+    }
+};
+
 HALIDE_REGISTER_GENERATOR(RackDefocusPrepare, ms_rack_defocus_prepare)
 HALIDE_REGISTER_GENERATOR(RackDefocusKernel, ms_rack_defocus_kernel)
 HALIDE_REGISTER_GENERATOR(RackDefocusMultiply, ms_rack_defocus_multiply)
 HALIDE_REGISTER_GENERATOR(RackDefocusFinish, ms_rack_defocus_finish)
+HALIDE_REGISTER_GENERATOR(RackDefocusShow, ms_rack_defocus_show)

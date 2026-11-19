@@ -703,6 +703,7 @@ int main(int argc, char **argv) {
         {"RackDefocus wide", "MS_RackDefocus", "defocus_width=0.05", NULL},
         {"RackDefocus huge", "MS_RackDefocus", "defocus_width=0.25", NULL},
         {"RackDefocus hexagon", "MS_RackDefocus", "shape=5 roundness=0.3 bokeh=0.5", NULL},
+        {"RackDefocus noise", "MS_RackDefocus", "lens_noise=2 noise_freq=10 rotate=30", NULL},
         {"RackDefocus fringing", "MS_RackDefocus", "color_fringing=0.2 gauss_blur=0.002", NULL},
         {"RackDefocus mono", "MS_RackDefocus", "mode=1 use_gamma=2", NULL},
         {"RackDefocus boost", "MS_RackDefocus", "boost_highlights=1 hilight_threshold=0.5", NULL},
