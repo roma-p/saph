@@ -778,19 +778,25 @@ static int build_rows(const MsRender *r, const char *lens, MsJson *nodes, int ma
     return count;
 }
 
-// The noisy rows' noises (radius noise, noise_brightness: the lens's alone), computed once
-// for each different one (the motion blur's times share them): the noise rows, each noisy
-// row's GLARE_NOISE_SLOT.
+// The noisy rows' noises (radius noise, noise_brightness, the rays' streaks: the lens's
+// alone), computed once for each different one (the motion blur's times share them): the
+// noise rows, each noisy row's GLARE_NOISE_SLOT.
+static int same_noises(const float *a, const float *b) {
+    const size_t polar = (GLARE_NB_BLUR + 1 - GLARE_RN_OCTAVES) * sizeof(float);
+    const size_t streaks = (GLARE_STREAK_SEED + 1 - GLARE_STREAK_AMP) * sizeof(float);
+    return !memcmp(a + GLARE_RN_OCTAVES, b + GLARE_RN_OCTAVES, polar) &&
+           !memcmp(a + GLARE_STREAK_AMP, b + GLARE_STREAK_AMP, streaks);
+}
+
 static void share_noises(float (*rows)[GLARE_FIELDS], int count,
                          float (*noise_rows)[GLARE_FIELDS]) {
     int noises = 0;
     for (int e = 0; e < count; ++e) {
         float *row = rows[e];
-        if (!(row[GLARE_RN_OCTAVES] > 0 || row[GLARE_NB] != 0))
+        if (!(row[GLARE_RN_OCTAVES] > 0 || row[GLARE_NB] != 0 || row[GLARE_STREAK_AMP] != 0))
             continue;
-        const size_t size = (GLARE_NB_BLUR + 1 - GLARE_RN_OCTAVES) * sizeof(float);
         int k = 0;
-        while (k < noises && memcmp(noise_rows[k] + GLARE_RN_OCTAVES, row + GLARE_RN_OCTAVES, size))
+        while (k < noises && !same_noises(noise_rows[k], row))
             ++k;
         if (k == noises && noises < GLARE_MAX_ELEMENTS)
             memcpy(noise_rows[noises++], row, sizeof *noise_rows);

@@ -99,6 +99,10 @@ inline void polar_noises(PolarNoises &p, const Field &nf, std::function<Expr(Exp
 // lensflare_generator.cpp): the same profile, interpolated.
 using Profile = std::function<Expr(Expr, Expr, Expr)>;
 
+// Lens Flare's rays' streaks: element e's factor at t, the offset across one of its lines / the
+// line's width (the same on each line, along all of it).
+using Streaks = std::function<Expr(Expr, Expr)>;
+
 // Element e's frame at offset (dx, dy) (pixels, y up) from its centre: the offset scaled,
 // turned and stretched (ex, ey: r0, th), its angle without the stretch (sectors, waves, the
 // rays' width), the radius its band is cut at.
@@ -285,8 +289,9 @@ inline Expr sector_waves(const Field &field, Expr e, Expr u, Expr v) {
 }
 
 // RAYS: lines through the centre, 1 - d / L along (stretched), 1 - smoothstep(d / w) across
-// (not stretched); cut at L unstretched.
-inline Expr rays_value(const Field &field, const ElementFrame &m, Expr dx, Expr dy, Expr e) {
+// (not stretched); cut at L unstretched. streaks: Lens Flare's, x by the offset across.
+inline Expr rays_value(const Field &field, const ElementFrame &m, Expr dx, Expr dy, Expr e,
+                       const Streaks *streaks = nullptr) {
     auto f = [&](int i) { return field(i, e); };
     Expr L = f(GLARE_R), w = f(GLARE_RAY_WIDTH), lines = f(GLARE_LINES);
     RDom j(0, GLARE_MAX_LINES, "j");
@@ -316,9 +321,10 @@ inline Expr rays_value(const Field &field, const ElementFrame &m, Expr dx, Expr 
     Expr across = select(m.turned, across_s, -m.ax * sa + m.ay * ca);
     Expr ray_w = select(m.turned, shown, w), thin = select(m.turned, squeezed / shown, 1.0f);
     Expr safe_w = select(ray_w > 0.0f, ray_w, 1.0f); // no width: no rays
+    Expr streak = streaks ? (*streaks)(across / safe_w, e) : Expr(1.0f);
     return select(w > 0.0f,
                   sum(max(1.0f - abs(along) / Lj, 0.0f) *
-                      (1.0f - smoothstep(abs(across) / safe_w)) * thin),
+                      (1.0f - smoothstep(abs(across) / safe_w)) * thin * streak),
                   0.0f) *
            band_edge(m.clip_r - f(GLARE_CLIP_R));
 }
@@ -326,10 +332,11 @@ inline Expr rays_value(const Field &field, const ElementFrame &m, Expr dx, Expr 
 // Element e's value, channel c, at offset (dx, dy) (pixels, y up) from its centre; noise:
 // with Lens Flare's radius noise and noise_brightness (the elements without them are
 // cheaper without); image: Lens Flare's image there (it multiplies the element, or is it);
-// profile: its stops_profile from a table (else computed here).
+// profile: its stops_profile from a table (else computed here); streaks: the rays' (Lens
+// Flare).
 inline Expr element_value(const Field &field, Expr dx, Expr dy, Expr c, Expr e,
                           const Angular *noise = nullptr, Expr image = Expr(),
-                          const Profile *profile = nullptr) {
+                          const Profile *profile = nullptr, const Streaks *streaks = nullptr) {
     auto f = [&](int i) { return field(i, e); };
     Expr kind = f(GLARE_KIND);
     const ElementFrame m = element_frame(field, dx, dy, e);
@@ -344,7 +351,7 @@ inline Expr element_value(const Field &field, Expr dx, Expr dy, Expr c, Expr e,
     if (noise) // (Lens Flare: x noise_brightness x its noise)
         gradient = select(f(GLARE_NB) != 0.0f, gradient * f(GLARE_NB) * (*noise)(1, m.th, e),
                           gradient);
-    Expr ray = rays_value(field, m, dx, dy, e);
+    Expr ray = rays_value(field, m, dx, dy, e, streaks);
     Expr value = select(kind == GLARE_FALLOFF, falloff, kind == GLARE_RAYS, ray, gradient);
     if (image.defined())
         value = select(kind == GLARE_IMAGE, image, value * image);

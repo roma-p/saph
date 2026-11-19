@@ -12,7 +12,7 @@
 // reference's correlation lengths)
 #define TEXTURE_SCALE 1.95
 #define TEXTURE_VARY 2.8
-#define STREAK_SCALE 16.0
+#define STREAK_SCALE 2.15
 
 // A distance law's factor (scale s at distance d; 1 without one).
 static double by_dist(const GlareBuilder *b, int e, double s, double d, const char *inverted,
@@ -141,15 +141,19 @@ void ms_lens_texture_noise(const GlareBuilder *b, int e, float *row, double radi
     row[GLARE_TN_PERSIST] = (float)get(b, e, "octaves_scale", 0.2);
 }
 
-// Streaks: thin stripes along the lines, x max(1 + amp (0.09 + 0.55 n), 0), n MillSaph's fbm
-// around a circle of streaks_freq x STREAK_SCALE cells' radius (the reference's: mean +7 %, sd
-// 0.11 x amp at freq 1, 0.23 at 4).
+// Streaks: stripes along the lines, each line x max(1 + 0.66 amp n, 0), n MillSaph's fbm (5
+// octaves, persistence streaks_octaves_scale) of t x streaks_freq^0.87 x STREAK_SCALE, t the
+// offset across the line / its width: the same on every line, along all of it (the
+// reference's: a pattern of the offset across / the width alone, the energy's factor the
+// same at any width and number of lines; mean -1 % (within its spread), sd 0.19 x amp
+// across at freq 1 and persistence 0.4, 1.2, 2.3, 3.9, 6.8 crossings a width at freq 0.5,
+// 1, 2, 4).
 void ms_lens_streaks(const GlareBuilder *b, int e, float *row) {
     const double streaks = get(b, e, "streaks_amp", 0.0);
     if (streaks == 0.0)
         return;
     row[GLARE_STREAK_AMP] = (float)streaks;
-    row[GLARE_STREAK_FREQ] = (float)(get(b, e, "streaks_freq", 1.0) * STREAK_SCALE);
+    row[GLARE_STREAK_FREQ] = (float)(pow(fmax(get(b, e, "streaks_freq", 1.0), 0.0), 0.87) * STREAK_SCALE);
     row[GLARE_STREAK_PERSIST] = (float)get(b, e, "streaks_octaves_scale", 0.3);
     row[GLARE_STREAK_SEED] = (float)(0.7 + 37.1 * get(b, e, "rand_seed", 0.0));
 }

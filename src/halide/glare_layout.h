@@ -94,8 +94,9 @@ enum {
     GLARE_TN_Z,           // (Z and U: where it is read, by the element's position)
     GLARE_TN_U,
     GLARE_TN_PERSIST,
-    GLARE_STREAK_AMP,     // Lens Flare, RAYS' streaks: x max(1 + AMP (0.09 + 0.55 n), 0), n a
-    GLARE_STREAK_FREQ,    // fbm around a circle of radius FREQ (the angle), PERSIST^k
+    GLARE_STREAK_AMP,     // Lens Flare, RAYS' streaks: each line x max(1 + AMP (mean + k n), 0),
+    GLARE_STREAK_FREQ,    // n a fbm of t x FREQ, t the offset across it / its width, PERSIST^k
+                          // (a table per noise slot, lensflare_generator.cpp)
     GLARE_STREAK_PERSIST,
     GLARE_STREAK_SEED,
     GLARE_BRIGHT_RESPONSE, // Lens Flare: brightness_response, width_response (Occlusion Scale)
