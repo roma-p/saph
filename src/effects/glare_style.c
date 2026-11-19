@@ -177,9 +177,9 @@ void ms_style_add_element(GlareBuilder *b, int e) {
     // Lens Flare: placed first (its size and brightness factors there); Gamma g: each
     // element's brightness b -> b^(1 / g).
     // A shadow: its radius and centre given (its own size and place left out).
-    double size_k = 1.0, stretch_k = 1.0, lens_gain[3] = {1, 1, 1};
+    double size_k = 1.0, stretch_add[2] = {0, 0}, lens_gain[3] = {1, 1, 1};
     if (g->lens && !b->as_shadow)
-        ms_lens_place(b, e, row, &size_k, &stretch_k, lens_gain);
+        ms_lens_place(b, e, row, &size_k, stretch_add, lens_gain);
     const double S = g->size;
     const double size =
         b->as_shadow ? b->shadow_r / (2.0 * S) : get(b, e, "size", 1.0) * size_k;
@@ -203,7 +203,8 @@ void ms_style_add_element(GlareBuilder *b, int e) {
     const double rel_w = get(b, e, "rel_width", 1.0);
     // Stretch s: a blob scaled by 1 / sqrt(s); the others x / sqrt(s), y x sqrt(s) ("taller";
     // "wider" the other way).
-    const double s = fmax(get(b, e, "stretch", 1.0) * stretch_k, 1e-6), stretch = 1.0 / sqrt(s);
+    const double s0 = fmax(get(b, e, "stretch", 1.0), 1e-6) + stretch_add[0];
+    const double s = fmax(1.0 / (1.0 / s0 + stretch_add[1]), 1e-6), stretch = 1.0 / sqrt(s);
     // (Lens Flare: always taller, whatever stretch_direction and stretch_offset_inverted;
     // measured on spots and polar flares at 3 rotations)
     // (Glare's renderer 8 styles, but rays: always taller, the stretch along the element's

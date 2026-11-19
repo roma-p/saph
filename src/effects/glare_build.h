@@ -66,9 +66,9 @@ static inline double random01(double seed, int i, int k) {
 void ms_style_add_element(GlareBuilder *b, int e);
 
 // lensflare_style.c, the Lens Flare's elements only:
-// element e's place on the axis (its row's position and rotation), its size, stretch and
-// brightness factors there;
-void ms_lens_place(const GlareBuilder *b, int e, float *row, double *size_k, double *stretch_k,
+// element e's place on the axis (its row's position and rotation), its size factor, what
+// its stretch and the stretch's inverse gain, and its brightness factors there;
+void ms_lens_place(const GlareBuilder *b, int e, float *row, double *size_k, double stretch_add[2],
                    double gain[3]);
 // its noise_amp texture (`radius`: its radius in pixels);
 void ms_lens_texture_noise(const GlareBuilder *b, int e, float *row, double radius);

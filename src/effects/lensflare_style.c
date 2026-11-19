@@ -31,8 +31,9 @@ static double by_dist(const GlareBuilder *b, int e, double s, double d, const ch
 }
 
 // Element e's place on the axis from the pivot through the hotspot (its row's position and
-// rotation), and its size, stretch and brightness factors there.
-void ms_lens_place(const GlareBuilder *b, int e, float *row, double *size_k, double *stretch_k,
+// rotation), its size factor, what its stretch and the stretch's inverse gain, and its
+// brightness factors there.
+void ms_lens_place(const GlareBuilder *b, int e, float *row, double *size_k, double stretch_add[2],
                    double gain[3]) {
     const MsGlareGlobals *g = b->g;
     const double ax = g->hotspot[0] - g->pivot[0], ay = g->hotspot[1] - g->pivot[1];
@@ -67,12 +68,16 @@ void ms_lens_place(const GlareBuilder *b, int e, float *row, double *size_k, dou
     row[GLARE_POS_Y] = (float)py;
     const double sbd = get(b, e, "scale_brightness_by_dist", 0.0);
     const double swd = get(b, e, "scale_width_by_dist", 0.0);
-    // offset_stretch_by_dist o: a blob scaled by 1 / sqrt(1 + o d); the others stretched
-    // 1 + o d wider in their own frame, their area kept (12 polygons at 2 distances: exact)
+    // offset_stretch_by_dist o: a blob scaled by 1 / sqrt(1 + o d); the others' stretch s
+    // made s + o d (wider in their own frame, their area kept), 1 / (1 / s + o d) with
+    // stretch_offset_inverted (taller; stretch_direction: no change). 12 polygons at 2
+    // distances, a fancy spot's ellipse at s 0.038 to 2, o 0 to 5.34, both ways: exact.
     const double o = get(b, e, "offset_stretch_by_dist", 0.0);
     const int round_blob = is_type(b, e, "blob");
     const double shrink = round_blob ? 1.0 / sqrt(fmax(1.0 + o * d, 1e-6)) : 1.0;
-    *stretch_k = round_blob ? 1.0 : 1.0 / fmax(1.0 + o * d, 1e-6);
+    const int inverted = get(b, e, "stretch_offset_inverted", 0.0) != 0.0;
+    stretch_add[0] = round_blob || inverted ? 0.0 : o * d;
+    stretch_add[1] = round_blob || !inverted ? 0.0 : o * d;
     // rotate_to_pivot: turned along the line from the pivot through it, minus a half turn
     const double dx = px - g->pivot[0], dy = py - g->pivot[1];
     if (get(b, e, "rotate_to_pivot", 0.0) != 0.0)
