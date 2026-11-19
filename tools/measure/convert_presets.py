@@ -160,6 +160,11 @@ def convert(effect):
             params[k] = v
             if k not in ms:
                 missing.setdefault(k, []).append(name)
+        # (Glare's Default: the reference's own default style, Starstrike, not MillSaph's)
+        if effect == "Glare" and name == "Default" and "Starstrike" in presets:
+            params.setdefault("style_", json.dumps(
+                own_textures(dict(presets["Starstrike"]["params"]["type"])),
+                separators=(",", ":"), ensure_ascii=False))
         out = {"name": name, "tags": p.get("tags_v8", []), "converted": True, "params": params}
         path = os.path.join(out_dir, slug(name) + ".json")
         with open(path, "w", encoding="utf-8") as f:
