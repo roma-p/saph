@@ -19,6 +19,8 @@
 //   --image Clip=file  that input's image from a file (raw RGBA floats, bottom row first,
 //                as --save writes them; the render's size with --pad)
 //   --time T     renders frame T (default 1)
+//   --press name presses that button after creating the instance (e.g. load_preset), then
+//                prints every parameter's value
 //
 // Prints what the effect declares and the result of each action; exits with 1 if an
 // action fails. With an effect id the plugin does not have (e.g. "list"), lists its effects.
@@ -194,7 +196,9 @@ static OfxStatus param_define(OfxParamSetHandle set, const char *type, const cha
     Param *p = &params[param_count++];
     snprintf(p->name, sizeof p->name, "%s", name);
     snprintf(p->type, sizeof p->type, "%s", type);
-    p->props = (PropSet){.owner = name, .print = 1};
+    p->props = (PropSet){.owner = name};
+    set_string((OfxPropertySetHandle)&p->props, kOfxParamPropType, 0, type);
+    p->props.print = 1;
     printf("  param %s (%s)\n", name, type);
     if (props)
         *props = (OfxPropertySetHandle)&p->props;
@@ -215,10 +219,7 @@ static OfxStatus param_get_handle(OfxParamSetHandle set, const char *name, OfxPa
     return kOfxStatErrUnknown;
 }
 
-static OfxStatus param_get_value_at_time(OfxParamHandle handle, OfxTime time, ...) {
-    const Param *p = (const Param *)handle;
-    va_list args;
-    va_start(args, time);
+static void get_value(const Param *p, va_list args) {
     if (strcmp(p->type, kOfxParamTypeString) == 0)
         *va_arg(args, const char **) = p->text;
     else if (is_int(p))
@@ -231,16 +232,56 @@ static OfxStatus param_get_value_at_time(OfxParamHandle handle, OfxTime time, ..
             *va_arg(args, double *) = p->value[k];
     else
         *va_arg(args, double *) = p->value[0];
+}
+
+static OfxStatus param_get_value_at_time(OfxParamHandle handle, OfxTime time, ...) {
+    va_list args;
+    va_start(args, time);
+    get_value((const Param *)handle, args);
     va_end(args);
     return kOfxStatOK;
 }
 
-static OfxStatus param_set_value(OfxParamHandle handle, ...) {
-    const Param *p = (const Param *)handle;
+static OfxStatus param_get_value(OfxParamHandle handle, ...) {
     va_list args;
     va_start(args, handle);
-    if (strcmp(p->type, kOfxParamTypeString) == 0)
-        printf("  %s = \"%s\"\n", p->name, va_arg(args, const char *));
+    get_value((const Param *)handle, args);
+    va_end(args);
+    return kOfxStatOK;
+}
+
+static OfxStatus param_get_property_set(OfxParamHandle handle, OfxPropertySetHandle *props) {
+    *props = (OfxPropertySetHandle)&((Param *)handle)->props;
+    return kOfxStatOK;
+}
+
+// A copy of `text` in text_pool (NULL when full).
+static const char *pool_copy(const char *text) {
+    const size_t n = strlen(text) + 1;
+    if (text_used + n > sizeof text_pool)
+        return NULL;
+    char *copy = memcpy(text_pool + text_used, text, n);
+    text_used += n;
+    return copy;
+}
+
+static OfxStatus param_set_value(OfxParamHandle handle, ...) {
+    Param *p = (Param *)handle;
+    va_list args;
+    va_start(args, handle);
+    if (strcmp(p->type, kOfxParamTypeString) == 0) {
+        const char *text = va_arg(args, const char *);
+        printf("  %s = \"%.60s%s\"\n", p->name, text, strlen(text) > 60 ? "..." : "");
+        p->text = pool_copy(text);
+    } else if (is_int(p)) {
+        p->value[0] = va_arg(args, int);
+    } else {
+        const int n = strcmp(p->type, kOfxParamTypeRGB) == 0        ? 3
+                      : strcmp(p->type, kOfxParamTypeDouble2D) == 0 ? 2
+                                                                     : 1;
+        for (int k = 0; k < n; ++k)
+            p->value[k] = va_arg(args, double);
+    }
     va_end(args);
     return kOfxStatOK;
 }
@@ -248,6 +289,8 @@ static OfxStatus param_set_value(OfxParamHandle handle, ...) {
 static OfxParameterSuiteV1 parameter_suite = {
     .paramDefine = param_define,
     .paramGetHandle = param_get_handle,
+    .paramGetPropertySet = param_get_property_set,
+    .paramGetValue = param_get_value,
     .paramGetValueAtTime = param_get_value_at_time,
     .paramSetValue = param_set_value,
 };
@@ -508,13 +551,14 @@ int main(int argc, char **argv) {
     if (argc < 3) {
         fprintf(stderr,
                 "usage: %s <plugin.ofx> <effect id> [name=value ...] [!Clip ...] [--size WxH] "
-                "[--frames N] [--save file] [--pad N] [--half] [--image Clip=file] [--time T]\n",
+                "[--frames N] [--save file] [--pad N] [--half] [--image Clip=file] [--time T] "
+                "[--press name]\n",
                 argv[0]);
         return 2;
     }
     int frames = 1;
     double time = 1.0;
-    const char *save = NULL;
+    const char *save = NULL, *press = NULL;
     for (int a = 3; a < argc; ++a)
         half |= strcmp(argv[a], "--half") == 0;
     for (int a = 3; a + 1 < argc; ++a) {
@@ -529,6 +573,8 @@ int main(int argc, char **argv) {
             pad = atoi(argv[a + 1]) > 0 ? atoi(argv[a + 1]) : 0;
         if (strcmp(argv[a], "--time") == 0)
             time = atof(argv[a + 1]);
+        if (strcmp(argv[a], "--press") == 0)
+            press = argv[a + 1];
     }
     void *library = dlopen(argv[1], RTLD_NOW);
     if (!library) {
@@ -575,11 +621,27 @@ int main(int argc, char **argv) {
         set_double((OfxPropertySetHandle)&effect_props, kOfxImageEffectPropProjectExtent, 0, width);
         set_double((OfxPropertySetHandle)&effect_props, kOfxImageEffectPropProjectExtent, 1,
                    height);
+        set_double((OfxPropertySetHandle)&effect_props, kOfxImageEffectPropProjectSize, 0, width);
+        set_double((OfxPropertySetHandle)&effect_props, kOfxImageEffectPropProjectSize, 1, height);
         set_values(argc, argv);
         make_images(argc, argv);
     }
     ok = ok &&
          check("create instance", plugin->mainEntry(kOfxActionCreateInstance, effect, NULL, NULL));
+    if (ok && press) { // a button pressed, then every value
+        PropSet changed = {.owner = "changed"};
+        set_string((OfxPropertySetHandle)&changed, kOfxPropType, 0, kOfxTypeParameter);
+        set_string((OfxPropertySetHandle)&changed, kOfxPropName, 0, press);
+        ok = check("instance changed", plugin->mainEntry(kOfxActionInstanceChanged, effect,
+                                                         (OfxPropertySetHandle)&changed, NULL));
+        for (int i = 0; i < param_count; ++i) {
+            const Param *p = &params[i];
+            if (strcmp(p->type, kOfxParamTypeString) == 0)
+                printf("  value %s = \"%.60s\"\n", p->name, p->text ? p->text : "(default)");
+            else if (strcmp(p->type, kOfxParamTypePushButton) != 0)
+                printf("  value %s = %g %g %g\n", p->name, p->value[0], p->value[1], p->value[2]);
+        }
+    }
     for (int f = 0; ok && f < frames; ++f) {
         const double start = now_ms();
         ok = check("render", plugin->mainEntry(kOfxImageEffectActionRender, effect, r, NULL));
