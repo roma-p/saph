@@ -361,13 +361,18 @@ static void settings(const double *v, int w, int h, double time, float *s) {
     s[TV_DOTS_X] = (float)fmod(time * (7.0 + 0.065 * v[DOTS_SPEED_X]) * k, 65536.0);
     s[TV_DOTS_Y] = (float)fmod(time * 0.06 * v[DOTS_SPEED_Y] * k, 65536.0);
     s[TV_DOTS_JITTER] = (float)(0.02 * v[JITTER] * k);
-    // Ghosts: one's weight 0.0677 P / (1 + 0.0676 P), P = master x Ghost Amp.
+    // Ghosts (the reference's): spread evenly over Spacing x the width, from -(1 - Shift) / 2
+    // of it to (1 + Shift) / 2 (Shift within -1..1; one ghost: in the middle); raw weights
+    // 0.97 x Ghost Amp x master x a random number in 0..1, each moved by Vary Position x
+    // (a random number - 0.5) x the spread.
     const double ghost = master * fmax(v[GHOST], 0.0);
+    const double span = fmax(v[SPACING], 0.0) * w, shift = fmin(fmax(v[SHIFT], -1.0), 1.0);
     s[TV_GHOSTS] = ghost > 0.0 ? (float)fmin(floor(v[GHOSTS] + 0.5), 30.0) : 0.0f;
-    s[TV_GHOST_WEIGHT] = (float)(0.0677 * ghost / (1.0 + 0.0676 * ghost));
-    s[TV_GHOST_STEP] = (float)(v[SPACING] * v[SHIFT] * w * 0.5);
-    s[TV_GHOST_VARY] = (float)v[VARY];
-    s[TV_GHOST_NEGATIVE] = (float)v[NEGATIVE];
+    s[TV_GHOST_WEIGHT] = (float)(0.97 * ghost);
+    s[TV_GHOST_START] = (float)(-(1.0 - shift) * span / 2.0);
+    s[TV_GHOST_SPAN] = (float)span;
+    s[TV_GHOST_VARY] = (float)(fmax(v[VARY], 0.0) * span);
+    s[TV_GHOST_NEGATIVE] = (float)fmin(fmax(v[NEGATIVE], 0.0), 1.0);
     ghost_blur(v[GHOST_BLUR], k, s);
     // Horizontal hold: from master x hold 0.1, 28 pixels per unit at 320.
     const double hold = fmax(master * v[HHOLD] - 0.1, 0.0) * 28.0 * k;

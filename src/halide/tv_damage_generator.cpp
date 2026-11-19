@@ -1,6 +1,6 @@
 // MS_TVDamage in Halide, called by effects/ms_tvdamage.c with its settings in one row
 // (tv_damage_layout.h). In order:
-//   - PictureSource (ms_tv_damage_source): the reception: ghosts (copies shifted right, spread
+//   - PictureSource (ms_tv_damage_source): the reception: ghosts (copies shifted across, spread
 //     across by Blur, their weight taken from the picture, or subtracted: negative ghosts),
 //     then where each pixel
 //     reads: the vertical hold's roll with its black bar (and sync dashes), the horizontal
@@ -84,18 +84,23 @@ class TVDamageSource : public Generator<TVDamageSource> {
         Expr seed = s.i(TV_SEED), t = s(TV_TIME);
         Func in = BoundaryConditions::constant_exterior(source, 0.0f);
 
-        // Ghosts: k-th at (k + 1) steps (Vary Position: +-half a step at random, and weights
-        // 0.6 to 1.4 x one ghost's), negative at random by the share; the positive ones'
-        // weights taken from the picture (at most 0.85).
+        // Ghosts: evenly spread from the start over the span (one: in the middle), each moved at
+        // random by Vary Position; raw weights a = weight x a random number in 0..1; negative
+        // ones spread evenly by their share (ghost k when floor((k + 1) share) > floor(k
+        // share)), at half their weight; the picture and the ghosts divided by 1 + the sum of
+        // their weights, if above 0 (the picture's level kept).
         RDom k(0, ghosts, "k");
         auto rnd = [&](Expr salt) { return uniform(hash3(k, salt, seed + 1301)); };
-        Expr offset = (cast<float>(k) + 1.0f) * s(TV_GHOST_STEP) *
-                      (1.0f + s(TV_GHOST_VARY) * (rnd(1) - 0.5f));
-        Expr sign = select(rnd(2) < s(TV_GHOST_NEGATIVE), -1.0f, 1.0f);
-        Expr weight = s(TV_GHOST_WEIGHT) * (1.0f + 0.8f * s(TV_GHOST_VARY) * (rnd(3) - 0.5f));
+        Expr fk = cast<float>(k), share = s(TV_GHOST_NEGATIVE);
+        Expr place = select(ghosts > 1, fk / cast<float>(max(ghosts - 1, 1)), 0.5f);
+        Expr offset = s(TV_GHOST_START) + s(TV_GHOST_SPAN) * place +
+                      s(TV_GHOST_VARY) * (rnd(1) - 0.5f);
+        Expr negative = floor((fk + 1.0f) * share) > floor(fk * share);
+        Expr raw = s(TV_GHOST_WEIGHT) * rnd(3);
         Func taken("taken");
-        taken() = sum(select(sign > 0.0f, weight, 0.0f));
-        Expr scale = min(1.0f, 0.85f / max(taken(), 1e-6f));
+        Expr weight = select(negative, -0.5f, 1.0f) * raw;
+        taken() = sum(weight);
+        Expr scale = 1.0f / (1.0f + max(taken(), 0.0f));
         Expr gx = cast<float>(x) - offset, g0 = floor(gx), ga = gx - g0;
         // (Blur: the shifted picture's 1 and 2 pixels to the sides weighted in)
         auto at = [&](Expr dx) {
@@ -106,10 +111,8 @@ class TVDamageSource : public Generator<TVDamageSource> {
         Expr shifted = at(0) * (1.0f - 2.0f * (b1 + b2)) + (at(-1) + at(1)) * b1 +
                        select(b2 > 0.0f, (at(-2) + at(2)) * b2, 0.0f);
         Func ghosted("ghosted");
-        ghosted(x, y, c) = select(c < 3,
-                                  in(x, y, c) * (1.0f - taken() * scale) +
-                                      sum(sign * weight * scale * shifted),
-                                  in(x, y, c));
+        ghosted(x, y, c) =
+            select(c < 3, (in(x, y, c) + sum(weight * shifted)) * scale, in(x, y, c));
 
         // Vertical hold: the rows roll over the picture and a black bar.
         Expr bar = s(TV_VHOLD_BAR), on = s(TV_VHOLD_ON) > 0.5f;

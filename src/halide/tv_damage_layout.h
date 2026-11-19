@@ -24,9 +24,10 @@ enum {
     TV_DOTS_JITTER, // each row's random move, at most, in pixels
     // ghosts
     TV_GHOSTS,         // how many (0: none)
-    TV_GHOST_WEIGHT,   // one ghost's weight
-    TV_GHOST_STEP,     // the distance between ghosts, in pixels
-    TV_GHOST_VARY,     // Vary Position
+    TV_GHOST_WEIGHT,   // a ghost's raw weight: this x a uniform random number
+    TV_GHOST_START,    // the first ghost's distance, in pixels (right: positive)
+    TV_GHOST_SPAN,     // from the first ghost to the last, in pixels
+    TV_GHOST_VARY,     // each ghost moved by up to +-this / 2, in pixels
     TV_GHOST_NEGATIVE, // the share of negative ghosts
     TV_GHOST_BLUR1,    // Blur: each ghost's weight 1 and 2 pixels to the sides (the rest in the
     TV_GHOST_BLUR2,    // middle)
