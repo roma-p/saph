@@ -218,9 +218,10 @@ void ms_lens_shadow(GlareBuilder *b, int e, int owner) {
     const double ax = g->pivot[0] - g->hotspot[0], ay = g->pivot[1] - g->hotspot[1];
     const double length = sqrt(ax * ax + ay * ay);
     const double ux = length > 0 ? ax / length : 1.0, uy = length > 0 ? ay / length : 0.0;
+    const int use_element = ms_json_is(b->nodes, e, "shadow_dist_calc", "use element");
     // shadow_dist_calc "use element": D the element's distance to the pivot, not the hotspot's
     const double d =
-        ms_json_is(b->nodes, e, "shadow_dist_calc", "use element")
+        use_element
             ? hypot(b->rows[owner][GLARE_POS_X] - g->pivot[0],
                     b->rows[owner][GLARE_POS_Y] - g->pivot[1]) / g->unit
             : length / g->unit;
@@ -230,22 +231,31 @@ void ms_lens_shadow(GlareBuilder *b, int e, int owner) {
                                  : 0.2375 * pow(past, 1.06);
     const double amount = get(b, e, "shadow_amount_at_edge", 1.0);
     const double rel_scale = get(b, e, "shadow_rel_scale", 1.0);
+    // (beyond the pivot, center < 0, one lens' shadow measured the other way, others not:
+    // the same way kept, best over the 178 lenses)
     const double along =
         amount * pow(fmax(fabs(amount) / 2.0, 1.0), 0.09) * law +
         0.01 * rel_scale * ((1.0 - exp(-law / 0.01)) * fmin(fmax(amount / 2.0, -1.0), 1.0) - 1.0) -
-                         get(b, e, "shadow_offset_along_axis", 0.0);
+        get(b, e, "shadow_offset_along_axis", 0.0);
     const double across = get(b, e, "shadow_offset_off_axis", 0.0);
     float *row = b->rows[owner];
     b->as_shadow = 1;
     b->shadow_r = R * rel_scale + 1.1 * rel_scale;
-    b->shadow_x = row[GLARE_POS_X] + R * (along * ux - across * uy);
-    b->shadow_y = row[GLARE_POS_Y] + R * (along * uy + across * ux);
+    // (its offset stretched as its element: rel_width, rel_height on the screen)
+    const double rx = row[GLARE_REL_X] > 0 ? row[GLARE_REL_X] : 1.0;
+    const double ry = row[GLARE_REL_Y] > 0 ? row[GLARE_REL_Y] : 1.0;
+    b->shadow_x = row[GLARE_POS_X] + R * rx * (along * ux - across * uy);
+    b->shadow_y = row[GLARE_POS_Y] + R * ry * (along * uy + across * ux);
     const int at = b->count;
     ms_style_add_element(b, b->shadow);
     b->as_shadow = 0;
     if (b->count == at)
         return;
     b->rows[at][GLARE_HIDDEN] = 1.0f;
+    // the shadow as wide and tall as its element (its rel_width, rel_height on the screen)
+    b->rows[at][GLARE_TURNED_FRAME] = 1.0f;
+    b->rows[at][GLARE_REL_X] *= row[GLARE_REL_X];
+    b->rows[at][GLARE_REL_Y] *= row[GLARE_REL_Y];
     row[GLARE_SHADOW_ROW] = (float)(at + 1);
     row[GLARE_SHADOW_INVERT] = (float)(get(b, e, "invert_shadow", 0.0) != 0.0);
     row[GLARE_SHADOW_OPACITY] = (float)(1.0 - get(b, e, "shadow_transparency", 0.0));
