@@ -78,10 +78,11 @@ void ms_lens_place(const GlareBuilder *b, int e, float *row, double *size_k, dou
     const int inverted = get(b, e, "stretch_offset_inverted", 0.0) != 0.0;
     stretch_add[0] = round_blob || inverted ? 0.0 : o * d;
     stretch_add[1] = round_blob || !inverted ? 0.0 : o * d;
-    // rotate_to_pivot: turned along the line from the pivot through it, minus a half turn
-    const double dx = px - g->pivot[0], dy = py - g->pivot[1];
+    // rotate_to_pivot: turned along the axis (from the pivot to the hotspot), minus a half
+    // turn, wherever the element is (center below 0 or 0, off the axis, offset: the same
+    // turn, measured on a polar flare's sector)
     if (get(b, e, "rotate_to_pivot", 0.0) != 0.0)
-        row[GLARE_ROTATE] += (float)((dx != 0 || dy != 0 ? atan2(dy, dx) : atan2(uy, ux)) - PI);
+        row[GLARE_ROTATE] += (float)(atan2(uy, ux) - PI);
     // the families: at the hotspot (center 1), the others; the rays also by their own knobs
     const int at_hotspot = fabs(get(b, e, "center", 1.0) - 1.0) < 1e-6;
     const int rays = is_type(b, e, "rays");
