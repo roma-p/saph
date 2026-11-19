@@ -2,7 +2,8 @@
 // (src/halide/distort_generator.cpp), on the GPU when possible, on the CPU with Enable GPU
 // off:
 //   - lens = luma (5/16, 8/16, 3/16) of the Lens input (the Source when it is not
-//     connected), blurred by Blur Lens (3-box blur) and then scaled by 1 + blur / 24
+//     connected), blurred by Blur Lens (3-box blur) and then scaled by 1 + 80 x Blur Lens
+//     (a fraction of the frame's width)
 //   - shift = Amount x 0.005 x W x W x slope of the lens (central difference), W the
 //     project width in pixels; Fine divides by 100; Amount Rel X/Y scale each axis,
 //     then Rotate Warp Dir turns it counterclockwise; rounded to 1/256 pixel
@@ -183,6 +184,7 @@ typedef struct {
     double rel_x, rel_y;
     double cos_r, sin_r;                   // Rotate Warp Dir
     double blur_lens, blur_mask;           // pixels
+    double lens_gain;                      // the blurred lens' slope x this
     double crop_l, crop_r, crop_b, crop_t; // pixels
     int wrap_x, wrap_y;
     int filter;
@@ -221,7 +223,7 @@ typedef struct {
 
 static int run_shift(MsApi api, const Job *j) {
     const Settings *s = j->s;
-    const double gain = s->blur_lens > 0 ? 1.0 + s->blur_lens / 24.0 : 1.0; // a blurred lens
+    const double gain = s->lens_gain;
     return MS_KERNEL(
         MS_K_DISTORT_SHIFT, api, MS_IMAGE("lens", j->lens), MS_IMAGE("mask_value", &j->mask->value),
         MS_INT("mask_lens", s->has_mask && s->mask_lens),
@@ -366,6 +368,9 @@ static int render(const MsRender *r) {
     s.sin_r = sin(angle);
     s.blur_lens = v[BLUR_LENS];
     s.blur_mask = v[BLUR_MASK];
+    // a blurred lens' slopes x 1 + 80 Blur Lens (a fraction of the width): 1 + blur / 24 at
+    // 1920 wide, 1 + blur / 6 at 480 (the reference's, exact on a ramp at 480 and 960)
+    s.lens_gain = s.blur_lens > 0 ? 1.0 + 80.0 * s.blur_lens / fmax(w, 1.0) : 1.0;
     s.crop_l = v[CROP_LEFT];
     s.crop_r = v[CROP_RIGHT];
     s.crop_b = v[CROP_BOTTOM];
