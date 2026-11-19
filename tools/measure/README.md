@@ -13,6 +13,9 @@ This folder has the tools; `HANDOFF.md` has the working rules of the project.
 | File | What |
 |---|---|
 | `nuke_measure.py` | In Nuke. `describe`: every knob of an effect's nodes (default, range, choices, tooltip). `jobs`: renders a list of cases with the reference node and MillSaph's. Node classes of each effect: its `EFFECTS` table. |
+| `reference_presets.py` | The reference's presets, read from its preset files (names, tags, settings), one JSON per effect in `~/millsaph_measure/presets/`, for MillSaph's equivalent presets. |
+| `nuke_presets.py` | In Nuke. A few of the reference's presets as Nuke shows them once loaded by hand (its Load Preset): `create` one node per preset of a list, `dump` their knobs, to check how the preset files' settings become knobs (units, renamed settings). |
+| `convert_presets.py` | MillSaph's presets (`presets/<effect>/`) from `reference_presets.py`'s: settings renamed, widths / 8 (and the other factors measured with `nuke_presets.py`), choices by name, styles' and lenses' images replaced by MillSaph's generated textures. Reports the settings MillSaph does not have yet. |
 | `probes.py` | Writes the probe images (impulse, step, ramps, levels, colours, noise, alpha, checker) as EXR. |
 | `compare.py` | Compares two EXR files or folders: largest and mean difference, where. |
 | `exr.py` | Reads and writes uncompressed EXR with numpy (no OpenEXR module). |
