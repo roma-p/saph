@@ -22,8 +22,12 @@ static double by_dist(const GlareBuilder *b, int e, double s, double d, const ch
     // (the distance less offset_distance x the frame's width, at least 0: 4 x it in units of
     // a quarter width; measured at 4 offsets x 4 distances)
     d = fmax(d - 4.0 * get(b, e, "offset_distance", 0.0), 0.0);
-    const double f = get(b, e, inverted, 0.0) != 0.0 ? 1.0 - s * d : s * d;
-    return fmax(f + get(b, e, min_scale, 0.0), 0.0);
+    // min_*_scale m: added to s d, a floor under 1 - s d (inverted); measured at m 0.3 both
+    // ways, 0.5 and 0.605 inverted
+    const double m = get(b, e, min_scale, 0.0);
+    if (get(b, e, inverted, 0.0) != 0.0)
+        return fmax(fmax(1.0 - s * d, m), 0.0);
+    return fmax(m + s * d, 0.0);
 }
 
 // Element e's place on the axis from the pivot through the hotspot (its row's position and
@@ -88,7 +92,7 @@ void ms_lens_place(const GlareBuilder *b, int e, float *row, double *size_k, dou
         (1.0 + ct * g->center_bright * rb) * (1.0 + et * g->edge_bright * rb);
     const double triggers_width =
         (1.0 + ct * g->center_width * rw) * (1.0 + et * g->edge_width * rw);
-    // scale_brightness_by_dist s: x (min_brightness_scale + s d), or x (min + 1 - s d) when
+    // scale_brightness_by_dist s: x (min_brightness_scale + s d), or x max(1 - s d, min) when
     // brightness_scale_inverted; scale_width_by_dist the same with its own settings
     // (brightness_direction, size_direction: no change on a still)
     const double by_bright = by_dist(b, e, sbd, d, "brightness_scale_inverted",
