@@ -201,56 +201,58 @@ void ms_lens_polar_noises(const GlareBuilder *b, int e, float *row) {
     }
 }
 
+// The shadow's move (in units of its element's radius, per unit of shadow_amount_at_edge)
+// along one of the screen's axes, at q: how far its reference point (the hotspot, or the
+// element with shadow_dist_calc "use element") is from the pivot along that axis, in frame
+// widths, and d: shadow_animation_delay. None up to q = d, then (q - d) / (0.96 - q); at
+// delay 0, 1.02 q / (1 - q)^0.15. Away from the reference point's side. (Fitted on 9
+// distances from 1/16 to 3/4 of the frame's width x 6 delays from 0 to 0.5, either axis
+// and both, within 0.01 R; linear in the amount from -20 to 11 and in the radius.)
+static double shadow_law(double q, double d) {
+    if (d <= 0.0)
+        return 1.02 * q / pow(fmax(1.0 - q, 0.01), 0.15);
+    return q <= d ? 0.0 : (q - d) / fmax(0.96 - q, 0.01);
+}
+
 // Element e (just added, row `owner`) masked by the lens's shadow when it asks
 // (use_shadow_p): a row of the shadow element of radius (R + 1.1 px) x shadow_rel_scale (R:
 // the element's; the reference's shadow edge about a pixel further out than its elements'),
-// centred on the element moved by R x (amount max(|amount| / 2, 1)^0.09 x law + 0.01 rs ((1 -
-// exp(-law / 0.01)) clamp(amount / 2, -1, 1) - 1) - shadow_offset_along_axis) towards the
-// pivot (rs: shadow_rel_scale) and R x shadow_offset_off_axis across. The second term: the
-// reference's shadow 0.01 rs towards the hotspot before the law acts (concentric masks), 0.02 rs
-// more for a negative amount once it acts (+-2, +-7 at D 1-1.66); the law fitted at amount 2.
-// The law,
-// by D (the hotspot's distance to the pivot, in units) and the delay (shadow_animation_delay):
-// none up to D = 5 delay, then (0.29 + 0.19 delay) (D - 5 delay)^(1.29 + 1.5 delay); at delay
-// 0, 0.2375 D^1.06 (amount: shadow_amount_at_edge; fitted on D 0.25 to 2.8, delays 0 to 1,
-// within 0.02 R at amount 2; amounts -7 to 7, any centre, at delay 0.1).
+// centred on the element moved by R x amount x shadow_law along each axis
+// (shadow_amount_at_edge), then by R x shadow_offset_along_axis away from the pivot along
+// the axis from the hotspot and R x shadow_offset_off_axis across it; those moves stretched
+// as the element (rel_width, rel_height on the screen, 1 / sqrt(its stretch) both ways).
 void ms_lens_shadow(GlareBuilder *b, int e, int owner) {
     const MsGlareGlobals *g = b->g;
     if (b->shadow < 0 || get(b, e, "use_shadow_p", 0.0) == 0.0 || b->count >= b->max ||
-        !(g->size > 0))
+        !(g->size > 0) || !(g->frame_width > 0))
         return;
     const double R = b->last_r;
     const double ax = g->pivot[0] - g->hotspot[0], ay = g->pivot[1] - g->hotspot[1];
     const double length = sqrt(ax * ax + ay * ay);
     const double ux = length > 0 ? ax / length : 1.0, uy = length > 0 ? ay / length : 0.0;
-    const int use_element = ms_json_is(b->nodes, e, "shadow_dist_calc", "use element");
-    // shadow_dist_calc "use element": D the element's distance to the pivot, not the hotspot's
-    const double d =
-        use_element
-            ? hypot(b->rows[owner][GLARE_POS_X] - g->pivot[0],
-                    b->rows[owner][GLARE_POS_Y] - g->pivot[1]) / g->unit
-            : length / g->unit;
-    const double delay = fmax(get(b, e, "shadow_animation_delay", 0.1), 0.0);
-    const double past = fmax(d - 5.0 * delay, 0.0);
-    const double law = delay > 0 ? (0.29 + 0.19 * delay) * pow(past, 1.29 + 1.5 * delay)
-                                 : 0.2375 * pow(past, 1.06);
-    const double amount = get(b, e, "shadow_amount_at_edge", 1.0);
-    const double rel_scale = get(b, e, "shadow_rel_scale", 1.0);
-    // (beyond the pivot, center < 0, one lens' shadow measured the other way, others not:
-    // the same way kept, best over the 178 lenses)
-    const double along =
-        amount * pow(fmax(fabs(amount) / 2.0, 1.0), 0.09) * law +
-        0.01 * rel_scale * ((1.0 - exp(-law / 0.01)) * fmin(fmax(amount / 2.0, -1.0), 1.0) - 1.0) -
-        get(b, e, "shadow_offset_along_axis", 0.0);
-    const double across = get(b, e, "shadow_offset_off_axis", 0.0);
     float *row = b->rows[owner];
+    // the reference point, from the pivot
+    const int use_element = ms_json_is(b->nodes, e, "shadow_dist_calc", "use element");
+    const double px = use_element ? row[GLARE_POS_X] - g->pivot[0] : -ax;
+    const double py = use_element ? row[GLARE_POS_Y] - g->pivot[1] : -ay;
+    const double delay = fmax(get(b, e, "shadow_animation_delay", 0.1), 0.0);
+    const double amount = get(b, e, "shadow_amount_at_edge", 1.0);
+    const double W = g->frame_width;
+    const double law_x = px == 0.0 ? 0.0 : -copysign(shadow_law(fabs(px) / W, delay), px);
+    const double law_y = py == 0.0 ? 0.0 : -copysign(shadow_law(fabs(py) / W, delay), py);
+    const double rel_scale = get(b, e, "shadow_rel_scale", 1.0);
+    const double along = -get(b, e, "shadow_offset_along_axis", 0.0);
+    const double across = get(b, e, "shadow_offset_off_axis", 0.0);
     b->as_shadow = 1;
     b->shadow_r = R * rel_scale + 1.1 * rel_scale;
-    // (its offset stretched as its element: rel_width, rel_height on the screen)
     const double rx = row[GLARE_REL_X] > 0 ? row[GLARE_REL_X] : 1.0;
     const double ry = row[GLARE_REL_Y] > 0 ? row[GLARE_REL_Y] : 1.0;
-    b->shadow_x = row[GLARE_POS_X] + R * rx * (along * ux - across * uy);
-    b->shadow_y = row[GLARE_POS_Y] + R * ry * (along * uy + across * ux);
+    // (measured at stretches 0.3 and 4.95, a needle at 0.038 out of its shadow)
+    const double k = row[GLARE_SCALE_X];
+    const double tx = k * (amount * law_x + along * ux - across * uy);
+    const double ty = k * (amount * law_y + along * uy + across * ux);
+    b->shadow_x = row[GLARE_POS_X] + R * rx * tx;
+    b->shadow_y = row[GLARE_POS_Y] + R * ry * ty;
     const int at = b->count;
     ms_style_add_element(b, b->shadow);
     b->as_shadow = 0;
@@ -261,6 +263,10 @@ void ms_lens_shadow(GlareBuilder *b, int e, int owner) {
     b->rows[at][GLARE_TURNED_FRAME] = 1.0f;
     b->rows[at][GLARE_REL_X] *= row[GLARE_REL_X];
     b->rows[at][GLARE_REL_Y] *= row[GLARE_REL_Y];
+    // (and stretched as it, in the shadow's own turned frame: its rotation, not the
+    // element's; measured on an ellipse and a needle, centred and offset)
+    b->rows[at][GLARE_SCALE_X] *= row[GLARE_SCALE_X];
+    b->rows[at][GLARE_SCALE_Y] *= row[GLARE_SCALE_Y];
     row[GLARE_SHADOW_ROW] = (float)(at + 1);
     row[GLARE_SHADOW_INVERT] = (float)(get(b, e, "invert_shadow", 0.0) != 0.0);
     row[GLARE_SHADOW_OPACITY] = (float)(1.0 - get(b, e, "shadow_transparency", 0.0));
