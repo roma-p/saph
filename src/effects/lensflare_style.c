@@ -455,7 +455,9 @@ static int generated(GlareBuilder *b, int image, int *w, int *h, size_t *start) 
 // image_scale_size (image_absolute_size_p: the frame's width; a texture: 2 R, no image_*
 // setting), its columns turned by rotate + image_offset_rotate (+ the angle from the pivot
 // with rotate_to_pivot; image_absolute_rotate_p: image_offset_rotate only), its rows a
-// quarter turn clockwise from them, then stretched as the element (in the element's frame),
+// quarter turn clockwise from them, then stretched as the element (in the element's frame;
+// image_absolute_rotate_p: in the screen's, the element's turn left out: measured on a polar
+// flare turned 114 deg, stretch 0.33 to 6 and offset_stretch_by_dist, both ways),
 // centred on the element (image_absolute_position_p: the pivot) moved by image_offset_x, y
 // x half that side. A texture: the image x its colours (not its brightness).
 void ms_lens_image(GlareBuilder *b, int e, float *row) {
@@ -497,7 +499,8 @@ void ms_lens_image(GlareBuilder *b, int e, float *row) {
     const double sx = fmax(row[GLARE_SCALE_X], 1e-6), sy = fmax(row[GLARE_SCALE_Y], 1e-6);
     const double rw = fmax(row[GLARE_REL_X], 1e-6);
     const double rh = fmax(row[GLARE_REL_Y], 1e-6);
-    const double rot = row[GLARE_ROTATE];
+    const double rot = !texture && get(b, e, "image_absolute_rotate_p", 0.0) != 0.0
+                           ? 0.0 : row[GLARE_ROTATE];
     double m[2][2] = {{1.0 / rw, 0.0}, {0.0, 1.0 / rh}};
     const double cb = cos(rot), sb = sin(rot);
     double t[2][2] = {{(cb * m[0][0] + sb * m[1][0]) / sx, (cb * m[0][1] + sb * m[1][1]) / sx},
