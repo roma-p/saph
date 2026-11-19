@@ -13,6 +13,7 @@
   "blur_rel_x": 0.240005,
   "blur_rel_y": 1.339996,
   "offset_darks": 0.5,
-  "saturation": 0.509995
+  "saturation": 0.509995,
+  "brightness": 3
  }
 }

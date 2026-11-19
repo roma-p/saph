@@ -24,9 +24,12 @@ EFFECTS = ["BandPass", "EdgeAwareBlur", "Distort", "EdgeBlur", "RackDefocus", "G
            "JpegDamage", "PixelSort", "Mosaic"]
 # the settings' names in the files -> the parameters'
 RENAME = {
+    "BandPass": {"scale": "brightness"},
     "Glow": {"width": "glow_width"},
     "Glare": {"type": "style_"},
     "LensFlare": {"lens": "lens_"},
+    "RackDefocus": {"highlight_threshold": "hilight_threshold",
+                    "chromatic_aberration": "chroma_distort"},
     "TVDamage": {"ghost_amplitude": "ghost_amp", "interference_amplitude": "interference_amp",
                  "frequency": "interference_frequency", "band_frequency": "FF_band_frequency",
                  "band_height": "FF_band_height", "band_shift": "FF_band_shift"},
@@ -37,8 +40,7 @@ SPLIT = {"blur_rel": ("blur_rel_x", "blur_rel_y"), "amount_rel": ("amount_rel_x"
          "pixel_shift": ("pixel_shift_x", "pixel_shift_y")}
 # no effect in a compositing host (layer opacity, After Effects' background layers, ...)
 DROP = {"opacity", "scale_source", "scale_background", "light_bg", "eclipse_with_bg",
-        "obsolete_style", "wrap", "iterations", "scale", "highlight_threshold",
-        "chromatic_aberration"}
+        "obsolete_style", "wrap", "iterations"}
 # widths: the files' value / 8, except these
 WIDTH_SCALE = {"threshold_blur": 1 / 32, "thickness": 1 / 2, "ray_length": 1 / 2,
                "_inner_radius": 1 / 2, "inner_radius": 1 / 2, "flare_width": 1 / 5.5}
