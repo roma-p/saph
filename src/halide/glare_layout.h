@@ -115,6 +115,7 @@ enum {
     GLARE_REL_X,          // Lens Flare: rel_width, rel_height x Rel Heights, in the screen's
     GLARE_REL_Y,          // frame (GLARE_SCALE_*: the stretch alone)
     GLARE_DISTORT,        // Lens Flare: stretch_distort's strength (ms_glare::element_value)
+    GLARE_LIMACON,        // Lens Flare, a polar flare's stretch_distort: b (ms_glare::element_value)
     GLARE_RAY_MIN,        // RAYS: the shortest line / the longest (1: all the longest)
     GLARE_RAY_SEED,       // RAYS: the lines' random lengths and turns: seed, jitter_angles
     GLARE_RAY_JITTER,

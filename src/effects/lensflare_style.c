@@ -111,8 +111,15 @@ void ms_lens_place(const GlareBuilder *b, int e, float *row, double *size_k, dou
     // stretch_distort d: d |log2 stretch|^1.46 (none without a stretch; ms_glare::element_value),
     // at most 1 (the reference's saturates: d 0.183 and 0.5 the same at stretch 8 and 16; the
     // cap fitted at 2-16, 0.6 to 1.5)
-    row[GLARE_DISTORT] = (float)(fmin(get(b, e, "stretch_distort", 0.0) *
-                                 pow(fabs(log2(fmax(get(b, e, "stretch", 1.0), 1e-6))), 1.46), 1.0));
+    // A polar flare: its radius divided by 1 - 0.3 b - b cos(angle), b = k x 0.82
+    // |log2 stretch|^0.64 (stretch below 1) or 0.6 (above): a limacon along its x (fitted on a
+    // ring at stretches 1/8 to 8, k 0.1 to 1; stretch_direction: no change)
+    const double stretch = fmax(get(b, e, "stretch", 1.0), 1e-6), l2 = fabs(log2(stretch));
+    const double strength = fmin(get(b, e, "stretch_distort", 0.0) * pow(l2, 1.46), 1.0);
+    const int polar = is_type(b, e, "polar_flare");
+    row[GLARE_DISTORT] = polar ? 0.0f : (float)strength;
+    row[GLARE_LIMACON] =
+        polar ? (float)(strength * (stretch < 1.0 ? 0.82 * pow(l2, 0.64) : 0.6)) : 0.0f;
     row[GLARE_ATMOSPHERE] = (float)(get(b, e, "ignore_atmosphere", 0.0) == 0.0);
     for (int k = 0; k < 3; ++k)
         gain[k] = by_bright * (at_hotspot ? g->hot_gain[k] : g->other_gain[k]) *

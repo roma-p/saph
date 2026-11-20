@@ -3,6 +3,7 @@
 
 #pragma once
 
+
 #include <functional>
 
 #include "Halide.h"
@@ -149,11 +150,17 @@ inline ElementFrame element_frame(const Field &field, Expr dx, Expr dy, Expr e) 
     // (Lens Flare, stretch_distort of strength k: the shape (not its image), in units of R,
     // from y to y + k (0.213 - 0.311 y + 0.515 y^2), x x (1 + 0.472 k y); fitted at 7
     // stretches and strengths, 1-5 % of the pixels)
+    // A polar flare's (GLARE_LIMACON b): the radius / (1 - 0.3 b - b cos(angle)), from the
+    // element's x (none where that is not above 0)
     Expr dk = f(GLARE_DISTORT), Rd = max(f(GLARE_R), 1e-6f);
+    Expr pb = f(GLARE_LIMACON), pr = sqrt(ex * ex + ey * ey);
+    Expr rho = 1.0f - 0.3f * pb - pb * select(pr > 0.0f, ex / max(pr, 1e-12f), 0.0f);
+    Expr pscale = select(rho > 1e-3f, 1.0f / rho, 1e6f);
     Expr qa = dk * 0.515f, qb = 1.0f - dk * 0.311f, qc = dk * 0.213f - ey / Rd;
     Expr root = -2.0f * qc / (qb + sqrt(max(qb * qb - 4.0f * qa * qc, 0.0f)));
-    ex = select(dk != 0.0f, ex / (1.0f + dk * 0.472f * root), ex);
-    ey = select(dk != 0.0f, root * Rd, ey);
+    Expr ex_d = select(dk != 0.0f, ex / (1.0f + dk * 0.472f * root), pb != 0.0f, ex * pscale, ex);
+    ey = select(dk != 0.0f, root * Rd, pb != 0.0f, ey * pscale, ey);
+    ex = ex_d;
     m.r0 = sqrt(ex * ex + ey * ey);
     m.th = atan2(ey, ex);
     // The angles of sectors and waves, and the rays' width: without the stretch.
