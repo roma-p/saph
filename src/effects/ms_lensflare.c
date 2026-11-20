@@ -505,7 +505,8 @@ static MsMutex texture_lock = MS_MUTEX_INIT;
 static int same_texture(const MsLensTexture *a, const MsLensTexture *b) {
     return a->kind == b->kind && a->seed == b->seed && a->amount == b->amount &&
            a->scale == b->scale && a->detail == b->detail && a->sides == b->sides &&
-           a->width == b->width && a->height == b->height && a->mean == b->mean;
+           a->width == b->width && a->height == b->height && a->mean == b->mean &&
+           a->edge_x == b->edge_x && a->edge_y == b->edge_y;
 }
 
 // Texture t into `out` (its width x height x 3 floats): from the cache, or generated (on the
@@ -526,7 +527,8 @@ static int texture(const MsLensTexture *t, float *out) {
     const int status = MS_KERNEL(MS_K_LENSFLARE_TEXTURE, MS_API_CPU, MS_INT("kind", t->kind),
                                  MS_FLOAT("seed", t->seed), MS_FLOAT("amount", t->amount),
                                  MS_FLOAT("scale", t->scale), MS_FLOAT("detail", t->detail),
-                                 MS_INT("sides", t->sides), MS_IMAGE("texture", &image));
+                                 MS_INT("sides", t->sides), MS_FLOAT("edge_x", t->edge_x),
+                                 MS_FLOAT("edge_y", t->edge_y), MS_IMAGE("texture", &image));
     if (status == 0 && t->mean > 0.0) { // scaled to the mean wanted (where the lens shows it:
         double sum = 0.0; // in the disc inscribed in the texture), the image's it stands for
         size_t count = 0;

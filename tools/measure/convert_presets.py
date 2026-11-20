@@ -59,8 +59,9 @@ POINTS = {"center", "circle_center", "hotspot", "pivot"}
 
 # A style's or lens's images (textures, photographs) are not taken: each element's image becomes
 # one of MillSaph's generated textures (lensflare_style.c), the kind by the image's file name;
-# its seed from that name, so that one image is one texture.
-TEXTURES = [("iris", "iris"), ("grad", "ramp"), ("rainbow", "ramp"), ("element", "ramp"),
+# its seed from that name, so that one image is one texture. A "grad" image (a smooth colour
+# field, mostly shown over the whole frame): a plain field of its mean colour.
+TEXTURES = [("iris", "iris"), ("grad", "field"), ("rainbow", "ramp"), ("element", "ramp"),
             ("flare", "ramp"), ("stripe", "ramp"), ("ring", "ramp"), ("glint", "glint"),
             ("ray", "glint"), ("sparkle", "glint")]
 
@@ -70,13 +71,52 @@ def texture(image):
     kind = next((k for word, k in TEXTURES if word in name), "dirt")
     seed = sum(ord(c) * (i + 1) for i, c in enumerate(name)) % 997
     out = {"generate": kind, "seed": seed}
+    if kind == "field":
+        rgb = image_mean(image, per_channel=True)
+        if rgb:
+            out["color"] = [round(v / max(max(rgb), 1e-6), 4) for v in rgb]
+        shape = field_shape(image)
+        if shape:
+            out["aspect"], out["edges"] = shape
     mean = image_mean(image)
     if mean:  # the texture as bright as the image it stands for
         out["mean"] = mean
     return out
 
 
-def image_mean(image):
+def field_shape(image):
+    # a field's aspect (width / height) and its fades to the edges along x and y: where the
+    # image's mean column (row) first reaches half its largest, from each end, as a share of the
+    # half side, x 2 (the fade's smoothstep at half there); 0: no fade (bright to the edge)
+    try:
+        w, h, c = int(image["xdim"]), int(image["ydim"]), int(image.get("elnum", 3))
+        data = base64.b64decode(image["pixels"])
+        if int(image.get("channel_bytes", 1)) != 1 or len(data) < w * h * c or w * h * c <= 0:
+            return None
+    except (KeyError, TypeError, ValueError):
+        return None
+    cols, rows = [0] * w, [0] * h
+    for y in range(h):
+        line = data[y * w * c:(y + 1) * w * c]
+        rows[y] = sum(line)
+        for x in range(w):
+            cols[x] += sum(line[x * c:(x + 1) * c])
+
+    def fade(profile):
+        top = max(profile)
+        if top <= 0:
+            return 0.0
+        n = len(profile)
+        reach = []
+        for seq in (profile, profile[::-1]):
+            k = next((i for i, v in enumerate(seq) if v >= 0.5 * top), 0)
+            reach.append(k / (n / 2.0))
+        return round(min(2.0 * sum(reach) / 2.0, 1.0), 4)
+
+    return round(w / float(h), 4), [fade(cols), fade(rows)]
+
+
+def image_mean(image, per_channel=False):
     # an image's mean where a lens shows it (bytes / 255 over its channels, as the lens reads
     # them): in the disc inscribed in its centred square (an image fits by its shorter side),
     # or None
@@ -89,6 +129,7 @@ def image_mean(image):
         return None
     side = min(w, h)
     x0, y0, total, count = (w - side) // 2, (h - side) // 2, 0, 0
+    sums = [0] * c
     for y in range(side):
         dy = (y + 0.5) / side - 0.5
         half = (0.25 - dy * dy) ** 0.5 * side  # the disc's chord at that row
@@ -96,8 +137,13 @@ def image_mean(image):
         if hi <= lo:
             continue
         start = ((y0 + y) * w + x0 + lo) * c
-        total += sum(data[start:start + (hi - lo) * c])
+        row = data[start:start + (hi - lo) * c]
+        total += sum(row)
         count += (hi - lo) * c
+        for k in range(c):
+            sums[k] += sum(row[k::c])
+    if per_channel:
+        return [x * c / (255.0 * count) for x in sums] * (3 if c == 1 else 1) if count else None
     return round(total / (255.0 * count), 5) if count and total else None
 
 

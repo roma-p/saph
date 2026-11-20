@@ -35,6 +35,7 @@ typedef struct {
 typedef struct {
     int kind; // GLARE_TEXTURE_*; -1: an image written in the element itself (its node)
     double seed, amount, scale, detail;
+    double edge_x, edge_y; // "field": its fade to the edges (fractions of the half side)
     int sides, width, height;
     double mean; // > 0: the texels' mean (over the channels) wanted
     size_t start;

@@ -382,6 +382,7 @@ class LensFlareTexture : public Generator<LensFlareTexture> {
     Input<int> kind{"kind"}; // glare_layout.h GLARE_TEXTURE_*
     Input<float> seed{"seed"}, amount{"amount"}, scale{"scale"}, detail{"detail"};
     Input<int> sides{"sides"};
+    Input<float> edge_x{"edge_x"}, edge_y{"edge_y"}; // FIELD: its fade to the edges
     Output<Buffer<float, 3>> texture{"texture"}; // RGB, row 0 at the top
 
     void generate() {
@@ -483,12 +484,20 @@ class LensFlareTexture : public Generator<LensFlareTexture> {
         Expr iris = 0.75f * (1.0f - amount * (1.0f - rays)) * ripples * rim *
                     (1.0f - smooth((t - 0.97f) / 0.03f));
 
+        // FIELD: a plain colour, faded to 0 over edge_x, edge_y of the half side at the edges
+        auto fade_to = [&](Expr t, Expr edge) {
+            return select(edge > 0.0f, smooth(clamp((1.0f - abs(t)) / max(edge, 1e-4f), 0.0f, 1.0f)), 1.0f);
+        };
+        Expr field_window = fade_to(u, edge_x) * fade_to(v, edge_y);
+
         Func out("out");
         Expr grey = select(kind == GLARE_TEXTURE_DIRT, dirt, iris);
         out(x, y, c) = select(kind == GLARE_TEXTURE_GLINT,
                               select(c == 0, glint(0), c == 1, glint(1), glint(2)),
                               kind == GLARE_TEXTURE_RAMP,
-                              select(c == 0, ramp(0), c == 1, ramp(1), ramp(2)), grey);
+                              select(c == 0, ramp(0), c == 1, ramp(1), ramp(2)),
+                              kind == GLARE_TEXTURE_FIELD,
+                              select(c == 0, amount, c == 1, scale, detail) * field_window, grey);
         texture(x, y, c) = clamp(out(x, y, c), 0.0f, 1.0f);
 
         texture.dim(0).set_stride(3);

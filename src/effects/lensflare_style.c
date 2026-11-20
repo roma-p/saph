@@ -428,35 +428,61 @@ static int written(GlareBuilder *b, int image, int *w, int *h, size_t *start) {
 // One of MillSaph's own textures, as `image` ({"generate": ...}) asks: added to
 // the ones to generate (the same settings: the same texture); its size and first texel.
 static int generated(GlareBuilder *b, int image, int *w, int *h, size_t *start) {
-    static const char *const kinds[] = {"dirt", "glint", "ramp", "iris"};
-    static const int sizes[] = {512, 256, 128, 256}; // texels a side by default
+    // ("field": a plain colour, "color" [r, g, b], as amount, scale, detail)
+    static const char *const kinds[] = {"dirt", "glint", "ramp", "iris", "field"};
+    static const int sizes[] = {512, 256, 128, 256, 64}; // texels a side by default
     MsLensTextures *t = b->textures;
     int kind = -1;
-    for (int k = 0; k < 4; ++k)
+    for (int k = 0; k < 5; ++k)
         if (ms_json_is(b->nodes, image, "generate", kinds[k]))
             kind = k;
     if (!t || kind < 0)
         return 0;
     const int side = (int)fmin(fmax(ms_json_get(b->nodes, image, "texels", sizes[kind]), 8.0),
                                2048.0);
-    const MsLensTexture want = {kind,
-                                ms_json_get(b->nodes, image, "seed", 0.0),
-                                ms_json_get(b->nodes, image, "amount", kind == 0 ? 0.35 : kind == 2 ? 1.0 : 0.5),
-                                ms_json_get(b->nodes, image, "scale", 1.0),
-                                ms_json_get(b->nodes, image, "detail", 0.5),
-                                (int)ms_json_get(b->nodes, image, "sides", kind == 3 ? 6 : 0),
-                                side,
-                                side,
-                                ms_json_get(b->nodes, image, "mean", 0.0),
-                                t->texels,
-                                -1,
-                                3};
+    double color[3] = {1.0, 1.0, 1.0};
+    if (kind == 4) {
+        const int list = ms_json_member(b->nodes, image, "color");
+        int i = 0;
+        for (int m = list >= 0 && b->nodes[list].type == MS_JSON_ARRAY ? b->nodes[list].first : -1;
+             m >= 0 && i < 3; m = b->nodes[m].next, ++i)
+            color[i] = b->nodes[m].number;
+    }
+    // (a "field": "aspect" its width / height, "edges" [x, y] its fades to the edges)
+    const double aspect = kind == 4 ? fmin(fmax(ms_json_get(b->nodes, image, "aspect", 1.0), 0.05), 20.0)
+                                    : 1.0;
+    double edges[2] = {0.0, 0.0};
+    if (kind == 4) {
+        const int list = ms_json_member(b->nodes, image, "edges");
+        int i = 0;
+        for (int m = list >= 0 && b->nodes[list].type == MS_JSON_ARRAY ? b->nodes[list].first : -1;
+             m >= 0 && i < 2; m = b->nodes[m].next, ++i)
+            edges[i] = b->nodes[m].number;
+    }
+    MsLensTexture want;
+    memset(&want, 0, sizeof want);
+    want.kind = kind;
+    want.seed = ms_json_get(b->nodes, image, "seed", 0.0);
+    want.amount = kind == 4 ? color[0]
+                            : ms_json_get(b->nodes, image, "amount",
+                                          kind == 0 ? 0.35 : kind == 2 ? 1.0 : 0.5);
+    want.scale = kind == 4 ? color[1] : ms_json_get(b->nodes, image, "scale", 1.0);
+    want.detail = kind == 4 ? color[2] : ms_json_get(b->nodes, image, "detail", 0.5);
+    want.edge_x = edges[0], want.edge_y = edges[1];
+    want.sides = (int)ms_json_get(b->nodes, image, "sides", kind == 3 ? 6 : 0);
+    want.width = aspect >= 1.0 ? side : (int)fmax(round(side * aspect), 2.0);
+    want.height = aspect >= 1.0 ? (int)fmax(round(side / aspect), 2.0) : side;
+    want.mean = ms_json_get(b->nodes, image, "mean", 0.0);
+    want.start = t->texels;
+    want.node = -1;
+    want.channels = 3;
     for (int i = 0; i < t->count; ++i) {
         const MsLensTexture *have = &t->list[i];
         if (have->kind == want.kind && have->seed == want.seed && have->amount == want.amount &&
             have->scale == want.scale && have->detail == want.detail &&
             have->sides == want.sides && have->width == want.width &&
-            have->mean == want.mean) {
+            have->height == want.height && have->mean == want.mean &&
+            have->edge_x == want.edge_x && have->edge_y == want.edge_y) {
             *w = have->width, *h = have->height, *start = have->start;
             return 1;
         }
@@ -464,8 +490,8 @@ static int generated(GlareBuilder *b, int image, int *w, int *h, size_t *start) 
     if (t->count >= MS_LENS_MAX_GENERATED)
         return 0;
     t->list[t->count++] = want;
-    t->texels += (size_t)side * side * 3;
-    *w = side, *h = side, *start = want.start;
+    t->texels += (size_t)want.width * want.height * 3;
+    *w = want.width, *h = want.height, *start = want.start;
     return 1;
 }
 
@@ -503,7 +529,10 @@ void ms_lens_image(GlareBuilder *b, int e, float *row) {
                                                        : 2.0 * (b->last_r + 1.5);
     if (!texture)
         side *= get(b, e, "image_scale_size", 1.0);
-    const double texel = side / (texture ? fmax(w, h) : fmin(w, h)); // pixels
+    // (image_absolute_size_p: the frame's width across the image's longer side, as its
+    // frame-sized images (480 x 270) cover the frame: Seek Truth's dark-edged field)
+    const int whole = !texture && get(b, e, "image_absolute_size_p", 0.0) != 0.0;
+    const double texel = side / (texture || whole ? fmax(w, h) : fmin(w, h)); // pixels
     double angle = texture ? 0.0 : get(b, e, "image_offset_rotate", 0.0) * RADIANS;
     if (texture || get(b, e, "image_absolute_rotate_p", 0.0) == 0.0) {
         angle += get(b, e, "rotate", 0.0) * RADIANS;
@@ -517,9 +546,14 @@ void ms_lens_image(GlareBuilder *b, int e, float *row) {
     // U: a pixel's offset into the element's frame, unstretched and unscaled, turned back to
     // the screen's axes: R(rot) diag(1 / kx, 1 / ky) R(-rot) diag(1 / rw, 1 / rh), as
     // ms_glare::element_value
-    const double sx = fmax(row[GLARE_SCALE_X], 1e-6), sy = fmax(row[GLARE_SCALE_Y], 1e-6);
-    const double rw = fmax(row[GLARE_REL_X], 1e-6);
-    const double rh = fmax(row[GLARE_REL_Y], 1e-6);
+    // (image_absolute_size_p: the image on the screen, not under the element's stretch nor its
+    // rel_width, rel_height; the element's size, under them, wherever it is: Call Your
+    // Girlfriend's frame-wide images under rel_height 0.07, at the pivot or the element)
+    const int on_screen = !texture && get(b, e, "image_absolute_size_p", 0.0) != 0.0;
+    const double sx = on_screen ? 1.0 : fmax(row[GLARE_SCALE_X], 1e-6);
+    const double sy = on_screen ? 1.0 : fmax(row[GLARE_SCALE_Y], 1e-6);
+    const double rw = on_screen ? 1.0 : fmax(row[GLARE_REL_X], 1e-6);
+    const double rh = on_screen ? 1.0 : fmax(row[GLARE_REL_Y], 1e-6);
     const double rot = !texture && get(b, e, "image_absolute_rotate_p", 0.0) != 0.0
                            ? 0.0 : row[GLARE_ROTATE];
     double m[2][2] = {{1.0 / rw, 0.0}, {0.0, 1.0 / rh}};

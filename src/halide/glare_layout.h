@@ -36,6 +36,7 @@ enum {
     GLARE_TEXTURE_GLINT = 1, // a prism glint: a rainbow streak
     GLARE_TEXTURE_RAMP = 2,  // a rainbow ramp, radial or across
     GLARE_TEXTURE_IRIS = 3,  // an iris: a polygon of blades with fine streaks and ripples
+    GLARE_TEXTURE_FIELD = 4, // a plain colour (amount, scale, detail: its red, green, blue)
 };
 
 // Lens Flare's images: their texels (RGB floats, row 0 first, one image after the other)
