@@ -103,6 +103,10 @@ static void add_waves(const GlareBuilder *b, int e, float *row) {
     // (Lens Flare: x wave_brightness, thresholded by width and softness, shifted by
     // wave_phase)
     row[GLARE_WAVE_LENS] = (float)g->lens;
+    // (Lens Flare: with noise_brightness too, the waves and the noise added, or with
+    // mult_brightness_p the waves x (1 + nb (noise - 0.5)): Reflective's rings, 3 noise widths,
+    // nb 0.4 / 1, wave_brightness 0.5-2, within a few %)
+    row[GLARE_WAVE_NOISE] = (float)(g->lens ? (get(b, e, "mult_brightness_p", 0.0) != 0.0 ? 2 : 1) : 0);
     row[GLARE_WAVE_SOFT] = (float)get(b, e, "wave_softness", 1.0);
     row[GLARE_WAVE_PHASE] = (float)(g->lens ? get(b, e, "wave_phase", 0.0) : 0.0);
     row[GLARE_RW_MIN] = (float)get(b, e, "r_wave_min", 1.0);

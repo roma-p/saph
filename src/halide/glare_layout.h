@@ -140,6 +140,8 @@ enum {
     GLARE_RW_MAX,
     GLARE_RW_FREQ,
     GLARE_RW_SPIKE,
+    GLARE_WAVE_NOISE, // Lens Flare, a polar flare with waves and noise_brightness: 1 their sum
+                      // (mult_brightness_p 0), 2 the waves x (1 + nb (noise - 0.5)) (1); 0 product
     GLARE_SHIFT_EDGE, // Lens Flare's polar flares, shift_edge s: the profile's circle of radius
     GLARE_SHIFT_DIR,  // r centred s r away along this angle (radians, y up) (0: none)
     GLARE_LINES,      // RAYS: number of lines

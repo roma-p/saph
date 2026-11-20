@@ -378,10 +378,16 @@ inline Expr element_value(const Field &field, Expr dx, Expr dy, Expr c, Expr e,
     Expr u, v;
     Expr window = sector_window(field, m, e, u, v);
     Expr waves = sector_waves(field, e, u, v);
-    Expr gradient = col * select(f(GLARE_SECTOR) != 0.0f, window, 1.0f) * f(GLARE_BOOST) * waves;
-    if (noise) // (Lens Flare: x noise_brightness x its noise)
-        gradient = select(f(GLARE_NB) != 0.0f, gradient * f(GLARE_NB) * (*noise)(1, m.th, e),
-                          gradient);
+    Expr shape = col * select(f(GLARE_SECTOR) != 0.0f, window, 1.0f) * f(GLARE_BOOST);
+    Expr gradient = shape * waves;
+    if (noise) { // (Lens Flare: x noise_brightness x its noise; with waves, as GLARE_WAVE_NOISE)
+        Expr nb = f(GLARE_NB), nv = (*noise)(1, m.th, e), mode = f(GLARE_WAVE_NOISE);
+        Expr both = nb != 0.0f && f(GLARE_WAVE) != 0.0f;
+        gradient = select(nb == 0.0f, gradient,
+                          both && mode == 1.0f, shape * (waves + nb * nv),
+                          both && mode == 2.0f, gradient * (1.0f + nb * (nv - 0.5f)),
+                          gradient * nb * nv);
+    }
     Expr ray = rays_value(field, m, dx, dy, e, streaks);
     Expr value = select(kind == GLARE_FALLOFF, falloff, kind == GLARE_RAYS, ray, gradient);
     if (image.defined())
