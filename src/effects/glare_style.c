@@ -148,14 +148,29 @@ static void add_stops(GlareBuilder *b, int e, float *row, double size, double st
     if (g->lens)
         row[GLARE_CRISP] = 2.0f;
     row[GLARE_STOP_COUNT] = (float)stops;
+    // fade_gradient f: on a lens's polar flare, each stop's colour x (1 - f t) (f > 0) or x (1 +
+    // f (1 - t)) (f < 0), t the stop's place between its neighbours, (q_k - q_k-1) / (q_k+1 -
+    // q_k-1), 0 for the first; q_k = r_k + (k - 1) blur_gradient (k >= 1, q_0 = r_0) and past the
+    // last stop q_n = r_n-1 + (n - 1) blur_gradient (t = 1 unblurred). Exact in the reference
+    // unblurred (one stop lit of 3 or 4, f -1..1), within ~0.03 of t at blur 0.1 / 0.3, ~0.1 at
+    // 1. On the other elements, the profile's fade (GLARE_FADE).
+    const double fade = get(b, e, "fade_gradient", 0.0);
+    const double fade_blur = fmax(get(b, e, "blur_gradient", 0.0), 0.0);
+    const int stop_fade = polar && g->lens && stops > 1;
     for (int k = 0; k < stops; ++k) {
+        const double q = radii[k] + (k > 0 ? (k - 1) * fade_blur : 0.0);
+        const double prev = k > 0 ? radii[k - 1] + (k > 1 ? (k - 2) * fade_blur : 0.0) : q;
+        const double next = k < stops - 1 ? radii[k + 1] + k * fade_blur
+                                          : radii[stops - 1] + (stops - 1) * fade_blur;
+        const double t = k == 0 ? 0.0 : next - prev > 0.0 ? (q - prev) / (next - prev) : 1.0;
+        const double scale = !stop_fade ? 1.0 : fade > 0.0 ? 1.0 - fade * t : 1.0 + fade * (1.0 - t);
         row[GLARE_STOP_RADII + k] = (float)radii[k];
         for (int c = 0; c < 3; ++c)
-            row[GLARE_STOP_COLORS + 3 * k + c] = (float)colors[3 * k + c];
+            row[GLARE_STOP_COLORS + 3 * k + c] = (float)(colors[3 * k + c] * fmax(scale, 0.0));
     }
     for (int c = 0; c < 3; ++c)
         row[GLARE_GAIN_R + c] = (float)(bright * tint[c]);
-    row[GLARE_FADE] = (float)get(b, e, "fade_gradient", 0.0);
+    row[GLARE_FADE] = (float)(stop_fade ? 0.0 : fade);
     row[GLARE_BOOST] = 1.0f;
     row[GLARE_RW_MIN] = row[GLARE_RW_MAX] = 1.0f;
     if (polar || fancy)
