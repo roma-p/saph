@@ -270,7 +270,8 @@ class JpegDamage : public Generator<JpegDamage> {
             Func colsum(name + "_colsum"), full(name + "_full");
             Expr j = y / 2, b = band_of_padded(y);
             Expr first = b * band_p / 2, last = first + (height_of(b) + 1) / 2 - 1;
-            Expr far = clamp(select((y & 1) == 1, j + 1, j - 1), first, last);
+            // (clamped again to the plane: bounds Halide can infer)
+            Expr far = clamp(clamp(select((y & 1) == 1, j + 1, j - 1), first, last), 0, hp / 2 - 1);
             colsum(x, y) = half(clamp(x, 0, cw - 1), j) * 3 + half(clamp(x, 0, cw - 1), far);
             Expr i = x / 2;
             Expr other = select((x & 1) == 0, clamp(i - 1, 0, cw - 1), clamp(i + 1, 0, cw - 1));
@@ -282,7 +283,7 @@ class JpegDamage : public Generator<JpegDamage> {
 
         // YCbCr to RGB (the library's tables), then to floats
         Func rgb("rgb");
-        Expr yp = padded_row(y);
+        Expr yp = clamp(padded_row(y), 0, hp - 1); // (the clamp: bounds Halide can infer)
         Expr Y = bl.out(x, yp), cb = cb_up.second(x, yp) - 128, cr = cr_up.second(x, yp) - 128;
         Expr r8 = clamp(Y + ((91881 * cr + 32768) >> 16), 0, 255);
         Expr g8 = clamp(Y + ((-22554 * cb + 32768 - 46802 * cr) >> 16), 0, 255);
