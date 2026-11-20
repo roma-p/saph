@@ -265,8 +265,13 @@ void ms_lens_shadow(GlareBuilder *b, int e, int owner) {
     const double law_x = px == 0.0 ? 0.0 : -copysign(shadow_law(fabs(px) / W, delay), px);
     const double law_y = py == 0.0 ? 0.0 : -copysign(shadow_law(fabs(py) / W, delay), py);
     const double rel_scale = get(b, e, "shadow_rel_scale", 1.0);
-    const double along = -get(b, e, "shadow_offset_along_axis", 0.0);
-    const double across = get(b, e, "shadow_offset_off_axis", 0.0);
+    // (use element: the offsets along and off the axis turned a half turn for an element
+    // behind the pivot: away from it on the element's side; Island of Fantasy's ring at center
+    // -0.245, -1, with and without an offset off the axis)
+    // (use hotspot: never; turned there, Island's ring x5 to x26)
+    const double side = use_element && px * -ax + py * -ay < 0.0 ? -1.0 : 1.0;
+    const double along = -side * get(b, e, "shadow_offset_along_axis", 0.0);
+    const double across = side * get(b, e, "shadow_offset_off_axis", 0.0);
     b->as_shadow = 1;
     b->shadow_r = R * rel_scale + 1.1 * rel_scale;
     const double rx = row[GLARE_REL_X] > 0 ? row[GLARE_REL_X] : 1.0;
