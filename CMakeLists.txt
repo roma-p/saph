@@ -349,7 +349,7 @@ if(MILLSAPH_EDITOR)
   set(GLFW_BUILD_WAYLAND OFF CACHE BOOL "" FORCE)
   add_subdirectory(${third_party}/glfw ${CMAKE_BINARY_DIR}/glfw EXCLUDE_FROM_ALL)
   set(imgui ${third_party}/imgui)
-  add_executable(millsaph_lens_editor src/editor/main.cpp src/editor/lens.cpp src/editor/preview.cpp
+  add_executable(millsaph_lens_editor src/editor/main.cpp src/editor/lens.cpp src/editor/gradient.cpp src/editor/preview.cpp
     ${imgui}/imgui.cpp ${imgui}/imgui_draw.cpp ${imgui}/imgui_tables.cpp ${imgui}/imgui_widgets.cpp
     ${imgui}/backends/imgui_impl_glfw.cpp ${imgui}/backends/imgui_impl_opengl3.cpp)
   set_target_properties(millsaph_lens_editor PROPERTIES CXX_STANDARD 17

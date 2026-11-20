@@ -12,6 +12,7 @@ struct PreviewSettings {
     double pivot[2] = {0.5, 0.5};
     double scale_widths = 0.21; // MS_LensFlare's, a fraction of the width
     double brightness = 1.0;
+    double gamma = 1.0; // the preview's display gamma (the lens unchanged)
     int background = 0; // 0: black, 1: grey, 2: a dusk gradient
 };
 

@@ -85,14 +85,15 @@ bool Preview::render(const std::string &text, const PreviewSettings &s, int widt
         return false;
     }
     api_ = ms_api_name(info.api);
-    // to 8 bits (gamma 2.2), top row first
+    // to 8 bits (gamma 2.2 x the preview's), top row first
+    const float g = 1.0f / (2.2f * (float)std::fmax(s.gamma, 0.05));
     rgba.resize((size_t)width * height * 4);
     for (int y = 0; y < height; ++y)
         for (int x = 0; x < width; ++x) {
             const float *p = &output_[((size_t)(height - 1 - y) * width + x) * 4];
             uint8_t *q = &rgba[((size_t)y * width + x) * 4];
             for (int c = 0; c < 3; ++c) {
-                const float v = p[c] > 0 ? std::pow(std::fmin(p[c], 1.0f), 1.0f / 2.2f) : 0.0f;
+                const float v = p[c] > 0 ? std::pow(std::fmin(p[c], 1.0f), g) : 0.0f;
                 q[c] = (uint8_t)(v * 255.0f + 0.5f);
             }
             q[3] = 255;
