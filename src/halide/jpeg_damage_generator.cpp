@@ -137,9 +137,8 @@ Blocks blocks(const std::string &name, Func plane, Func steps, Func decoder, Fun
     Expr f = b.coef(u, v, bx, by), q8 = steps(u, v) * 8;
     Expr mag = (cast<int>(abs(f)) + (q8 >> 1)) / q8;
     b.quant(u, v, bx, by) = select(f < 0, -mag, mag);
-    Expr scaled = cast<int>(clamp(floor(cast<float>(b.quant(u, v, bx, by)) * decoder(u, v) + 0.5f),
-                                  -262144.0f, 262144.0f));
-    b.deq(u, v, bx, by) = clamp(scaled + error(u, v, bx, by), -(1 << 18), 1 << 18);
+    // (in 32-bit integers, wrapping as the library's: no limit)
+    b.deq(u, v, bx, by) = b.quant(u, v, bx, by) * decoder(u, v) + error(u, v, bx, by);
     // the inverse DCT: columns (u), then rows (k)
     std::vector<Expr> in(8);
     for (int i = 0; i < 8; ++i)
@@ -227,8 +226,8 @@ class JpegDamage : public Generator<JpegDamage> {
         Func step_l("step_l"), step_c("step_c"), dec_l("dec_l"), dec_c("dec_c");
         step_l(u, v) = cast<int>(steps(u, v, 0));
         step_c(u, v) = cast<int>(steps(u, v, 1));
-        dec_l(u, v) = decoder(u, v, 0);
-        dec_c(u, v) = decoder(u, v, 1);
+        dec_l(u, v) = cast<int>(decoder(u, v, 0));
+        dec_c(u, v) = cast<int>(decoder(u, v, 1));
         // The errors of plane p's block (bx, by): its unit (macroblock column, band) damaged or
         // not, then each coefficient.
         Expr units = w16 / 16, bands = (hp + 31) / 32;

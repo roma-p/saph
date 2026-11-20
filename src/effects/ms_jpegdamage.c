@@ -3,7 +3,9 @@
 // way, in integers).
 //   - Quality q: the library's quality 100 q, its standard tables scaled by it (5000 / Q under
 //     50, else 200 - 2 Q, in percent), steps from 1 to 32767 (not limited to 255)
-//   - the Frequency settings scale the dequantised coefficients (the decoder's steps): All
+//   - the Frequency settings scale the dequantised coefficients (the decoder's steps: the
+//     step x the gain truncated, kept in 16 bits (modulo 65536, as a 16-bit table); the
+//     products in 32-bit integers, unlimited): All
 //     every one but the mean; X those across (any horizontal frequency u: by the setting
 //     below 1, by 1 + (s - 1) (u - v) / u above), Y the same down; Low, Mid, High by
 //     max(u, v): 0-1 low, 2 half low half mid, 3-4 mid, 5 half mid half high, 6-7 high;
@@ -241,7 +243,7 @@ static void tables(const double *v, float steps[8][8][2], float decoder[8][8][2]
                 if (u == 0 && vv == 0)
                     gain = 1.0;
                 steps[vv][u][t] = (float)s;
-                decoder[vv][u][t] = (float)(s * gain);
+                decoder[vv][u][t] = (float)fmod(floor(s * gain), 65536.0);
             }
 }
 
