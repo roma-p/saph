@@ -45,7 +45,7 @@ it in its "Runs on" line.
 
 GPU versions: BandPass (large blurs at the same cost as small ones); EdgeAwareBlur Sharp,
 Softer and Soft, with their Edge Smooth (Soft where the profile says so: on an M1 Pro its
-CPU is faster); Distort (its Enable GPU off forces the CPU); Mosaic, with its Smooth Colors; Glow; EdgeBlur; RackDefocus (a convolution by FFT); Glint; Glare (its style's elements, then a convolution by FFT); LensFlare (its lens's elements drawn along the flare's axis, textured by the lens's own images or by MillSaph's generated ones (an element's "image": {"generate": "dirt", "glint", "ramp" or "iris", "seed", "amount", "scale", "detail", "sides", "texels"}: generated on the CPU before the rest), its Preset menu (MillSaph's own lenses, presets/lensflare, written by tools/presets/make_lensflare_presets.py and compiled in), its Edit Lens button (MillSaph's lens editor, src/editor: millsaph_lens_editor, built into the bundle next to the plugin with Dear ImGui and GLFW (MILLSAPH_EDITOR), run and waited for; what it applies becomes the Lens text; OFX hosts for now), its viewer overlay (the axis from the hotspot to the pivot; handles of its own where the host has none for them; ofx/overlay.c, the host's Draw Suite or OpenGL), its Atmosphere and Diffraction Glow; its Atmosphere changes over time, so the hosts render every frame). EdgeAwareBlur without blur, or
+CPU is faster); Distort (its Enable GPU off forces the CPU); Mosaic, with its Smooth Colors; Glow; EdgeBlur; RackDefocus (a convolution by FFT); Glint; Glare (its style's elements, then a convolution by FFT); LensFlare (its lens's elements drawn along the flare's axis, textured by the lens's own images or by MillSaph's generated ones (an element's "image": {"generate": "dirt", "glint", "ramp" or "iris", "seed", "amount", "scale", "detail", "sides", "texels"}: generated on the CPU before the rest), its Preset menu (MillSaph's own lenses, presets/lensflare, written by tools/presets/make_lensflare_presets.py and compiled in), its Edit Lens button (MillSaph's lens editor, src/editor: millsaph_lens_editor, built into the bundle next to the plugin with Dear ImGui and GLFW (MILLSAPH_EDITOR), run and waited for; what it applies becomes the Lens text; OFX hosts for now), its viewer overlay (Scale Widths and Rel Heights round the hotspot, the hotspot and the pivot, dragged), its Atmosphere and Diffraction Glow; its Atmosphere changes over time, so the hosts render every frame). EdgeAwareBlur without blur, or
 with an Edge Threshold of 0, tells the host that it leaves the Source as it is: the host
 skips it, and so does Mosaic with a Mix With Source of 1, and Glow without glow (Brightness
 or Color 0) in Add, Screen or Difference, and EdgeBlur without blur (Blur Width under a pixel,
@@ -56,6 +56,13 @@ over the whole Source. The GPU memory of a render's images is kept for the
 next renders, up to 1/16 of the machine's memory (at most 2 GB). Which version is faster
 depends on the GPU: `src/effects/profile.c` holds those choices per API (measured on an M1
 Pro; `tools/perf/` measures them on another machine).
+
+Viewer overlays (OFX hosts; src/ofx/overlay.c, the host's Draw Suite or OpenGL, each effect's
+shapes in its MsEffect.overlay): the widths of BandPass, EdgeAwareBlur, EdgeBlur, Glow,
+RackDefocus and Glare as circles round the frame's middle, with arrows for their relative
+width and height; Glint's rays and sizes; LensFlare's Scale Widths round the hotspot, the
+hotspot and the pivot; FlickerMatch's rectangle. The shape under the pen is lit (yellow);
+dragging it edits the parameters it is drawn from. Each has its Show checkbox.
 
 Images: RGBA in 32-bit or 16-bit floats, whichever the host works in (a 16-bit project stays
 16-bit); the effects compute in 32-bit floats, the 16-bit images converted on the GPU (less to
