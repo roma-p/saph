@@ -76,7 +76,8 @@ enum {
     UNDER_SOURCE,
     SOURCE_OPACITY,
     INVERT_MASK,
-    MASK_TYPE
+    MASK_TYPE,
+    SHOW_SIZE,
 };
 static const MsParam params[] = {
     [STYLE] = {.type = MS_PARAM_STRING,
@@ -175,6 +176,7 @@ static const MsParam params[] = {
                            "channel.",
                    .entries = mask_type_entries,
                    .entry_count = ARRAY_SIZE(mask_type_entries)},
+    MS_SHOW(SHOW_SIZE, "ShowSize", "Show Size"),
 };
 
 // One render: images and settings of the kernels.
@@ -391,6 +393,20 @@ static int identity(const double *v, const int *connected) {
     return no_glare && v[SOURCE_OPACITY] == 1.0;
 }
 
+// The viewer: the Size and the Rel Height (the arrow).
+static const MsOverlay overlay[] = {
+    {.kind = MS_OVERLAY_ELLIPSE,
+     .colour = MS_OVERLAY_ORANGE,
+     .show = "ShowSize",
+     .size = "size",
+     .rel_y = "rel_height"},
+    {.kind = MS_OVERLAY_ARROW_Y,
+     .colour = MS_OVERLAY_ORANGE,
+     .show = "ShowSize",
+     .size = "size",
+     .rel_y = "rel_height"},
+};
+
 const MsEffect ms_glare_effect = {
     MS_ID("Glare"),
     "MS_Glare",
@@ -403,7 +419,8 @@ const MsEffect ms_glare_effect = {
     identity,
     0,
     NULL,
-    {NULL, NULL},
+    overlay,
+    ARRAY_SIZE(overlay),
     "glare", // presets (common/preset.h)
     NULL, // not varying with its settings
 };

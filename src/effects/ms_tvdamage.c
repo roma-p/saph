@@ -579,7 +579,8 @@ const MsEffect ms_tvdamage_effect = {
     NULL,
     1,
     NULL,
-    {NULL, NULL},
+    NULL,
+    0,
     "tvdamage", // presets (common/preset.h)
     NULL, // not varying with its settings
 };

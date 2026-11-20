@@ -9,6 +9,7 @@ const OfxImageEffectSuiteV1 *ms_effect;
 const OfxParameterSuiteV1 *ms_param;
 const OfxMessageSuiteV1 *ms_message;
 const OfxDrawSuiteV1 *ms_draw;
+const OfxInteractSuiteV1 *ms_interact;
 
 static int loaded_count;
 
@@ -22,6 +23,7 @@ OfxStatus ms_load(void) {
     ms_param = ofx_host->fetchSuite(ofx_host->host, kOfxParameterSuite, 1);
     ms_message = ofx_host->fetchSuite(ofx_host->host, kOfxMessageSuite, 1); // optional
     ms_draw = ofx_host->fetchSuite(ofx_host->host, kOfxDrawSuite, 1);       // optional
+    ms_interact = ofx_host->fetchSuite(ofx_host->host, kOfxInteractSuite, 1); // optional
     if (!ms_prop || !ms_effect || !ms_param)
         return kOfxStatErrMissingHostFeature;
     ++loaded_count;

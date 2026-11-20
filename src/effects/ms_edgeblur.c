@@ -25,7 +25,16 @@ enum { SOURCE, MATTE };
 static const char *const show_entries[] = {"Result", "Edges"};
 static const char *const matte_entries[] = {"Luma", "Alpha"};
 
-enum { BLUR_WIDTH, EDGE_WIDTH, EDGE_STRENGTH, EDGE_THRESHOLD, SHOW, SUBPIXEL, MATTE_USE };
+enum {
+    BLUR_WIDTH,
+    EDGE_WIDTH,
+    EDGE_STRENGTH,
+    EDGE_THRESHOLD,
+    SHOW,
+    SUBPIXEL,
+    MATTE_USE,
+    SHOW_BLUR_WIDTH,
+};
 static const MsParam params[] = {
     [BLUR_WIDTH] = {.type = MS_PARAM_WIDTH,
                     .name = "blur_width",
@@ -75,6 +84,7 @@ static const MsParam params[] = {
                    .hint = "The edges of the Matte's luma or of its alpha.",
                    .entries = matte_entries,
                    .entry_count = ARRAY_SIZE(matte_entries)},
+    MS_SHOW(SHOW_BLUR_WIDTH, "ShowBlurWidth", "Show Blur Width"),
 };
 
 // One render: images and settings of the kernels (src/halide/edge_blur_generator.cpp).
@@ -155,6 +165,15 @@ static int identity(const double *v, const int *connected) {
     return (int)v[SHOW] == 0 && (no_blur || v[EDGE_STRENGTH] == 0.0);
 }
 
+// The viewer: the Blur Width (a circle of 4 x it).
+static const MsOverlay overlay[] = {
+    {.kind = MS_OVERLAY_ELLIPSE,
+     .colour = MS_OVERLAY_ORANGE,
+     .show = "ShowBlurWidth",
+     .size = "blur_width",
+     .factor = 4.0},
+};
+
 const MsEffect ms_edgeblur_effect = {
     MS_ID("EdgeBlur"),
     "MS_EdgeBlur",
@@ -167,7 +186,8 @@ const MsEffect ms_edgeblur_effect = {
     identity,
     0,
     NULL,
-    {NULL, NULL},
+    overlay,
+    ARRAY_SIZE(overlay),
     "edgeblur", // presets (common/preset.h)
     NULL, // not varying with its settings
 };

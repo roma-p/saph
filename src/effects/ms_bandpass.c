@@ -35,7 +35,9 @@ enum {
     OFFSET_DARKS,
     MASK_USE,
     BLUR_MASK,
-    INVERT_MASK
+    INVERT_MASK,
+    SHOW_BLUR_AMOUNT1,
+    SHOW_BLUR_AMOUNT2,
 };
 static const MsParam params[] = {
     [BLUR1] = {.type = MS_PARAM_WIDTH,
@@ -99,6 +101,8 @@ static const MsParam params[] = {
                    .max = MS_UNBOUNDED,
                    .display_max = 0.5},
     [INVERT_MASK] = MS_PARAM_INVERT_MASK("Use the black areas of the Mask."),
+    MS_SHOW(SHOW_BLUR_AMOUNT1, "ShowBlurAmount1", "Show Blur Amount1"),
+    MS_SHOW(SHOW_BLUR_AMOUNT2, "ShowBlurAmount2", "Show Blur Amount2"),
 };
 
 // One render: images and settings of the kernels (src/halide/bandpass_generator.cpp,
@@ -168,6 +172,34 @@ static int render(const MsRender *r) {
     return ok;
 }
 
+// The viewer: Blur Amount1 (red), Blur Amount2 (green) and Blur Rel X and Y (its arrows).
+static const MsOverlay overlay[] = {
+    {.kind = MS_OVERLAY_ELLIPSE,
+     .colour = MS_OVERLAY_RED,
+     .show = "ShowBlurAmount1",
+     .size = "blur_amount1",
+     .rel_x = "blur_rel_x",
+     .rel_y = "blur_rel_y"},
+    {.kind = MS_OVERLAY_ELLIPSE,
+     .colour = MS_OVERLAY_GREEN,
+     .show = "ShowBlurAmount2",
+     .size = "blur_amount2",
+     .rel_x = "blur_rel_x",
+     .rel_y = "blur_rel_y"},
+    {.kind = MS_OVERLAY_ARROW_X,
+     .colour = MS_OVERLAY_GREEN,
+     .show = "ShowBlurAmount2",
+     .size = "blur_amount2",
+     .rel_x = "blur_rel_x",
+     .rel_y = "blur_rel_y"},
+    {.kind = MS_OVERLAY_ARROW_Y,
+     .colour = MS_OVERLAY_GREEN,
+     .show = "ShowBlurAmount2",
+     .size = "blur_amount2",
+     .rel_x = "blur_rel_x",
+     .rel_y = "blur_rel_y"},
+};
+
 const MsEffect ms_bandpass_effect = {
     MS_ID("BandPass"),
     "MS_BandPass",
@@ -180,7 +212,8 @@ const MsEffect ms_bandpass_effect = {
     NULL,
     0,
     NULL,
-    {NULL, NULL},
+    overlay,
+    ARRAY_SIZE(overlay),
     "bandpass", // presets (common/preset.h)
     NULL, // not varying with its settings
 };

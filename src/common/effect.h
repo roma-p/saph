@@ -163,6 +163,42 @@ typedef struct MsRender {
     void *caller;
 } MsRender;
 
+// One shape of an effect's viewer overlay (MsEffect.overlay), and what dragging it edits.
+// Parameters are named; NULL leaves one out. Lengths are pixels of the frame. A shape is
+// drawn around its centre: the POINT `point` (with `point2`: halfway between the two), or
+// the middle of the Source's frame without one. Its length r = factor x size x scale
+// (factor 0: 1, scale NULL: 1); rel_x and rel_y stretch it across and up.
+typedef enum {
+    // An ellipse, radii r x rel_x and r x rel_y. Drags `scale` (else `size`): the ellipse
+    // follows the pen.
+    MS_OVERLAY_ELLIPSE,
+    // A double arrow (a fixed size on the screen) across the ellipse's right end: drags
+    // rel_x (the arrow follows the pen).
+    MS_OVERLAY_ARROW_X,
+    MS_OVERLAY_ARROW_Y, // the same on its top end: drags rel_y
+    // A line through the centre, from -r x dir to r x dir: drags `scale` (else `size`), its
+    // end follows the pen.
+    MS_OVERLAY_RAY,
+    MS_OVERLAY_DOT, // a dot on the centre, not dragged
+    // A circle with a cross (a fixed size on the screen): drags the centre (`point`, and
+    // `point2` with it).
+    MS_OVERLAY_CROSSHAIR,
+    MS_OVERLAY_SUN, // eight short rays round the centre (fixed size): drags it as CROSSHAIR
+    // The rectangle with corners `point` and `point2`: its corners and its sides drag the
+    // coordinates of the points they are made of.
+    MS_OVERLAY_RECT,
+} MsOverlayKind;
+
+typedef struct {
+    MsOverlayKind kind;
+    float colour[3];
+    const char *show; // a BOOL parameter that hides the shape when off
+    const char *point, *point2;
+    const char *size, *scale, *rel_x, *rel_y;
+    double factor;
+    double dir[2]; // RAY: its direction (from the centre to the end where r = 1)
+} MsOverlay;
+
 typedef struct {
     const char *id;    // MS_ID("Name")
     const char *label; // name shown in the host's menus
@@ -180,9 +216,10 @@ typedef struct {
     int frame_varying;
     // Optional: frees what the effect keeps from render to render (the plugin is unloaded).
     void (*release)(void);
-    // Optional: a viewer overlay, a line between these two POINT parameters (the hosts' own
-    // handles for them where they have some, else the overlay's).
-    const char *overlay[2];
+    // Optional: a viewer overlay, its shapes in drawing order (the hosts' own handles of
+    // the POINT parameters are then off: the overlay draws and drags them).
+    const MsOverlay *overlay;
+    int overlay_count;
     // Optional: the folder of the effect's presets (common/preset.h); the hosts then show a
     // Load Preset button.
     const char *presets;
@@ -190,6 +227,21 @@ typedef struct {
     // MsRender.values; frame_varying: always). The hosts ask again when a parameter changes.
     int (*varying)(const double *values);
 } MsEffect;
+
+// Shape colours of the viewer overlays.
+#define MS_OVERLAY_ORANGE {0.9f, 0.4f, 0.1f}
+#define MS_OVERLAY_WHITE {1.0f, 1.0f, 1.0f}
+#define MS_OVERLAY_RED {1.0f, 0.0f, 0.0f}
+#define MS_OVERLAY_GREEN {0.1f, 0.9f, 0.0f}
+#define MS_OVERLAY_BLUE {0.4f, 0.4f, 1.0f}
+
+// A "show" checkbox of an overlay's shapes (on by default), as a table entry.
+#define MS_SHOW(id, n, l)                                                                          \
+    [id] = {.type = MS_PARAM_BOOL,                                                                 \
+            .name = (n),                                                                           \
+            .label = (l),                                                                          \
+            .hint = "Draws its controls in the viewer.",                                           \
+            .def = 1.0}
 
 // Every effect, in menu order (see effects/effects.c).
 extern const MsEffect *const ms_effects[];

@@ -39,7 +39,7 @@ static OfxStatus describe(const MsEffect *e, OfxImageEffectHandle effect) {
     ms_prop->propSetInt(props, kOfxImageEffectPropSupportsMultipleClipDepths, 0, 0);
 
     // A viewer overlay (ofx/overlay.c)
-    if (e->overlay[0] && e->overlay[1])
+    if (e->overlay && e->overlay_count > 0)
         for (int i = 0; i < ms_effect_count && i < MAX_EFFECTS; ++i)
             if (ms_effects[i] == e)
                 ms_prop->propSetPointer(props, kOfxImageEffectPluginPropOverlayInteractV1, 0,
@@ -60,7 +60,8 @@ static OfxStatus describe(const MsEffect *e, OfxImageEffectHandle effect) {
     return kOfxStatOK;
 }
 
-static void define_param(OfxParamSetHandle params, const MsParam *p) {
+// host_handle: the host draws POINT parameters' handles (not when the effect's overlay does).
+static void define_param(OfxParamSetHandle params, const MsParam *p, int host_handle) {
     static const char *const types[] = {
         [MS_PARAM_DOUBLE] = kOfxParamTypeDouble, [MS_PARAM_WIDTH] = kOfxParamTypeDouble,
         [MS_PARAM_HEIGHT] = kOfxParamTypeDouble, [MS_PARAM_ANGLE] = kOfxParamTypeDouble,
@@ -94,9 +95,9 @@ static void define_param(OfxParamSetHandle params, const MsParam *p) {
     case MS_PARAM_RGB_PART:
     case MS_PARAM_POINT_Y:
         return;
-    case MS_PARAM_POINT: // absolute, its default in fractions of the frame; the host's handle
+    case MS_PARAM_POINT: // absolute, its default in fractions of the frame
         ms_prop->propSetString(props, kOfxParamPropDoubleType, 0, kOfxParamDoubleTypeXYAbsolute);
-        ms_prop->propSetInt(props, kOfxParamPropUseHostOverlayHandle, 0, 1);
+        ms_prop->propSetInt(props, kOfxParamPropUseHostOverlayHandle, 0, host_handle);
         ms_prop->propSetString(props, kOfxParamPropDefaultCoordinateSystem, 0,
                                kOfxParamCoordinatesNormalised);
         ms_prop->propSetDouble(props, kOfxParamPropDefault, 0, p[0].def);
@@ -149,10 +150,10 @@ static OfxStatus describe_in_context(const MsEffect *e, OfxImageEffectHandle eff
                                      .name = MS_LOAD_PRESET,
                                      .label = "Load Preset",
                                      .hint = "Picks one of the effect's presets in a window."};
-        define_param(params, &load);
+        define_param(params, &load, 1);
     }
     for (int i = 0; i < e->param_count; ++i)
-        define_param(params, &e->params[i]);
+        define_param(params, &e->params[i], !(e->overlay && e->overlay_count > 0));
     return kOfxStatOK;
 }
 

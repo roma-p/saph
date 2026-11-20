@@ -65,7 +65,8 @@ enum {
     EDGE_MODE,
     MASK_USE,
     BLUR_MASK,
-    INVERT_MASK
+    INVERT_MASK,
+    SHOW_DEFOCUS_WIDTH,
 };
 static const MsParam params[] = {
     [MODE] = {.type = MS_PARAM_CHOICE,
@@ -237,6 +238,7 @@ static const MsParam params[] = {
                    .max = MS_UNBOUNDED,
                    .display_max = 0.5},
     [INVERT_MASK] = MS_PARAM_INVERT_MASK("Use the black areas of the Mask."),
+    MS_SHOW(SHOW_DEFOCUS_WIDTH, "ShowDefocusWidth", "Show Defocus Width"),
 };
 
 // One render: images and settings of the kernels.
@@ -406,6 +408,20 @@ static int identity(const double *v, const int *connected) {
            (no_lens && (int)v[MODE] == 0 && v[BRIGHTNESS] == 1.0 && v[OFFSET_DARKS] == 0.0);
 }
 
+// The viewer: the Defocus Width and the Rel Height (the arrow).
+static const MsOverlay overlay[] = {
+    {.kind = MS_OVERLAY_ELLIPSE,
+     .colour = MS_OVERLAY_ORANGE,
+     .show = "ShowDefocusWidth",
+     .size = "defocus_width",
+     .rel_y = "rel_height"},
+    {.kind = MS_OVERLAY_ARROW_Y,
+     .colour = MS_OVERLAY_ORANGE,
+     .show = "ShowDefocusWidth",
+     .size = "defocus_width",
+     .rel_y = "rel_height"},
+};
+
 const MsEffect ms_rackdefocus_effect = {
     MS_ID("RackDefocus"),
     "MS_RackDefocus",
@@ -418,7 +434,8 @@ const MsEffect ms_rackdefocus_effect = {
     identity,
     0,
     NULL,
-    {NULL, NULL},
+    overlay,
+    ARRAY_SIZE(overlay),
     "rackdefocus", // presets (common/preset.h)
     NULL,          // not varying with its settings
 };

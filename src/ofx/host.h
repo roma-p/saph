@@ -5,6 +5,7 @@
 #include "ofxCore.h"
 #include "ofxDrawSuite.h"
 #include "ofxImageEffect.h"
+#include "ofxInteract.h"
 #include "ofxMessage.h"
 #include "ofxParam.h"
 #include "ofxProperty.h"
@@ -30,6 +31,7 @@ extern const OfxImageEffectSuiteV1 *ms_effect;
 extern const OfxParameterSuiteV1 *ms_param;
 extern const OfxMessageSuiteV1 *ms_message;
 extern const OfxDrawSuiteV1 *ms_draw; // optional (overlays: else OpenGL)
+extern const OfxInteractSuiteV1 *ms_interact; // optional (overlays: redraws on hover)
 
 // The overlay of effect e (ofx/overlay.c; MsEffect.overlay): the interact's main entry.
 OfxStatus ms_overlay_main(const MsEffect *e, const char *action, const void *handle,

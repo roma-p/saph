@@ -83,7 +83,8 @@ const MsEffect ms_test_effect = {
     NULL,
     0,
     NULL,
-    {NULL, NULL},
+    NULL,
+    0,
     NULL, // no presets
     NULL, // not varying with its settings
 };
