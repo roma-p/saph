@@ -771,7 +771,10 @@ static int build_rows(const MsRender *r, const char *lens, MsJson *nodes, int ma
         MsGlareGlobals g;
         lens_globals(vk, r->frame_width, r->frame_height, &g);
         MsLensTextures again = {.count = 0}; // (the same as the frame's)
-        const int n = ms_glare_style(lens, nodes, max_nodes, &g, rows + count, GLARE_MAX_ELEMENTS,
+        // (the rows left shared by the samples left: a lens's elements and their shadows' rows,
+        // more than GLARE_MAX_ELEMENTS without the motion blur, Laser Web's 260 + 252)
+        const int room = (GLARE_MAX_ROWS - count) / (k + 1);
+        const int n = ms_glare_style(lens, nodes, max_nodes, &g, rows + count, room,
                                      k == 0 ? textures : &again);
         if (n < 0)
             return -1;
