@@ -108,9 +108,11 @@ void ms_lens_place(const GlareBuilder *b, int e, float *row, double *size_k, dou
     const double by_width = by_dist(b, e, swd, d, "width_scale_inverted", "min_width_scale");
     *size_k = by_width * shrink * (at_hotspot ? 1.0 : g->other_width) * triggers_width;
     row[GLARE_TURNED_FRAME] = 1.0f;
-    // stretch_distort d: d |log2 stretch|^1.46 (none without a stretch; ms_glare::element_value)
-    row[GLARE_DISTORT] = (float)(get(b, e, "stretch_distort", 0.0) *
-                                 pow(fabs(log2(fmax(get(b, e, "stretch", 1.0), 1e-6))), 1.46));
+    // stretch_distort d: d |log2 stretch|^1.46 (none without a stretch; ms_glare::element_value),
+    // at most 1 (the reference's saturates: d 0.183 and 0.5 the same at stretch 8 and 16; the
+    // cap fitted at 2-16, 0.6 to 1.5)
+    row[GLARE_DISTORT] = (float)(fmin(get(b, e, "stretch_distort", 0.0) *
+                                 pow(fabs(log2(fmax(get(b, e, "stretch", 1.0), 1e-6))), 1.46), 1.0));
     row[GLARE_ATMOSPHERE] = (float)(get(b, e, "ignore_atmosphere", 0.0) == 0.0);
     for (int k = 0; k < 3; ++k)
         gain[k] = by_bright * (at_hotspot ? g->hot_gain[k] : g->other_gain[k]) *
