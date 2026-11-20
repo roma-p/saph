@@ -277,5 +277,6 @@ const MsEffect ms_glow_effect = {
     identity,
     0,
     NULL,
-    {NULL, NULL},
+    NULL,
+    0,
 };

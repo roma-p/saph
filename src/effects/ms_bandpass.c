@@ -180,5 +180,6 @@ const MsEffect ms_bandpass_effect = {
     NULL,
     0,
     NULL,
-    {NULL, NULL},
+    NULL,
+    0,
 };

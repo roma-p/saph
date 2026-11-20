@@ -465,5 +465,6 @@ const MsEffect ms_edgeawareblur_effect = {
     identity,
     0,
     NULL,
-    {NULL, NULL},
+    NULL,
+    0,
 };

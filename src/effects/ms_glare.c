@@ -403,5 +403,6 @@ const MsEffect ms_glare_effect = {
     identity,
     0,
     NULL,
-    {NULL, NULL},
+    NULL,
+    0,
 };

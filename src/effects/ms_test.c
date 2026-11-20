@@ -83,5 +83,6 @@ const MsEffect ms_test_effect = {
     NULL,
     0,
     NULL,
-    {NULL, NULL},
+    NULL,
+    0,
 };

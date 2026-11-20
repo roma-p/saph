@@ -306,5 +306,6 @@ const MsEffect ms_jpegdamage_effect = {
     NULL,
     1, // the errors change over time (Jitter Frames)
     NULL,
-    {NULL, NULL},
+    NULL,
+    0,
 };

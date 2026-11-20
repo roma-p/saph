@@ -460,5 +460,6 @@ const MsEffect ms_pixelsort_effect = {
     identity,
     0,
     NULL,
-    {NULL, NULL},
+    NULL,
+    0,
 };

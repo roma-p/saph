@@ -137,7 +137,10 @@ enum {
     FLICKER_SPEED,
     FLICKER_RANDOMNESS,
     ENABLE_MOTION_BLUR,
-    SHUTTER_ANGLE
+    SHUTTER_ANGLE,
+    SHOW_SCALE_WIDTHS,
+    SHOW_HOTSPOT,
+    SHOW_PIVOT,
 };
 #define FALLOFF(id, n, l, h)                                                                       \
     [id] = {.type = MS_PARAM_DOUBLE,                                                               \
@@ -399,6 +402,9 @@ static const MsParam params[] = {
                        .min = 0.0,
                        .max = 360.0,
                        .display_max = 360.0},
+    MS_SHOW(SHOW_SCALE_WIDTHS, "ShowScaleWidths", "Show Scale Widths"),
+    MS_SHOW(SHOW_HOTSPOT, "ShowHotspot", "Show Hotspot"),
+    MS_SHOW(SHOW_PIVOT, "ShowPivot", "Show Pivot"),
 };
 
 // The Motion Blur's samples: about one every this many pixels of travel, at most this many.
@@ -968,6 +974,33 @@ static int identity(const double *v, const int *connected) {
     return no_flare && v[BG_BRIGHTNESS] == 1.0 && (int)v[COMBINE] != 2;
 }
 
+// The viewer: round the Hotspot the Scale Widths (0.5125 x it) and the Rel Heights (the
+// arrow); the Pivot.
+static const MsOverlay overlay[] = {
+    {.kind = MS_OVERLAY_ELLIPSE,
+     .colour = MS_OVERLAY_ORANGE,
+     .show = "ShowScaleWidths",
+     .point = "hotspot",
+     .size = "scale_widths",
+     .rel_y = "rel_heights",
+     .factor = 0.5125},
+    {.kind = MS_OVERLAY_ARROW_Y,
+     .colour = MS_OVERLAY_ORANGE,
+     .show = "ShowScaleWidths",
+     .point = "hotspot",
+     .size = "scale_widths",
+     .rel_y = "rel_heights",
+     .factor = 0.5125},
+    {.kind = MS_OVERLAY_SUN,
+     .colour = MS_OVERLAY_ORANGE,
+     .show = "ShowHotspot",
+     .point = "hotspot"},
+    {.kind = MS_OVERLAY_CROSSHAIR,
+     .colour = MS_OVERLAY_ORANGE,
+     .show = "ShowPivot",
+     .point = "pivot"},
+};
+
 const MsEffect ms_lensflare_effect = {
     MS_ID("LensFlare"),
     "MS_LensFlare",
@@ -981,5 +1014,6 @@ const MsEffect ms_lensflare_effect = {
     identity,
     1, // the Atmosphere changes over time
     release,
-    {"hotspot", "pivot"}, // the axis in the viewer
+    overlay,
+    ARRAY_SIZE(overlay),
 };

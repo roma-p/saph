@@ -138,7 +138,8 @@ const MsEffect ms_flickermatch_effect = {
     identity,
     0,
     NULL,
-    {NULL, NULL},
+    NULL,
+    0,
 };
 
 const MsEffect ms_flickermatchcolor_effect = {
@@ -154,5 +155,6 @@ const MsEffect ms_flickermatchcolor_effect = {
     identity,
     0,
     NULL,
-    {NULL, NULL},
+    NULL,
+    0,
 };
