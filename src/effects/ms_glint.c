@@ -61,7 +61,8 @@ enum {
     SOURCE_OPACITY,
     INVERT_MASK,
     MASK_TYPE,
-    SWAP_DIAGONALS
+    SWAP_DIAGONALS,
+    SHOW_SIZE,
 };
 static const MsParam params[] = {
     MS_RELATIVE(BRIGHTNESS, "brightness", "Brightness", "Scales the brightness of all the rays.", 1.0),
@@ -152,6 +153,7 @@ static const MsParam params[] = {
                         .name = "swap_diagonals",
                         .label = "Swap Diagonals",
                         .hint = "Swaps the settings of the two diagonals."},
+    MS_SHOW(SHOW_SIZE, "ShowSize", "Show Size"),
 };
 
 // The kernel of each direction: x, y, up to the right, down to the right.
@@ -286,6 +288,56 @@ static int render(const MsRender *r) {
     return ok;
 }
 
+// The viewer: the rays both ways (x: Size x Size X; a diagonal's end Size x Size Diag away
+// on both axes), the Size (white, 0.9 x Size) and the colours' sizes.
+static const MsOverlay overlay[] = {
+    {.kind = MS_OVERLAY_RAY,
+     .colour = MS_OVERLAY_ORANGE,
+     .show = "ShowSize",
+     .size = "size",
+     .scale = "size_x",
+     .dir = {1, 0}},
+    {.kind = MS_OVERLAY_RAY,
+     .colour = MS_OVERLAY_ORANGE,
+     .show = "ShowSize",
+     .size = "size",
+     .scale = "size_y",
+     .dir = {0, 1}},
+    {.kind = MS_OVERLAY_RAY,
+     .colour = MS_OVERLAY_ORANGE,
+     .show = "ShowSize",
+     .size = "size",
+     .scale = "size_diag1",
+     .dir = {1, 1}},
+    {.kind = MS_OVERLAY_RAY,
+     .colour = MS_OVERLAY_ORANGE,
+     .show = "ShowSize",
+     .size = "size",
+     .scale = "size_diag2",
+     .dir = {-1, 1}},
+    {.kind = MS_OVERLAY_DOT, .colour = MS_OVERLAY_ORANGE, .show = "ShowSize"},
+    {.kind = MS_OVERLAY_ELLIPSE,
+     .colour = MS_OVERLAY_RED,
+     .show = "ShowSize",
+     .size = "size",
+     .scale = "size_red"},
+    {.kind = MS_OVERLAY_ELLIPSE,
+     .colour = MS_OVERLAY_WHITE,
+     .show = "ShowSize",
+     .size = "size",
+     .factor = 0.9},
+    {.kind = MS_OVERLAY_ELLIPSE,
+     .colour = MS_OVERLAY_GREEN,
+     .show = "ShowSize",
+     .size = "size",
+     .scale = "size_green"},
+    {.kind = MS_OVERLAY_ELLIPSE,
+     .colour = MS_OVERLAY_BLUE,
+     .show = "ShowSize",
+     .size = "size",
+     .scale = "size_blue"},
+};
+
 const MsEffect ms_glint_effect = {
     MS_ID("Glint"),
     "MS_Glint",
@@ -298,6 +350,6 @@ const MsEffect ms_glint_effect = {
     NULL,
     0,
     NULL,
-    NULL,
-    0,
+    overlay,
+    ARRAY_SIZE(overlay),
 };
