@@ -188,20 +188,28 @@ void ms_lens_polar_noises(const GlareBuilder *b, int e, float *row) {
     }
     if (get(b, e, "noise_brightness", 0.0) != 0.0) {
         // noise_brightness: x it x MillSaph's noise around the element (as the radius
-        // noise's: 0.5 + 0.4 x perlin, sd 0.1, fitted on the reference's means over 7
-        // widths and softnesses), thresholded by noise_width and noise_softness as the
-        // waves, averaged over blur_theta_map x a turn
+        // noise's: 0.5 + 0.4 x perlin, sd 0.1), thresholded by noise_width and
+        // noise_softness as the waves, averaged over blur_theta_map x a turn. The reference's
+        // noise is that narrow with noise_boil_speed (0.3 and up), twice as wide and about 0.04
+        // lower without it (hard thresholds at 5 widths x 6 frequencies, 5 to 1200; 6 seeds at
+        // 3, 20 and 120), between the two as exp(-speed / 0.157) (0 to 0.5): the scale 0.4 +
+        // 0.4 k, the mean 0.5 - 0.04 k at one octave (as a narrower width: the same threshold),
+        // k that factor; with more octaves, as much narrower as ours, its mean 0.5.
         const int octaves = (int)fmin(fmax(get(b, e, "noise_octaves", 1.0), 1.0), 8.0);
         double total = 0.0;
         for (int k = 0; k < octaves; ++k)
             total += pow(0.43, k);
+        const double still = exp(-fabs(get(b, e, "noise_boil_speed", 0.0)) / 0.157);
+        const double width = get(b, e, "noise_width", 0.3);
+        const double soft = fmax(get(b, e, "noise_softness", 1.0), 0.0);
         row[GLARE_NB] = (float)get(b, e, "noise_brightness", 0.0);
-        row[GLARE_NB_WIDTH] = (float)get(b, e, "noise_width", 0.3);
+        const double lower = octaves > 1 ? 0.0 : 0.04 * still;
+        row[GLARE_NB_WIDTH] = (float)(width >= 1.0 ? width : width - lower / (soft + 1.0));
         row[GLARE_NB_SOFT] = (float)get(b, e, "noise_softness", 1.0);
         row[GLARE_NB_RHO] = (float)(0.529 * pow(fmax(get(b, e, "noise_freq", 120.0), 0.0), 0.785));
         row[GLARE_NB_SEED] = (float)(0.7 + 37.1 * get(b, e, "rand_seed", 0.0));
         row[GLARE_NB_OCTAVES] = (float)octaves;
-        row[GLARE_NB_SCALE] = (float)(0.4 / total);
+        row[GLARE_NB_SCALE] = (float)((0.4 + 0.4 * still) / total);
         row[GLARE_NB_BLUR] = (float)fmin(fmax(get(b, e, "blur_theta_map", 0.0), 0.0), 1.0);
     }
 }
