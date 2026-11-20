@@ -215,7 +215,7 @@ ms_kernel(lensflare_texture GENERATOR ms_lensflare_texture CPU)
 # The effects that convolve by FFT (src/effects/fft.c): one stage of a transform.
 ms_kernel(fft_stage GENERATOR ms_fft_stage CPU GPU)
 # MS_RackDefocus: the lens and the Source transformed, multiplied, transformed back.
-foreach(name rack_defocus_prepare rack_defocus_kernel rack_defocus_multiply rack_defocus_finish
+foreach(name rack_defocus_prepare rack_defocus_soften rack_defocus_kernel rack_defocus_multiply rack_defocus_finish
              rack_defocus_show)
   ms_kernel(${name} GENERATOR ms_${name} CPU GPU)
 endforeach()

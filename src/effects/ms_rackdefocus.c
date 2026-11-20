@@ -1,13 +1,16 @@
 // MS_RackDefocus: a lens blur (src/halide/rack_defocus_generator.cpp), by FFT (fft.c).
 //   - the Source padded by the Edge Mode (Reflect: mirrored without repeating the border
 //     pixel), Defocus Mono: its luma (5 R + 8 G + 3 B) / 16; Use Gamma g: v^g between 0 and
-//     1; Boost Highlights b: v + c v max(v - Hilight Threshold, 0), with
+//     1; Boost Highlights b: v (1 + c max(m - Hilight Threshold, 0)), m the largest channel, with
 //     c = 64000 (b x Defocus Width / frame width)^2, on the colours
 //   - convolved by the lens: the Shape (a regular polygon, a vertex up, Roundness bending its
 //     sides; the Circle a rounded triangle) of radius Defocus Width (x Rel Height in y), each
 //     pixel's coverage, weighted by Bokeh (x = (d / radius)^2: 1 - b x, or 1 + b - b x below 0),
-//     its radius per channel R 2^-f, R, R 2^f by Color Fringing f, blurred by Gauss Blur, summing
-//     to 1
+//     its radius per channel R 2^-f, R, R 2^f by Color Fringing f, summing to 1
+//   - Gauss Blur: the padded Source blurred (blur.h's 3 boxes) before Use Gamma and Boost
+//     Highlights
+//   - Chroma Distort: before the blur, each channel a mix of the Source zoomed about the frame's
+//     middle by five factors (1 +- about 2 ln 2 x Chroma Distort x R / frame width)
 //   - Rotate turns the lens (counterclockwise, before Rel Height); Lens Noise: each pixel x
 //     max(0, 1 - Lens Noise x max(0, n)), n a noise in the lens' frame (MillSaph's), Noise Freq
 //     cycles across its radius (Noise Freq Rel X: no effect, as the reference's)
@@ -58,6 +61,7 @@ enum {
     USE_GAMMA,
     BOOST,
     THRESHOLD,
+    CHROMA_DISTORT,
     FRINGING,
     BRIGHTNESS,
     OFFSET_DARKS,
@@ -187,6 +191,15 @@ static const MsParam params[] = {
                    .min = 0.0,
                    .max = MS_UNBOUNDED,
                    .display_max = 1.0},
+    [CHROMA_DISTORT] = {.type = MS_PARAM_DOUBLE,
+                        .name = "chroma_distort",
+                        .label = "Chroma Distort",
+                        .hint = "Splits the colors toward the frame's edges, more with a wider "
+                                "lens: red inward and blue outward (or the reverse below 0).",
+                        .min = -5.0,
+                        .max = 5.0,
+                        .display_min = -0.5,
+                        .display_max = 0.5},
     [FRINGING] = {.type = MS_PARAM_DOUBLE,
                   .name = "color_fringing",
                   .label = "Color Fringing",
@@ -246,7 +259,8 @@ typedef struct {
     MsImage *source, *output;
     MsMask *mask;
     MsImage *buffers[3]; // the transforms' images (width x height)
-    int pad, edge_mode, mono, sides, gauss, half, show, cx, cy, noise_octaves;
+    int pad, edge_mode, mono, sides, gauss, half, show, cx, cy, noise_octaves, zoom;
+    float zooms[5]; // Chroma Distort's zoom factors
     float gamma, boost, threshold, radius[3], rel_height, power, bokeh;
     float turn_cos, turn_sin, noise_amp, noise_freq, noise_z;
     float brightness, offset_darks, mix, scale;
@@ -263,7 +277,7 @@ static int run(MsApi api, void *user) {
                            MS_FLOAT("radius_g", j->radius[1]), MS_FLOAT("radius_b", j->radius[2]),
                            MS_FLOAT("rel_height", j->rel_height), MS_INT("sides", j->sides),
                            MS_FLOAT("power", j->power), MS_FLOAT("bokeh", j->bokeh),
-                           MS_INT("gauss", j->gauss), MS_INT("half", j->half),
+                           MS_INT("gauss", j->show ? j->gauss : 0), MS_INT("half", j->half),
                            MS_FLOAT("turn_cos", j->turn_cos), MS_FLOAT("turn_sin", j->turn_sin),
                            MS_FLOAT("noise_amp", j->noise_amp),
                            MS_FLOAT("noise_freq", j->noise_freq), MS_FLOAT("noise_z", j->noise_z),
@@ -279,7 +293,17 @@ static int run(MsApi api, void *user) {
                            MS_INT("pad_x", j->pad), MS_INT("pad_y", j->pad),
                            MS_INT("edge_mode", j->edge_mode), MS_INT("mono", j->mono),
                            MS_FLOAT("gamma", j->gamma), MS_FLOAT("boost", j->boost),
-                           MS_FLOAT("threshold", j->threshold), MS_IMAGE("data", image));
+                           MS_FLOAT("threshold", j->threshold), MS_INT("zoom", j->zoom),
+                           MS_FLOAT("zoom0", j->zooms[0]), MS_FLOAT("zoom1", j->zooms[1]),
+                           MS_FLOAT("zoom2", j->zooms[2]), MS_FLOAT("zoom3", j->zooms[3]),
+                           MS_FLOAT("zoom4", j->zooms[4]), MS_INT("tone", j->gauss == 0),
+                           MS_IMAGE("data", j->gauss ? free_image : image));
+    // Gauss Blur: on the prepared Source, before Use Gamma and Boost Highlights.
+    if (status == 0 && j->gauss)
+        status = MS_KERNEL(MS_K_RACK_DEFOCUS_SOFTEN, api, MS_IMAGE("prepared", free_image),
+                           MS_INT("gauss", j->gauss), MS_FLOAT("gamma", j->gamma),
+                           MS_FLOAT("boost", j->boost), MS_FLOAT("threshold", j->threshold),
+                           MS_IMAGE("data", image));
     if (status == 0)
         status = ms_fft(api, &image, &free_image, 0);
     if (status == 0)
@@ -355,6 +379,13 @@ static int render(const MsRender *r) {
     j.radius[1] = (float)width;
     j.radius[2] = (float)(width * fringe);
     lens_noise(v, width, &j);
+    // Chroma Distort d: five zooms 1 + (2 R / frame width) (ln 2 d k + 0.2404 d^2 + 0.0134 d^3 k),
+    // k = -2..2 (fitted, R the Defocus Width), none in Defocus Mono.
+    const double d = v[CHROMA_DISTORT], rho = 2.0 * width / r->frame_width;
+    j.zoom = d != 0.0 && width > 0 && !j.mono;
+    for (int k = 0; k < 5; ++k)
+        j.zooms[k] = (float)(1.0 + rho * (M_LN2 * d * (k - 2) + 0.2404 * d * d +
+                                          0.0134 * d * d * d * (k - 2)));
     // The lens' square, and as much padding around the Source (no wrapping around within).
     const double widest =
         (fringe > 1 ? width * fringe : width / fringe) * (v[REL_HEIGHT] > 1 ? v[REL_HEIGHT] : 1);

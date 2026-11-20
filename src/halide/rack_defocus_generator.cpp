@@ -1,10 +1,13 @@
 // MS_RackDefocus in Halide: a lens blur by FFT (effects/ms_rackdefocus.c runs the kernels,
 // effects/fft.c the transforms with fft_generator.cpp):
 //   ms_rack_defocus_prepare   the Source padded by the Edge Mode into the transform's size,
-//                             Mono's luma, Use Gamma, Boost Highlights
+//                             Chroma Distort's five zooms, Mono's luma, Use Gamma, Boost
+//                             Highlights (by the largest channel)
+//   ms_rack_defocus_soften    Gauss Blur on the prepared Source, then Use Gamma and Boost
+//                             Highlights
 //   ms_rack_defocus_kernel    the lens: its shape's coverage of each pixel (turned by Rotate),
-//                             Bokeh, Color Fringing (a radius per channel), Lens Noise, Gauss
-//                             Blur; summing to 1, centred on pixel (0, 0) of the transform
+//                             Bokeh, Color Fringing (a radius per channel), Lens Noise (Gauss
+//                             Blur for Show Shape); summing to 1, centred on pixel (0, 0) of the transform
 //                             (wrapped around)
 //   ms_rack_defocus_multiply  the product of the two transforms, each holding two real
 //                             images (R + i G, B + i A) separated first
@@ -29,6 +32,17 @@ Var x("x"), y("y"), c("c");
 // Use Gamma g: v^g between 0 and 1, v elsewhere (and its inverse with 1 / g).
 Expr gamma_of(Expr v, Expr g) { return select(v > 0.0f && v < 1.0f, pow(v, g), v); }
 
+// Use Gamma, then Boost Highlights: the colours boosted by how far their largest is above the
+// threshold (after the gamma), all three by the same factor; the alpha as it is.
+Func toned(Func s, Expr gamma, Expr boost, Expr threshold) {
+    Func v("v"), out("toned");
+    v(x, y, c) = gamma_of(s(x, y, c), gamma);
+    Expr top = max(v(x, y, 0), v(x, y, 1), v(x, y, 2));
+    out(x, y, c) =
+        select(c == 3, s(x, y, 3), v(x, y, c) * (1.0f + boost * max(top - threshold, 0.0f)));
+    return out;
+}
+
 // The GPU schedule of a whole-image stage: float4 pixels, tiles of threads.
 void tiles(Func f, bool gpu) {
     Var xo("xo"), yo("yo"), xi("xi"), yi("yi");
@@ -50,25 +64,86 @@ class RackDefocusPrepare : public Generator<RackDefocusPrepare> {
     Input<float> gamma{"gamma"};
     Input<float> boost{"boost"}; // Boost Highlights' factor
     Input<float> threshold{"threshold"};
+    // Chroma Distort: the Source zoomed about the image's middle by five factors (a spectrum,
+    // blue to red), each channel a mix of them; zoom 0: none.
+    Input<int> zoom{"zoom"};
+    Input<int> tone{"tone"}; // 1: Use Gamma and Boost Highlights here
+    Input<float> zoom0{"zoom0"}, zoom1{"zoom1"}, zoom2{"zoom2"}, zoom3{"zoom3"}, zoom4{"zoom4"};
     Output<Buffer<float, 3>> data{"data"};
 
     void generate() {
         const bool gpu = get_target().has_gpu_feature();
         Expr w = source.width(), h = source.height();
         Func zeros = BoundaryConditions::constant_exterior(source, 0.0f, {{0, w}, {0, h}});
-        Func repeat = BoundaryConditions::repeat_edge(source, {{0, w}, {0, h}});
-        Func mirror = BoundaryConditions::mirror_interior(source, {{0, w}, {0, h}});
+        // Each zoom samples the Source bilinearly (black outside it) about the frame's middle
+        // (a pixel corner); the channels' shares of the five (measured): red 0.4476 and 0.5524
+        // of the two widest, green (1, sqrt 3, 1) / (2 + sqrt 3) of the middle three, blue
+        // the red's mirrored, alpha a fifth of each.
+        Expr factors[5] = {zoom0, zoom1, zoom2, zoom3, zoom4};
+        const float shares[4][5] = {{0, 0, 0, 0.4476f, 0.5524f},
+                                    {0, 0.267949f, 0.464102f, 0.267949f, 0},
+                                    {0.5524f, 0.4476f, 0, 0, 0},
+                                    {0.2f, 0.2f, 0.2f, 0.2f, 0.2f}};
+        Expr mid_x = cast<float>(w) * 0.5f, mid_y = cast<float>(h) * 0.5f;
+        Func zoomed("zoomed");
+        Expr sum = 0.0f;
+        for (int k = 0; k < 5; ++k) {
+            Expr px = mid_x + (cast<float>(x) + 0.5f - mid_x) * factors[k] - 0.5f;
+            Expr py = mid_y + (cast<float>(y) + 0.5f - mid_y) * factors[k] - 0.5f;
+            Expr ix = cast<int>(floor(px)), iy = cast<int>(floor(py));
+            Expr fx = px - cast<float>(ix), fy = py - cast<float>(iy);
+            Expr v = lerp(lerp(zeros(ix, iy, c), zeros(ix + 1, iy, c), fx),
+                          lerp(zeros(ix, iy + 1, c), zeros(ix + 1, iy + 1, c), fx), fy);
+            Expr share = select(c == 0, shares[0][k], c == 1, shares[1][k], c == 2,
+                                shares[2][k], shares[3][k]);
+            sum += select(share != 0.0f, share * v, 0.0f);
+        }
+        zoomed(x, y, c) = select(zoom != 0, sum, source(clamp(x, 0, w - 1), clamp(y, 0, h - 1), c));
+        Func repeat = BoundaryConditions::repeat_edge(zoomed, {{0, w}, {0, h}});
+        Func mirror = BoundaryConditions::mirror_interior(zoomed, {{0, w}, {0, h}});
+        Func zero = BoundaryConditions::constant_exterior(zoomed, 0.0f, {{0, w}, {0, h}});
         Func s("s");
         Expr sx = x - pad_x, sy = y - pad_y;
-        s(x, y, c) = select(edge_mode == 0, zeros(sx, sy, c), edge_mode == 1, repeat(sx, sy, c),
+        s(x, y, c) = select(edge_mode == 0, zero(sx, sy, c), edge_mode == 1, repeat(sx, sy, c),
                             mirror(sx, sy, c));
         Expr luma = 0.3125f * s(x, y, 0) + 0.5f * s(x, y, 1) + 0.1875f * s(x, y, 2);
-        Expr v = gamma_of(select(mono != 0, luma, s(x, y, c)), gamma);
-        // The colours boosted above the threshold (after the gamma); the alpha only blurred.
-        data(x, y, c) = select(c == 3, s(x, y, 3), v + boost * v * max(v - threshold, 0.0f));
+        Func m("m");
+        m(x, y, c) = select(mono != 0 && c < 3, luma, s(x, y, c));
+        // tone 0: Gauss Blur's turn first (ms_rack_defocus_soften then gamma and boost).
+        Func t = toned(m, gamma, boost, threshold);
+        data(x, y, c) = select(tone != 0, t(x, y, c), m(x, y, c));
 
         ms::interleaved(source);
         ms::interleaved(data);
+        tiles(data, gpu);
+    }
+};
+
+// Gauss Blur, before Use Gamma and Boost Highlights (they see the softened image): the
+// prepared Source (ms_rack_defocus_prepare without them) blurred by blur.h's 3 boxes, then
+// toned.
+class RackDefocusSoften : public Generator<RackDefocusSoften> {
+  public:
+    Input<Buffer<float, 3>> prepared{"prepared"};
+    Input<int> gauss{"gauss"}; // total radius in whole pixels
+    Input<float> gamma{"gamma"};
+    Input<float> boost{"boost"};
+    Input<float> threshold{"threshold"};
+    Output<Buffer<float, 3>> data{"data"};
+
+    void generate() {
+        const bool gpu = get_target().has_gpu_feature();
+        Func in("in");
+        in(x, y, c) = prepared(x, y, c);
+        std::vector<ms_blur::Box> boxes;
+        Func blurred = ms_blur::blur3(in, gauss, gauss, prepared.width(), prepared.height(), gpu,
+                                      "soften", boxes);
+        Func t = toned(blurred, gamma, boost, threshold);
+        data(x, y, c) = t(x, y, c);
+
+        ms::interleaved(prepared);
+        ms::interleaved(data);
+        ms_blur::schedule(boxes, gpu, 4);
         tiles(data, gpu);
     }
 };
@@ -299,6 +374,7 @@ class RackDefocusShow : public Generator<RackDefocusShow> {
 };
 
 HALIDE_REGISTER_GENERATOR(RackDefocusPrepare, ms_rack_defocus_prepare)
+HALIDE_REGISTER_GENERATOR(RackDefocusSoften, ms_rack_defocus_soften)
 HALIDE_REGISTER_GENERATOR(RackDefocusKernel, ms_rack_defocus_kernel)
 HALIDE_REGISTER_GENERATOR(RackDefocusMultiply, ms_rack_defocus_multiply)
 HALIDE_REGISTER_GENERATOR(RackDefocusFinish, ms_rack_defocus_finish)
