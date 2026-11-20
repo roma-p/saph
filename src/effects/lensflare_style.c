@@ -158,13 +158,24 @@ void ms_lens_streaks(const GlareBuilder *b, int e, float *row) {
     row[GLARE_STREAK_SEED] = (float)(0.7 + 37.1 * get(b, e, "rand_seed", 0.0));
 }
 
-// shift_edge: the element moved along its own x by that x its outer radius (`stop`, the last
-// stop's radius, x `R`; a polar flare: x 0.937), squeezed by rel_width, rel_height on the
-// screen, its size kept (measured on polar flares and a fancy spot, with and without
-// rotate_to_pivot).
+// shift_edge s: a polar flare's profile off centre, each radius r of it a circle centred s r
+// away (its outer edge moved s x its radius, its centre kept), along the screen's x, or with
+// rotate_to_pivot along the axis towards the hotspot, whatever its rotate (exact in the
+// reference: steps at 0.25, 0.5, 0.75 R, s -1..1, 4 hotspots, 4 rotations). Another element:
+// moved along its own x by s x its outer radius (`stop`, the last stop's radius, x `R`),
+// squeezed by rel_width, rel_height on the screen, its size kept.
 void ms_lens_shift_edge(const GlareBuilder *b, int e, float *row, double stop, double R,
                         int polar) {
-    const double shift = get(b, e, "shift_edge", 0.0) * stop * R * (polar ? 0.937 : 1.0);
+    const MsGlareGlobals *g = b->g;
+    const double s = get(b, e, "shift_edge", 0.0);
+    if (polar) {
+        const double ax = g->hotspot[0] - g->pivot[0], ay = g->hotspot[1] - g->pivot[1];
+        const int along = get(b, e, "rotate_to_pivot", 0.0) != 0.0 && (ax != 0.0 || ay != 0.0);
+        row[GLARE_SHIFT_EDGE] = (float)s;
+        row[GLARE_SHIFT_DIR] = (float)(along ? atan2(ay, ax) - PI : 0.0);
+        return;
+    }
+    const double shift = s * stop * R;
     row[GLARE_POS_X] += (float)(shift * cos(row[GLARE_ROTATE]) * row[GLARE_REL_X]);
     row[GLARE_POS_Y] += (float)(shift * sin(row[GLARE_ROTATE]) * row[GLARE_REL_Y]);
 }

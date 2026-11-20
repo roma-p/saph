@@ -139,6 +139,8 @@ enum {
     GLARE_RW_MAX,
     GLARE_RW_FREQ,
     GLARE_RW_SPIKE,
+    GLARE_SHIFT_EDGE, // Lens Flare's polar flares, shift_edge s: the profile's circle of radius
+    GLARE_SHIFT_DIR,  // r centred s r away along this angle (radians, y up) (0: none)
     GLARE_LINES,      // RAYS: number of lines
     GLARE_RAY_WIDTH,  // RAYS: the half width across a line
     GLARE_STOP_COUNT, // STOPS: number of stops

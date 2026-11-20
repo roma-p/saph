@@ -117,6 +117,19 @@ inline ElementFrame element_frame(const Field &field, Expr dx, Expr dy, Expr e) 
     auto f = [&](int i) { return field(i, e); };
     ElementFrame m;
     Expr kind = f(GLARE_KIND);
+    // (Lens Flare's shift_edge s: the profile's radius r where the pixel is on the circle of
+    // radius r centred s r along the angle, (1 - s^2) r^2 + 2 s p r - |d|^2 = 0, p the offset
+    // along it; the offset then from that circle's centre)
+    Expr s_e = f(GLARE_SHIFT_EDGE), s_c = cos(f(GLARE_SHIFT_DIR)), s_s = sin(f(GLARE_SHIFT_DIR));
+    Expr s_rx = max(f(GLARE_REL_X), 1e-6f), s_ry = max(f(GLARE_REL_Y), 1e-6f);
+    Expr s_qx = dx / s_rx, s_qy = dy / s_ry; // (in rel_width, rel_height's frame)
+    Expr s_p = s_e * (s_qx * s_c + s_qy * s_s), s_d2 = s_qx * s_qx + s_qy * s_qy;
+    Expr s_disc = s_p * s_p + (1.0f - s_e * s_e) * s_d2;
+    Expr s_den = s_p + sqrt(max(s_disc, 0.0f));
+    Expr s_r = select(s_disc >= 0.0f && s_den > 1e-6f, s_d2 / max(s_den, 1e-6f), 1e9f);
+    const Expr dx0 = dx, dy0 = dy; // (the angles still around the element's centre)
+    dx = select(s_e != 0.0f, (s_qx - s_e * s_r * s_c) * s_rx, dx);
+    dy = select(s_e != 0.0f, (s_qy - s_e * s_r * s_s) * s_ry, dy);
     m.rot = f(GLARE_ROTATE);
     m.sx = dx / f(GLARE_SCALE_X), m.sy = dy / f(GLARE_SCALE_Y);
     // (Lens Flare: scaled by rel_width, rel_height in the screen's frame (q), then turned by
@@ -148,6 +161,18 @@ inline ElementFrame element_frame(const Field &field, Expr dx, Expr dy, Expr e) 
     Expr aex = select(m.turned, tx / f(GLARE_ANGLE_X), m.ax * m.cr + m.ay * m.sr);
     Expr aey = select(m.turned, ty / f(GLARE_ANGLE_Y), -m.ax * m.sr + m.ay * m.cr);
     m.angle = atan2(aey, aex);
+    {
+        Expr bx = dx0 / f(GLARE_ANGLE_X), by = dy0 / f(GLARE_ANGLE_Y);
+        Expr ox = select(m.turned, (dx0 / max(f(GLARE_REL_X), 1e-6f)) * m.cr +
+                                       (dy0 / max(f(GLARE_REL_Y), 1e-6f)) * m.sr,
+                         bx * m.cr + by * m.sr);
+        Expr oy = select(m.turned, -(dx0 / max(f(GLARE_REL_X), 1e-6f)) * m.sr +
+                                       (dy0 / max(f(GLARE_REL_Y), 1e-6f)) * m.cr,
+                         -bx * m.sr + by * m.cr);
+        Expr around = atan2(oy, ox);
+        m.angle = select(s_e != 0.0f, around, m.angle);
+        m.th = select(s_e != 0.0f, around, m.th);
+    }
     m.clip_r = select(m.turned, select(kind == GLARE_RAYS, sqrt(m.qx * m.qx + m.qy * m.qy), m.r0),
                       sqrt(dx * dx + dy * dy) / f(GLARE_CLIP_SCALE));
     return m;
@@ -370,6 +395,7 @@ inline Expr profile_end(const Field &field, Expr e) {
 // and blurred edges.
 inline Expr element_reach(const Field &field, Expr e) {
     Expr rel = max(max(field(GLARE_REL_X, e), field(GLARE_REL_Y, e)), 1.0f); // (Lens Flare)
+    rel *= 1.0f + abs(field(GLARE_SHIFT_EDGE, e)); // (its shift_edge's off-centre circles)
     return field(GLARE_R, e) * 1.6f * max(field(GLARE_SCALE_X, e), field(GLARE_SCALE_Y, e)) * rel +
            4.0f * field(GLARE_SIGMA, e) + 4.0f;
 }
