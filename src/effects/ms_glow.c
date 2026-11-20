@@ -55,7 +55,8 @@ enum {
     SOURCE_OPACITY,
     COMBINE,
     EDGE_MODE,
-    INVERT_MASK
+    INVERT_MASK,
+    SHOW_GLOW_WIDTH,
 };
 static const MsParam params[] = {
     [BRIGHTNESS] = {.type = MS_PARAM_DOUBLE,
@@ -155,6 +156,7 @@ static const MsParam params[] = {
                    .entries = edge_entries,
                    .entry_count = ARRAY_SIZE(edge_entries)},
     [INVERT_MASK] = MS_PARAM_INVERT_MASK("Use the black areas of the Mask."),
+    MS_SHOW(SHOW_GLOW_WIDTH, "ShowGlowWidth", "Show Glow Width"),
 };
 
 // One render: images and settings of the kernels (src/halide/glow_generator.cpp).
@@ -265,6 +267,53 @@ static int identity(const double *v, const int *connected) {
            (combine == ADD || combine == SCREEN || combine == DIFFERENCE);
 }
 
+// The viewer: the Glow Width (white, 0.9 x Glow Width), the colours' widths, Width X and Y
+// (the arrows).
+static const MsOverlay overlay[] = {
+    {.kind = MS_OVERLAY_ELLIPSE,
+     .colour = MS_OVERLAY_WHITE,
+     .show = "ShowGlowWidth",
+     .size = "glow_width",
+     .rel_x = "width_x",
+     .rel_y = "width_y",
+     .factor = 0.9},
+    {.kind = MS_OVERLAY_ELLIPSE,
+     .colour = MS_OVERLAY_RED,
+     .show = "ShowGlowWidth",
+     .size = "glow_width",
+     .scale = "width_red",
+     .rel_x = "width_x",
+     .rel_y = "width_y"},
+    {.kind = MS_OVERLAY_ELLIPSE,
+     .colour = MS_OVERLAY_GREEN,
+     .show = "ShowGlowWidth",
+     .size = "glow_width",
+     .scale = "width_green",
+     .rel_x = "width_x",
+     .rel_y = "width_y"},
+    {.kind = MS_OVERLAY_ELLIPSE,
+     .colour = MS_OVERLAY_BLUE,
+     .show = "ShowGlowWidth",
+     .size = "glow_width",
+     .scale = "width_blue",
+     .rel_x = "width_x",
+     .rel_y = "width_y"},
+    {.kind = MS_OVERLAY_ARROW_X,
+     .colour = MS_OVERLAY_ORANGE,
+     .show = "ShowGlowWidth",
+     .size = "glow_width",
+     .rel_x = "width_x",
+     .rel_y = "width_y",
+     .factor = 0.9},
+    {.kind = MS_OVERLAY_ARROW_Y,
+     .colour = MS_OVERLAY_ORANGE,
+     .show = "ShowGlowWidth",
+     .size = "glow_width",
+     .rel_x = "width_x",
+     .rel_y = "width_y",
+     .factor = 0.9},
+};
+
 const MsEffect ms_glow_effect = {
     MS_ID("Glow"),
     "MS_Glow",
@@ -277,6 +326,6 @@ const MsEffect ms_glow_effect = {
     identity,
     0,
     NULL,
-    NULL,
-    0,
+    overlay,
+    ARRAY_SIZE(overlay),
 };
