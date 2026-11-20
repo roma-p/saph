@@ -89,7 +89,9 @@ def jobs_for(effect):
             src = reference.get(p["name"], {}).get("params", {}).get(key)
             if isinstance(src, dict):
                 theirs[knob] = "-" * 32 + json.dumps({"type": "flare", "value": src})
-        elif effect in TEXTS:  # MillSaph's own lenses: the same text for both
+        elif effect == "LensFlare":
+            continue  # MillSaph's own lenses: the reference crashes on them (nothing to compare)
+        elif effect in TEXTS:  # MillSaph's own styles: the same text for both
             key, knob = TEXTS[effect]
             if knob in ours:
                 theirs[knob] = ours[knob]
