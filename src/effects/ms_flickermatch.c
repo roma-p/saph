@@ -24,6 +24,9 @@ static const MsClip clips[] = {
 enum { SOURCE, MATCH };
 
 enum { CORNER1, CORNER1_Y, CORNER2, CORNER2_Y, TARGET, TARGET_G, TARGET_B };
+// Show Rect: after Match Level, after Match Color's blue
+enum { LEVEL_SHOW_RECT = TARGET + 1, COLOR_SHOW_RECT = TARGET_B + 1 };
+#define SHOW_RECT(id) MS_SHOW(id, "ShowRect", "Show Rect")
 
 #define CORNERS                                                                                    \
     [CORNER1] = {.type = MS_PARAM_POINT,                                                           \
@@ -51,6 +54,7 @@ static const MsParam level_params[] = {
                 .max = MS_UNBOUNDED,
                 .display_min = 0.01,
                 .display_max = 2.0},
+    SHOW_RECT(LEVEL_SHOW_RECT),
 };
 
 static const MsParam color_params[] = {
@@ -63,6 +67,7 @@ static const MsParam color_params[] = {
                 .def = 0.5},
     [TARGET_G] = {.type = MS_PARAM_RGB_PART, .name = "match_color_green", .def = 0.5},
     [TARGET_B] = {.type = MS_PARAM_RGB_PART, .name = "match_color_blue", .def = 0.5},
+    SHOW_RECT(COLOR_SHOW_RECT),
 };
 
 // One render: images and settings of the kernel.
@@ -125,6 +130,22 @@ static int identity(const double *values, const int *connected) {
     return !connected[MATCH];
 }
 
+// The viewer: the rectangle (its corners and sides drag them), and its middle (drags it
+// whole).
+static const MsOverlay overlay[] = {
+    {.kind = MS_OVERLAY_RECT,
+     .colour = MS_OVERLAY_ORANGE,
+     .show = "ShowRect",
+     .point = "rect_corner1",
+     .point2 = "rect_corner2"},
+    {.kind = MS_OVERLAY_CROSSHAIR,
+     .colour = MS_OVERLAY_ORANGE,
+     .show = "ShowRect",
+     .point = "rect_corner1",
+     .point2 = "rect_corner2",
+     .factor = 10.0},
+};
+
 const MsEffect ms_flickermatch_effect = {
     MS_ID("FlickerMatch"),
     "MS_FlickerMatch",
@@ -138,8 +159,8 @@ const MsEffect ms_flickermatch_effect = {
     identity,
     0,
     NULL,
-    NULL,
-    0,
+    overlay,
+    ARRAY_SIZE(overlay),
 };
 
 const MsEffect ms_flickermatchcolor_effect = {
@@ -155,6 +176,6 @@ const MsEffect ms_flickermatchcolor_effect = {
     identity,
     0,
     NULL,
-    NULL,
-    0,
+    overlay,
+    ARRAY_SIZE(overlay),
 };
