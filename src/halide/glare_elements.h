@@ -72,7 +72,7 @@ inline void polar_noises(PolarNoises &p, const Field &nf, std::function<Expr(Exp
     };
     p.raw(i, e, which) = select(which == 0,
                                 around(GLARE_RN_RHO, GLARE_RN_SEED, GLARE_RN_OCTAVES,
-                                       GLARE_RN_SCALE, 0.47f, 11.1f),
+                                       GLARE_RN_SCALE, 0.39f, 11.1f),
                                 around(GLARE_NB_RHO, GLARE_NB_SEED, GLARE_NB_OCTAVES,
                                        GLARE_NB_SCALE, 0.5f, 7.7f));
     p.thresholded(i, e) =

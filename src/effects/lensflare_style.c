@@ -189,7 +189,8 @@ void ms_lens_polar_noises(const GlareBuilder *b, int e, float *row) {
     if (get(b, e, "r_noise_min", 1.0) != 1.0 || get(b, e, "r_noise_max", 1.0) != 1.0) {
         // The radius noise: x r_noise_min..max by MillSaph's noise around the element,
         // about r_noise_freq^0.785 x 1.38 cycles a turn (as the reference's: 4.9 at 5, 14.5 at
-        // 20), sd 0.142 x the range at one octave, octaves of persistence 0.43 averaged
+        // 20), mean 0.39 and sd 0.158 x the range at one octave (the reference's E[n] and
+        // E[n^2] from r_noise_min 0 and 0.5 over 12 seeds), octaves of persistence 0.43 averaged
         const int octaves = (int)fmin(fmax(get(b, e, "r_noise_octaves", 1.0), 1.0), 8.0);
         double total = 0.0;
         for (int k = 0; k < octaves; ++k)
@@ -199,7 +200,7 @@ void ms_lens_polar_noises(const GlareBuilder *b, int e, float *row) {
         row[GLARE_RN_MAX] = (float)get(b, e, "r_noise_max", 1.0);
         row[GLARE_RN_RHO] = (float)(0.529 * pow(fmax(get(b, e, "r_noise_freq", 5.0), 0.0), 0.785));
         row[GLARE_RN_SEED] = (float)(0.3 + 37.1 * get(b, e, "rand_seed", 0.0));
-        row[GLARE_RN_SCALE] = (float)(0.59 / total);
+        row[GLARE_RN_SCALE] = (float)(0.656 / total);
     }
     if (get(b, e, "noise_brightness", 0.0) != 0.0) {
         // noise_brightness: x it x MillSaph's noise around the element (as the radius
