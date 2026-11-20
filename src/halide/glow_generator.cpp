@@ -96,6 +96,7 @@ class GlowCombine : public Generator<GlowCombine> {
     Input<float> gain_r{"gain_r"}, gain_g{"gain_g"}, gain_b{"gain_b"}; // Brightness x Color
     Input<int> combine{"combine"}; // Mult, Add, Screen, Difference, Overlay
     Input<float> source_opacity{"source_opacity"}, under{"under"}, affect_alpha{"affect_alpha"};
+    Input<float> light{"light"}; // Light Background
     Input<int> show_threshold{"show_threshold"};
     // The Atmosphere (effects/atmosphere.h): x 1 + amp x a noise (fbm of `octaves`, frequency
     // `freq` per pixel, `persistence`, at time `z`); none with 0 octaves
@@ -121,23 +122,46 @@ class GlowCombine : public Generator<GlowCombine> {
         Expr a = source(x, y, 3) * source_opacity;
         Expr s = source(x, y, c) * source_opacity;
         Expr gc = g(x, y, c);
-        // The Combine mode; RGB with Screen and Overlay above 1 (either side): the larger.
-        auto combined = [&](Expr u, Expr gl, bool rgb) {
-            Expr high = rgb ? (u > 1.0f || gl > 1.0f) : Expr(false);
-            return select(
-                combine == 0, u * gl, combine == 1, u + gl, combine == 2,
-                select(high, max(u, gl), u + gl - u * gl), combine == 3, abs(u - gl),
-                select(high, max(u, gl),
-                       select(u < 0.5f, 2.0f * u * gl, 1.0f - 2.0f * (1.0f - u) * (1.0f - gl))));
+        // The Combine mode C(u, gl) = c0 + c1 gl, u the Source (x Source Opacity), gl the glow;
+        // Light Background L (m = 1 - L) with v the Source as it is, va the alpha (x Source
+        // Opacity), gp = gl (m + 2 L v):
+        //   m^2 C + (1 - m^2) u + 2 L m gl v + L m^2 gl (1 - 2 v)(1 - c1) + (1 - va) L k gp,
+        //   k 1 with Add, Screen and Difference, else L; L = 0: the plain mode.
+        // The branches compare u with gp: Difference's sign; Screen and Overlay (from u = 0.5:
+        // 2 u gl below) the larger of u and gl when either u or gp is above 1 (RGB; the
+        // alpha: Overlay with gp above 1).
+        Expr L = light, m = 1.0f - light;
+        auto combined = [&](Expr u, Expr gl, Expr v, Expr va, bool rgb, Expr combine) {
+            Expr gp = gl * (m + 2.0f * L * v);
+            Expr high = rgb ? (u > 1.0f || gp > 1.0f) : (combine == 4 && gp > 1.0f);
+            Expr over = u > gp;
+            Expr c0 = select(combine == 0, 0.0f, combine == 1, u, combine == 2,
+                             select(high, select(over, u, 0.0f), u), combine == 3,
+                             select(u >= gp, u, -u),
+                             select(u < 0.5f, 0.0f, high, select(over, u, 0.0f), 2.0f * u - 1.0f));
+            Expr c1 = select(combine == 0, u, combine == 1, 1.0f, combine == 2,
+                             select(high, select(over, 0.0f, 1.0f), 1.0f - u), combine == 3,
+                             select(u >= gp, -1.0f, 1.0f),
+                             select(u < 0.5f, 2.0f * u, high, select(over, 0.0f, 1.0f),
+                                    2.0f * (1.0f - u)));
+            Expr k = select(combine == 1 || combine == 2 || combine == 3, 1.0f, L);
+            return m * m * (c0 + c1 * gl) + (1.0f - m * m) * u + 2.0f * L * m * gl * v +
+                   L * m * m * gl * (1.0f - 2.0f * v) * (1.0f - c1) + (1.0f - va) * L * k * gp;
         };
-        Expr mixed = combined(s, gc, true);
-        // Glow Under Source: towards the Source over the glow.
-        Expr over = s + gc * (1.0f - a);
-        Expr rgb = mixed + (over - mixed) * under;
-        // The alpha: combined the same way with the largest of the glow's channels times
-        // Affect Alpha.
+        Expr mixed = combined(s, gc, source(x, y, c), a, true, this->combine);
+        // Glow Under Source: towards the Source over the glow (as Light Background turns it,
+        // times k).
+        Expr k = select(combine == 1 || combine == 2 || combine == 3, 1.0f, L);
+        auto over = [&](Expr u, Expr gl, Expr v) {
+            return u + k * gl * (m + 2.0f * L * v) * (1.0f - a);
+        };
+        Expr rgb = mixed + (over(s, gc, source(x, y, c)) - mixed) * under;
+        // The alpha: the same with the largest of the glow's channels times Affect Alpha
+        // (Difference as Screen), Light Background from the largest of the Source's; at most 1.
         Expr ga = max(g(x, y, 0), max(g(x, y, 1), g(x, y, 2))) * affect_alpha;
-        Expr alpha = combined(a, ga, false);
+        Expr vmax = max(source(x, y, 0), max(source(x, y, 1), source(x, y, 2)));
+        Expr mixed_a = combined(a, ga, vmax, a, false, select(this->combine == 3, 2, this->combine));
+        Expr alpha = min(mixed_a + (over(a, ga, vmax) - mixed_a) * under, 1.0f);
         Expr result = select(c == 3, alpha, rgb);
         output(x, y, c) =
             select(show_threshold != 0, select(c == 3, 1.0f, th(x, y, c) * atmosphere(x, y)), result);

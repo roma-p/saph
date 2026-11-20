@@ -56,6 +56,7 @@ enum {
     AFFECT_ALPHA,
     FROM_ALPHA,
     UNDER_SOURCE,
+    LIGHT_BACKGROUND,
     SOURCE_OPACITY,
     COMBINE,
     EDGE_MODE,
@@ -142,6 +143,13 @@ static const MsParam params[] = {
                       .min = 0.0,
                       .max = 1.0,
                       .display_max = 1.0},
+    [LIGHT_BACKGROUND] = {.type = MS_PARAM_DOUBLE,
+                          .name = "light_background",
+                          .label = "Light Background",
+                          .hint = "Turns the glows down over light areas, for a light background.",
+                          .min = 0.0,
+                          .max = 1.0,
+                          .display_max = 1.0},
     [SOURCE_OPACITY] = {.type = MS_PARAM_DOUBLE,
                         .name = "source_opacity",
                         .label = "Source Opacity",
@@ -205,7 +213,7 @@ typedef struct {
     int has_mask, invert_mask, transparent, combine, show_threshold;
     int r[2][3];   // total radius per axis (x, y) and channel: whole pixels
     float f[2][3]; // and the fraction past them
-    float threshold, add[3], from_alpha, gain[3], source_opacity, under, affect_alpha;
+    float threshold, add[3], from_alpha, gain[3], source_opacity, under, light, affect_alpha;
     MsAtmosphere atmosphere;
 } Job;
 
@@ -237,7 +245,8 @@ static int run(MsApi api, void *user) {
         MS_FLOAT("from_alpha", j->from_alpha), MS_FLOAT("gain_r", j->gain[0]),
         MS_FLOAT("gain_g", j->gain[1]), MS_FLOAT("gain_b", j->gain[2]),
         MS_INT("combine", j->combine), MS_FLOAT("source_opacity", j->source_opacity),
-        MS_FLOAT("under", j->under), MS_FLOAT("affect_alpha", j->affect_alpha),
+        MS_FLOAT("under", j->under), MS_FLOAT("light", j->light),
+        MS_FLOAT("affect_alpha", j->affect_alpha),
         MS_INT("show_threshold", j->show_threshold), MS_FLOAT("amp", j->atmosphere.amp),
         MS_FLOAT("freq", j->atmosphere.freq), MS_FLOAT("persistence", j->atmosphere.persistence),
         MS_FLOAT("z", j->atmosphere.z), MS_INT("octaves", j->atmosphere.octaves),
@@ -275,6 +284,7 @@ static int render(const MsRender *r) {
              .from_alpha = (float)v[FROM_ALPHA],
              .source_opacity = (float)v[SOURCE_OPACITY],
              .under = (float)v[UNDER_SOURCE],
+             .light = (float)v[LIGHT_BACKGROUND],
              .affect_alpha = (float)v[AFFECT_ALPHA],
              .atmosphere =
                  ms_atmosphere(v[ATMOSPHERE_AMP], v[ATMOSPHERE_FREQ], v[ATMOSPHERE_DETAIL],
