@@ -17,6 +17,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
 #include <map>
 #include <sstream>
@@ -30,6 +31,7 @@
 #include "imgui_impl_opengl3.h"
 
 #include "common/effect.h"
+#include "common/preset.h"
 #include "engine/engine.h"
 
 #include "gradient.h"
@@ -51,7 +53,14 @@ struct Thumb {
     bool used = false;
 };
 
+// A lens preset of the dock: MillSaph's own (compiled in), then the bundle's preset files
+// (presets/lensflare/*.json: the converted lenses too), by name.
+struct LensPreset {
+    std::string name, text;
+};
+
 struct App {
+    std::vector<LensPreset> presets;
     lens::Lens lens;
     std::string out_path, status, hint;
     std::vector<Path> selected; // the last one: the one the properties show
@@ -819,7 +828,7 @@ bool edit_image(Json &e) {
     }
     if (has && generated) {
         Json &im = e["image"];
-        static const char *const kinds[] = {"dirt", "glint", "ramp", "iris"};
+        static const char *const kinds[] = {"dirt", "glint", "ramp", "iris", "field"};
         const std::string kind = im.value("generate", "dirt");
         row_label("Kind", false);
         ImGui::TableSetColumnIndex(1);
@@ -843,7 +852,41 @@ bool edit_image(Json &e) {
             {"scale", "Scale", 1, 0.1, 4, false},
             {"detail", "Detail", 0.5, 0, 1, false},
         };
+        if (kind == "field") {
+            // a plain colour ("color"), faded to the edges ("edges" [x, y]), "aspect" wide
+            float col[3] = {1, 1, 1};
+            if (im.contains("color") && im["color"].is_array())
+                for (int c = 0; c < 3 && c < (int)im["color"].size(); ++c)
+                    col[c] = im["color"][c].get<float>();
+            row_label("Color", false);
+            ImGui::TableSetColumnIndex(1);
+            if (ImGui::ColorEdit3("##fieldcolor", col, ImGuiColorEditFlags_NoInputs)) {
+                im["color"] = {col[0], col[1], col[2]};
+                changed = true;
+            }
+            float edges[2] = {0, 0};
+            if (im.contains("edges") && im["edges"].is_array())
+                for (int c = 0; c < 2 && c < (int)im["edges"].size(); ++c)
+                    edges[c] = im["edges"][c].get<float>();
+            row_label("Edge Fade", false);
+            ImGui::TableSetColumnIndex(1);
+            ImGui::SetNextItemWidth(-FLT_MIN);
+            if (ImGui::SliderFloat2("##edges", edges, 0.0f, 1.0f, "%.2f")) {
+                im["edges"] = {edges[0], edges[1]};
+                changed = true;
+            }
+            float aspect = (float)number(im, "aspect", 1.0);
+            row_label("Aspect", false);
+            ImGui::TableSetColumnIndex(1);
+            ImGui::SetNextItemWidth(VALUE_W);
+            if (ImGui::DragFloat("##aspect", &aspect, 0.01f, 0.1f, 10.0f, "%.3f")) {
+                im["aspect"] = aspect;
+                changed = true;
+            }
+        }
         for (const Knob &k : knobs) {
+            if (kind == "field")
+                break;
             row_label(k.label, false);
             ImGui::PushID(k.key);
             ImGui::TableSetColumnIndex(1);
@@ -1206,6 +1249,37 @@ void preview_panel(App &app) {
 
 // ------------------------------------------------------------------ the presets
 
+// The dock's presets: the compiled ones, then the bundle's files not among them, by name.
+void load_presets(App &app) {
+    for (int i = 0; i < MS_LENSFLARE_PRESETS; ++i)
+        app.presets.push_back({ms_lensflare_preset_menu[i + 1], ms_lensflare_preset_texts[i]});
+    char dir[2048];
+    if (ms_presets_dir("lensflare", dir, sizeof dir)) {
+        std::vector<LensPreset> found;
+        std::error_code ec;
+        for (const auto &f : std::filesystem::directory_iterator(dir, ec)) {
+            if (f.path().extension() != ".json")
+                continue;
+            std::ifstream in(f.path());
+            std::stringstream ss;
+            ss << in.rdbuf();
+            Json j = Json::parse(ss.str(), nullptr, false);
+            if (j.is_discarded() || !j.is_object() || !j.contains("params") ||
+                !j["params"].is_object() || !j["params"].contains("lens_") ||
+                !j["params"]["lens_"].is_string())
+                continue;
+            const std::string name = j.value("name", f.path().stem().string());
+            if (std::none_of(app.presets.begin(), app.presets.end(),
+                             [&](const LensPreset &p) { return p.name == name; }))
+                found.push_back({name, j["params"]["lens_"].get<std::string>()});
+        }
+        std::sort(found.begin(), found.end(), [](const LensPreset &a, const LensPreset &b) {
+            return a.name < b.name;
+        });
+        app.presets.insert(app.presets.end(), found.begin(), found.end());
+    }
+}
+
 void presets_panel(App &app) {
     centered_title("Flare Presets");
     ImGui::SameLine(ImGui::GetWindowContentRegionMax().x - 18);
@@ -1227,8 +1301,9 @@ void presets_panel(App &app) {
     int shown = 0;
     std::string needle = app.search;
     std::transform(needle.begin(), needle.end(), needle.begin(), ::tolower);
-    for (int i = 0; i < MS_LENSFLARE_PRESETS; ++i) {
-        std::string name = ms_lensflare_preset_menu[i + 1], low = name;
+    for (int i = 0; i < (int)app.presets.size(); ++i) {
+        const std::string &name = app.presets[i].name, &text = app.presets[i].text;
+        std::string low = name;
         std::transform(low.begin(), low.end(), low.begin(), ::tolower);
         if (!needle.empty() && low.find(needle) == std::string::npos)
             continue;
@@ -1238,7 +1313,7 @@ void presets_panel(App &app) {
         ImGui::PushID(i);
         const ImVec2 p = ImGui::GetCursorScreenPos();
         if (ImGui::InvisibleButton("preset", ImVec2(tw, th))) {
-            load_lens(app, ms_lensflare_preset_texts[i], false);
+            load_lens(app, text, false);
         }
         const bool hot = ImGui::IsItemHovered();
         if (hot)
@@ -1246,7 +1321,7 @@ void presets_panel(App &app) {
         ImDrawList *d = ImGui::GetWindowDrawList();
         d->AddRectFilled(p, ImVec2(p.x + tw, p.y + th), IM_COL32(0, 0, 0, 255), 4);
         PreviewSettings s;
-        if (GLuint t = thumb(app, ms_lensflare_preset_texts[i], 256, 144, s.scale_widths, 1.0))
+        if (GLuint t = thumb(app, text, 256, 144, s.scale_widths, 1.0))
             d->AddImageRounded((ImTextureID)(intptr_t)t, p, ImVec2(p.x + tw, p.y + th), ImVec2(0, 0),
                                ImVec2(1, 1), IM_COL32_WHITE, 4);
         if (hot)
@@ -1626,6 +1701,7 @@ void fonts() {
 
 int main(int argc, char **argv) {
     App app;
+    load_presets(app);
     std::string in_path;
     const char *shot = nullptr;
     int select = -1;
