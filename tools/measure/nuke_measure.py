@@ -68,7 +68,7 @@ EFFECTS = {
 # MillSaph's input for each of the reference node's, where they differ (None: MillSaph has
 # none; that input of a job is left out on MillSaph's node).
 INPUTS = {
-    "Glow": {1: None, 2: 1},  # the reference's Background, Mask
+    "Glow": {1: 2, 2: 1},  # the reference's Background, Mask (MillSaph: Mask, Back)
     "Glint": {1: None, 2: 1},
     "Glare": {1: None, 2: 1},
 }

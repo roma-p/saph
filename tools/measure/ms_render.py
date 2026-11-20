@@ -38,7 +38,7 @@ PLUGIN = os.path.join(ROOT, "build", "MillSaph.ofx.bundle", "Contents",
 ID = "com.xiaoluo.millsaph."
 # The reference's inputs that MillSaph's effects order differently (nuke_measure.py's INPUTS):
 # the job's input index -> MillSaph's (None: none).
-INPUTS = {"Glow": {1: None, 2: 1}, "Glint": {1: None, 2: 1}, "Glare": {1: None, 2: 1}}
+INPUTS = {"Glow": {1: 2, 2: 1}, "Glint": {1: None, 2: 1}, "Glare": {1: None, 2: 1}}
 
 _described = {}
 

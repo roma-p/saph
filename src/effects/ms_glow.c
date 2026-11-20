@@ -28,8 +28,9 @@
 static const MsClip clips[] = {
     {"Source", "Source", 0.0f, 0, 0},
     {"Mask", "Mask", 0.0f, 1, 1},
+    {"Back", "Back", 0.0f, 1, 0}, // the Source over it, then the glows (last: older scripts)
 };
-enum { SOURCE, MASK };
+enum { SOURCE, MASK, BACK };
 
 static const char *const show_entries[] = {"Result", "Threshold"};
 static const char *const combine_entries[] = {"Mult", "Add", "Screen", "Difference", "Overlay"};
@@ -60,6 +61,7 @@ enum {
     SOURCE_OPACITY,
     COMBINE,
     EDGE_MODE,
+    BG_BRIGHTNESS,
     ATMOSPHERE_AMP,
     ATMOSPHERE_FREQ,
     ATMOSPHERE_DETAIL,
@@ -172,6 +174,8 @@ static const MsParam params[] = {
                    .def = 1,
                    .entries = edge_entries,
                    .entry_count = ARRAY_SIZE(edge_entries)},
+    MS_FRACTION(BG_BRIGHTNESS, "bg_brightness", "Bg Brightness", "Scales the Back under the Source.",
+                1.0),
     [ATMOSPHERE_AMP] = {.type = MS_PARAM_DOUBLE,
                         .name = "atmosphere_amp",
                         .label = "Atmosphere Amp",
@@ -209,11 +213,11 @@ static const MsParam params[] = {
 
 // One render: images and settings of the kernels (src/halide/glow_generator.cpp).
 typedef struct {
-    MsImage *source, *mask, *glow, *output;
-    int has_mask, invert_mask, transparent, combine, show_threshold;
+    MsImage *source, *mask, *back, *glow, *output;
+    int has_mask, has_back, invert_mask, transparent, combine, show_threshold;
     int r[2][3];   // total radius per axis (x, y) and channel: whole pixels
     float f[2][3]; // and the fraction past them
-    float threshold, add[3], from_alpha, gain[3], source_opacity, under, light, affect_alpha;
+    float threshold, add[3], from_alpha, gain[3], source_opacity, under, light, affect_alpha, bg;
     MsAtmosphere atmosphere;
 } Job;
 
@@ -237,7 +241,8 @@ static int run(MsApi api, void *user) {
             return status;
     }
     return MS_KERNEL(
-        MS_K_GLOW_COMBINE, api, MS_IMAGE("source", j->source),
+        MS_K_GLOW_COMBINE, api, MS_IMAGE("source", j->source), MS_IMAGE("back", j->back),
+        MS_INT("has_back", j->has_back), MS_FLOAT("bg", j->bg),
         MS_IMAGE("glow", j->show_threshold ? j->source : j->glow), MS_IMAGE("mask", j->mask),
         MS_INT("has_mask", j->has_mask), MS_INT("invert_mask", j->invert_mask),
         MS_FLOAT("threshold", j->threshold), MS_FLOAT("add_r", j->add[0]),
@@ -263,16 +268,22 @@ static int render(const MsRender *r) {
         snprintf(r->err, r->err_size, "not enough memory");
         return 0;
     }
-    MsImage source, mask, glow_image, output;
+    MsImage source, mask, back, glow_image, output;
     ms_image_rgba(&source, r->inputs[SOURCE].pixels, r->inputs[SOURCE].row, r->half, w, h);
+    ms_image_rgba(&back, r->inputs[BACK].pixels, r->inputs[BACK].row, r->half, w, h);
     ms_image_rgba(&mask, r->inputs[MASK].pixels, r->inputs[MASK].row, r->half, w, h);
     ms_image(&glow_image, glow, (ptrdiff_t)w * 4, w, h, 4);
     ms_image_rgba(&output, r->output, r->output_row, r->half, w, h);
     // Without a Mask, or one that is the Source's image in the host: the Source stands in
     // (uploaded once).
     const int mask_is_source = has_mask && ms_same_input(&r->inputs[MASK], &r->inputs[SOURCE]);
+    const int has_back = r->connected[BACK];
+    const int back_is_source = has_back && ms_same_input(&r->inputs[BACK], &r->inputs[SOURCE]);
     Job j = {.source = &source,
              .mask = has_mask && !mask_is_source ? &mask : &source,
+             .back = has_back && !back_is_source ? &back : &source,
+             .has_back = has_back,
+             .bg = (float)v[BG_BRIGHTNESS],
              .glow = &glow_image,
              .output = &output,
              .has_mask = has_mask,
@@ -304,10 +315,15 @@ static int render(const MsRender *r) {
         j.add[c] = (float)v[ADD_COLOR + c];
         j.gain[c] = (float)(v[BRIGHTNESS] * v[COLOR + c]);
     }
-    // Inputs uploaded to the GPU: the Source, and the Mask.
-    MsImage *const inputs[] = {&source, j.mask};
+    // Inputs uploaded to the GPU: the Source, the Mask and the Back (each once).
+    MsImage *inputs[3] = {&source, j.mask, j.back};
+    int count = 1;
+    if (j.mask != &source)
+        inputs[count++] = j.mask;
+    if (j.back != &source)
+        inputs[count++] = j.back;
     MsImage *const between[] = {&glow_image};
-    const int ok = ms_run(run, &j, inputs, 2, between, show_threshold ? 0 : 1, &output, r->info,
+    const int ok = ms_run(run, &j, inputs, count, between, show_threshold ? 0 : 1, &output, r->info,
                           r->err, r->err_size);
     free(glow);
     return ok;
@@ -316,11 +332,10 @@ static int render(const MsRender *r) {
 // No glow (Brightness or Color 0) combined so that it leaves the Source (and its alpha) as
 // it is.
 static int identity(const double *v, const int *connected) {
-    (void)connected;
     const int combine = (int)v[COMBINE];
     const int no_glow =
         v[BRIGHTNESS] == 0.0 || (v[COLOR] == 0.0 && v[COLOR_G] == 0.0 && v[COLOR_B] == 0.0);
-    return no_glow && (int)v[SHOW] == 0 && v[SOURCE_OPACITY] == 1.0 &&
+    return no_glow && !connected[BACK] && (int)v[SHOW] == 0 && v[SOURCE_OPACITY] == 1.0 &&
            (combine == ADD || combine == SCREEN || combine == DIFFERENCE);
 }
 
