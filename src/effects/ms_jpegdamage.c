@@ -241,7 +241,7 @@ static void tables(const double *v, float steps[8][8][2], float decoder[8][8][2]
                 if (u == 0 && vv == 0)
                     gain = 1.0;
                 steps[vv][u][t] = (float)s;
-                decoder[vv][u][t] = (float)floor(s * gain + 0.5);
+                decoder[vv][u][t] = (float)(s * gain);
             }
 }
 

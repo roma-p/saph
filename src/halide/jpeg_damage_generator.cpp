@@ -3,8 +3,9 @@
 //   - Res Factor: the image at fx x fy times less resolution, each cell of fx x fy pixels its
 //     bottom-left pixel (x right, y up, cells from the bottom-left corner); the result back
 //     cell by cell
-//   - samples floor(v x 256), 0 to 255; the image extended to whole 16 x 16 macroblocks by its
-//     edges (from the bottom-left corner)
+//   - samples floor(v x 256), 0 to 255; the image cut into 4 bands of 8 round(rows / 32) rows
+//     from the bottom (the last the rest), each extended to whole 16 x 16 macroblocks by its
+//     edges (from its bottom-left corner)
 //   - RGB to YCbCr (fixed point, 16 bits), the chroma halved both ways (2 x 2 means, the
 //     rounding bias alternating 1, 2 by column)
 //   - 8 x 8 blocks, each read top row first: the accurate integer DCT, quantised (the
@@ -12,7 +13,7 @@
 //     the frequency gains), the accurate integer inverse DCT and its range limit (values past
 //     the range wrap as the library's table makes them)
 //   - the chroma doubled back (the library's "fancy" triangle filter, rows only within each
-//     band of 32 image rows from the bottom: the image is compressed band by band)
+//     band: the image is compressed band by band)
 //   - YCbCr to RGB (fixed point), samples / 256
 //   - the errors (MillSaph's own random, the reference's statistics): added to the dequantised
 //     coefficients of damaged blocks. The damaged units (16 columns x 32 rows: a band's
@@ -136,8 +137,9 @@ Blocks blocks(const std::string &name, Func plane, Func steps, Func decoder, Fun
     Expr f = b.coef(u, v, bx, by), q8 = steps(u, v) * 8;
     Expr mag = (cast<int>(abs(f)) + (q8 >> 1)) / q8;
     b.quant(u, v, bx, by) = select(f < 0, -mag, mag);
-    b.deq(u, v, bx, by) =
-        clamp(b.quant(u, v, bx, by) * decoder(u, v) + error(u, v, bx, by), -(1 << 18), 1 << 18);
+    Expr scaled = cast<int>(clamp(floor(cast<float>(b.quant(u, v, bx, by)) * decoder(u, v) + 0.5f),
+                                  -262144.0f, 262144.0f));
+    b.deq(u, v, bx, by) = clamp(scaled + error(u, v, bx, by), -(1 << 18), 1 << 18);
     // the inverse DCT: columns (u), then rows (k)
     std::vector<Expr> in(8);
     for (int i = 0; i < 8; ++i)
@@ -179,10 +181,32 @@ class JpegDamage : public Generator<JpegDamage> {
         Expr w = source.dim(0).extent(), h = source.dim(1).extent();
         Expr ws = (w + fx - 1) / fx, hs = (h + fy - 1) / fy;
         Expr w16 = (ws + 15) / 16 * 16;
+        // The bands, compressed one by one (the reference's): 4 of 8 x round(hs / 32) rows
+        // from the bottom (half to even), the last the rest (fewer when it would be empty; one
+        // below 16 rows), each extended to whole macroblocks by its own edges. The planes'
+        // rows are the padded bands' one after the other.
+        Expr band_h = 8 * cast<int>(round(cast<float>(hs) / 32.0f)); // (Halide: half to even)
+        band_h = select(band_h <= 0, hs, band_h);
+        Expr nbands = min((hs + band_h - 1) / band_h, 4);
+        Expr last_h = hs - (nbands - 1) * band_h;
+        Expr band_p = (band_h + 15) / 16 * 16, last_p = (last_h + 15) / 16 * 16;
+        Expr hp = (nbands - 1) * band_p + last_p; // (the padded rows)
+        // a padded row's band, and its row in the image (the band's top row repeated above)
+        auto band_of_padded = [&](Expr yp) { return clamp(yp / band_p, 0, nbands - 1); };
+        auto height_of = [&](Expr b) { return select(b == nbands - 1, last_h, band_h); };
+        auto image_row = [&](Expr yp) {
+            Expr b = band_of_padded(yp);
+            return b * band_h + clamp(yp - b * band_p, 0, height_of(b) - 1);
+        };
+        // an image row's padded row
+        auto padded_row = [&](Expr yi) {
+            Expr b = clamp(yi / band_h, 0, nbands - 1);
+            return b * band_p + (yi - b * band_h);
+        };
 
-        // 8-bit samples, the image extended by its edges
+        // 8-bit samples, the bands extended by their edges
         Func s8("s8");
-        Expr in = source(min(clamp(x, 0, ws - 1) * fx, w - 1), min(clamp(y, 0, hs - 1) * fy, h - 1), c);
+        Expr in = source(min(clamp(x, 0, ws - 1) * fx, w - 1), min(image_row(y) * fy, h - 1), c);
         s8(x, y, c) = clamp(cast<int>(floor(in * 256.0f)), 0, 255);
         Func ycc("ycc");
         Expr R = s8(x, y, 0), G = s8(x, y, 1), B = s8(x, y, 2);
@@ -203,11 +227,11 @@ class JpegDamage : public Generator<JpegDamage> {
         Func step_l("step_l"), step_c("step_c"), dec_l("dec_l"), dec_c("dec_c");
         step_l(u, v) = cast<int>(steps(u, v, 0));
         step_c(u, v) = cast<int>(steps(u, v, 1));
-        dec_l(u, v) = cast<int>(decoder(u, v, 0));
-        dec_c(u, v) = cast<int>(decoder(u, v, 1));
+        dec_l(u, v) = decoder(u, v, 0);
+        dec_c(u, v) = decoder(u, v, 1);
         // The errors of plane p's block (bx, by): its unit (macroblock column, band) damaged or
         // not, then each coefficient.
-        Expr units = w16 / 16, bands = ((hs + 15) / 16 * 16 + 31) / 32;
+        Expr units = w16 / 16, bands = (hp + 31) / 32;
         auto uniform = [](Expr h) { return cast<float>(h >> 8) * (1.0f / 16777216.0f); };
         auto errors = [&](int p, int per_unit) {
             Func e("error" + std::to_string(p));
@@ -219,7 +243,7 @@ class JpegDamage : public Generator<JpegDamage> {
             Expr h0 = uniform(ms_noise::hash3(i, seed, epoch)), h1 = uniform(ms_noise::hash3(i + 1, seed, epoch));
             Expr k = t * t * (3.0f - 2.0f * t);
             Expr damaged = h0 + (h1 - h0) * k < density;
-            Expr rows = (hs + 15) / 16 * 16 / (per_unit == 2 ? 8 : 16); // (the plane's block rows)
+            Expr rows = hp / (per_unit == 2 ? 8 : 16); // (the plane's block rows)
             Expr row = select(flip != 0, rows - 1 - by, by);
             Expr hb = ms_noise::hash3(bx + 65536 * p, row, seed * 31 + epoch);
             Expr hit = uniform(ms_noise::hash3(hb, u + 8 * v, 1));
@@ -238,14 +262,16 @@ class JpegDamage : public Generator<JpegDamage> {
         Blocks bb = blocks("cb", half_cb, step_c, dec_c, errors(1, 1));
         Blocks br = blocks("cr", half_cr, step_c, dec_c, errors(2, 1));
 
-        // the chroma doubled back: within the band of 32 rows (16 chroma rows), the nearer row
-        // x 3 + the farther one, then across, 3 x this column + the neighbour's, + 8 (even
-        // columns, the left neighbour) or + 7 (odd, the right), / 16; edges repeated
+        // the chroma doubled back within each band (y: padded rows): the nearer row x 3 + the
+        // farther one (the band's first and last chroma rows repeated), then across, 3 x this
+        // column + the neighbour's, + 8 (even columns, the left neighbour) or + 7 (odd, the
+        // right), / 16; edges repeated
         Expr cw = w16 / 2;
         auto upsample = [&](Func half, const std::string &name) {
             Func colsum(name + "_colsum"), full(name + "_full");
-            Expr j = y / 2, band0 = (y / 32) * 16;
-            Expr far = clamp(select((y & 1) == 1, j + 1, j - 1), band0, band0 + 15);
+            Expr j = y / 2, b = band_of_padded(y);
+            Expr first = b * band_p / 2, last = first + (height_of(b) + 1) / 2 - 1;
+            Expr far = clamp(select((y & 1) == 1, j + 1, j - 1), first, last);
             colsum(x, y) = half(clamp(x, 0, cw - 1), j) * 3 + half(clamp(x, 0, cw - 1), far);
             Expr i = x / 2;
             Expr other = select((x & 1) == 0, clamp(i - 1, 0, cw - 1), clamp(i + 1, 0, cw - 1));
@@ -257,7 +283,8 @@ class JpegDamage : public Generator<JpegDamage> {
 
         // YCbCr to RGB (the library's tables), then to floats
         Func rgb("rgb");
-        Expr Y = bl.out(x, y), cb = cb_up.second(x, y) - 128, cr = cr_up.second(x, y) - 128;
+        Expr yp = padded_row(y);
+        Expr Y = bl.out(x, yp), cb = cb_up.second(x, yp) - 128, cr = cr_up.second(x, yp) - 128;
         Expr r8 = clamp(Y + ((91881 * cr + 32768) >> 16), 0, 255);
         Expr g8 = clamp(Y + ((-22554 * cb + 32768 - 46802 * cr) >> 16), 0, 255);
         Expr b8 = clamp(Y + ((116130 * cb + 32768) >> 16), 0, 255);
