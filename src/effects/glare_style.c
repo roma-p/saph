@@ -20,7 +20,8 @@ static void scale_gain(float *row, const double gain[3]) {
 // each line its own length in radius_range, min + (max - min) u (u: MillSaph's random by the
 // line and rand_seed's whole part; the reference's mean energies linear in min, x 0.21 to 0.64
 // at [0, 1] by the seed, 0.45 over 20 lines), turned by
-// jitter_angles x (u' - 0.5) x the lines' spacing (Glare: all at the largest).
+// jitter_angles x (u' - 0.5) x the lines' spacing (Glare: all at the largest); stretched as
+// the element's ellipse along each line's own angle (its angle kept).
 static void add_rays(GlareBuilder *b, int e, float *row, double size, double bright,
                      const double gain[3]) {
     const MsGlareGlobals *g = b->g;
@@ -32,7 +33,10 @@ static void add_rays(GlareBuilder *b, int e, float *row, double size, double bri
     const int lines = (int)floor(get(b, e, "ray_number", 4) * g->rays_num_scale / 2.0 + 1e-9);
     row[GLARE_KIND] = GLARE_RAYS;
     row[GLARE_R] = (float)L;
-    row[GLARE_CLIP_R] = (float)L;
+    // (Lens Flare: a line at angle a in the element's frame L / sqrt(s cos^2 a + sin^2 a / s)
+    // long, s its stretch (rays_value), so cut at L x the longest axis)
+    const double longest = g->lens ? fmax(fmax(row[GLARE_SCALE_X], row[GLARE_SCALE_Y]), 1.0) : 1.0;
+    row[GLARE_CLIP_R] = (float)(L * longest);
     row[GLARE_CLIP_SCALE] = 1.0f;
     row[GLARE_RAY_WIDTH] = (float)(get(b, e, "ray_width", 0.05) * L0 / 2.0 * g->rays_thickness);
     row[GLARE_LINES] = (float)(lines < GLARE_MAX_LINES ? lines : GLARE_MAX_LINES);

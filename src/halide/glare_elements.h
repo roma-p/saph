@@ -332,6 +332,12 @@ inline Expr rays_value(const Field &field, const ElementFrame &m, Expr dx, Expr 
     Expr spacing = PI / select(lines > 0.0f, lines, 1.0f);
     Expr ang = m.rot + cast<float>(j) * spacing + f(GLARE_RAY_JITTER) * (rnd(2) - 0.5f) * spacing;
     Expr ca = cos(ang), sa = sin(ang); // (Lens Flare's frame q: the screen's, the same angle)
+    // (Lens Flare: each line as long as the element's stretched ellipse along its angle in the
+    // element's frame, the angle kept: L / sqrt((cos / kx)^2 + (sin / ky)^2); the reference's
+    // lengths at 12 angles, stretch 0.25-4, rotate 0 and 30)
+    Expr phi = ang - m.rot;
+    Expr ex_ = cos(phi) / max(f(GLARE_SCALE_X), 1e-6f), ey_ = sin(phi) / max(f(GLARE_SCALE_Y), 1e-6f);
+    Lj = select(m.turned, Lj / max(sqrt(ex_ * ex_ + ey_ * ey_), 1e-6f), Lj);
     // (Lens Flare: each line turned by the rotation in the frame q, its length there; its
     // width across it as the squeeze makes it: x rel_width rel_height / |v|)
     Expr vx = f(GLARE_REL_X) * ca, vy = f(GLARE_REL_Y) * sa;
