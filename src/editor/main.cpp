@@ -82,7 +82,7 @@ struct App {
     // a drop in the tree, done after the frame (the tree is being walked)
     bool move_pending = false, move_into = false;
     Path move_target;
-    bool tree_focused = false;
+    bool tree_focused = false, scroll_to_selection = false;
     Path last_primary;
 };
 
@@ -321,6 +321,7 @@ void add_element(App &app, const std::string &uitype, const std::string &label) 
     Json e = lens::new_element(uitype, count_kind(app, label) + 1);
     app.lens.elements().push_back(e);
     app.selected = {Path{(int)app.lens.elements().size() - 1}};
+    app.scroll_to_selection = true;
     touch(app);
 }
 
@@ -517,6 +518,10 @@ void tree(App &app, Json &list, Path &path, int depth) {
         const ImVec2 row = ImGui::GetCursorScreenPos();
         if (ImGui::Selectable("##row", selected, ImGuiSelectableFlags_AllowOverlap, ImVec2(0, ROW_H)))
             select_row(app, path);
+        if (selected && app.scroll_to_selection) {
+            ImGui::SetScrollHereY(0.5f);
+            app.scroll_to_selection = false;
+        }
         if (ImGui::IsItemHovered())
             app.hint = "Shift- or Control-click to select several elements and edit them together. "
                        "Drag to reorder (onto a group: into it).";
@@ -684,12 +689,15 @@ bool edit_field(Json &e, const lens::Field &f, bool grey, bool relative) {
     ImGui::BeginDisabled(grey);
     ImGui::TableSetColumnIndex(1);
     const lens::Mode mode = relative ? lens::mode(e, key) : lens::Mode::Overwrite;
-    const char *fmt = mode == lens::Mode::Scale ? "x%.3f" : mode == lens::Mode::Offset ? "%+.3f" : "%.3f";
+    const bool wide = f.max - f.min >= 100; // (angles, frequencies)
+    const char *fmt = mode == lens::Mode::Scale ? "x%.3f"
+                      : mode == lens::Mode::Offset ? (wide ? "%+.2f" : "%+.3f")
+                      : wide ? "%.2f" : "%.3f";
     switch (f.kind) {
     case lens::Kind::Number:
     case lens::Kind::Integer: {
         const bool integer = f.kind == lens::Kind::Integer;
-        float v = (float)number(e, key, f.def);
+        float v = (float)number(e, key, lens::neutral(e, key));
         const float speed = (float)(f.max - f.min) / 400.0f;
         ImGui::SetNextItemWidth(VALUE_W);
         bool c = integer ? false : ImGui::DragFloat("##v", &v, speed, 0, 0, fmt);
@@ -881,7 +889,7 @@ bool begin_table() {
     if (!ImGui::BeginTable("rows", 3, ImGuiTableFlags_SizingFixedFit))
         return false;
     ImGui::TableSetupColumn("label", ImGuiTableColumnFlags_WidthFixed, LABEL_W);
-    ImGui::TableSetupColumn("value", ImGuiTableColumnFlags_WidthFixed, VALUE_W);
+    ImGui::TableSetupColumn("value", ImGuiTableColumnFlags_WidthFixed | ImGuiTableColumnFlags_NoClip, VALUE_W);
     ImGui::TableSetupColumn("slider", ImGuiTableColumnFlags_WidthStretch);
     return true;
 }
@@ -950,7 +958,9 @@ std::vector<const lens::Field *> group_fields(const Json &e, const std::string &
         if (group != f.group)
             continue;
         const bool gen_field = !std::strcmp(f.types, "generator");
-        const bool show = gen_field ? gen : grp ? group != "Options" : lens::field_for(f, type);
+        const bool show = gen_field ? gen
+                          : grp      ? group != "Options" && std::strcmp(f.name, "color")
+                                     : lens::field_for(f, type);
         if (show)
             out.push_back(&f);
     }
@@ -1043,7 +1053,7 @@ void properties_panel(App &app) {
                      !std::strcmp(f->name, "n_sides")) &&
                     number(*e, "n_sides", 0) <= 0)
                     grey = true;
-                changed |= edit_field(*e, *f, grey, grp || lens::is_generator(*e));
+                changed |= edit_field(*e, *f, grey, grp);
                 if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
                     reset_field(*e, *f);
                     changed = true;

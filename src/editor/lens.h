@@ -73,6 +73,9 @@ bool has_gradient(const Json &e);
 // The element's value of a field: its own, else its first primitive's, else null.
 const Json *value(const Json &e, const std::string &name);
 
+// A field's value when e leaves it out: its default; 0 for a group's offsets.
+double neutral(const Json &e, const std::string &name);
+
 // Sets a field on e and, for a container, on the elements under it by the field's mode:
 // scaled by new / old, offset by new - old, or overwritten.
 void set_field(Json &e, const std::string &name, const Json &v);

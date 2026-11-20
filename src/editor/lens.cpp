@@ -119,14 +119,6 @@ const std::vector<Field> &fields() {
         {"color", "Color", "Color and Brightness", Kind::Color, 1, 0, 1, nullptr, RAYS, nullptr},
         {"fade_gradient", "Fade Gradient", "Color and Brightness", Kind::Number, 0, -1, 1, nullptr, SECTOR, nullptr},
         {"blur_gradient", "Blur Gradient", "Color and Brightness", Kind::Number, 0, 0, 2, nullptr, SECTOR, nullptr},
-        // Options: Multi Spot / Multi Streak (their children made again, see generate)
-        {"number", "Number", "Options", Kind::Integer, 4, 1, 24, nullptr, GEN, nullptr},
-        {"spread", "Spread", "Options", Kind::Number, 1, 0, 4, nullptr, GEN, nullptr},
-        {"vary_spacing", "Vary Spacing", "Options", Kind::Number, 0.2, 0, 1, nullptr, GEN, nullptr},
-        {"vary_size", "Vary Size", "Options", Kind::Number, 0.5, 0, 1, nullptr, GEN, nullptr},
-        {"vary_brightness", "Vary Brightness", "Options", Kind::Number, 0.5, 0, 1, nullptr, GEN, nullptr},
-        {"vary_hue", "Vary Hue", "Options", Kind::Number, 0.1, 0, 1, nullptr, GEN, nullptr},
-        {"vary_rotate", "Vary Rotate", "Options", Kind::Number, 0, 0, 1, nullptr, GEN, nullptr},
         // Options: spots, polygons, rings
         {"shape", "Shape", "Options", Kind::Shape, 0, 0, 0, "Circle|Polygon", SPOT, nullptr},
         {"n_sides", "Sides", "Options", Kind::Integer, 0, 3, 16, nullptr, SECTOR, nullptr},
@@ -135,6 +127,14 @@ const std::vector<Field> &fields() {
         {"repeats", "Repeats", "Options", Kind::Integer, 1, 1, 32, nullptr, SECTOR, nullptr},
         {"angle_width", "Angle Width", "Options", Kind::Number, 360, 0, 360, nullptr, SECTOR, nullptr},
         {"arc_edge_softness", "Angle Softness", "Options", Kind::Number, 0, 0, 1, nullptr, SECTOR, nullptr},
+        // Options: Multi Spot / Multi Streak (their children made again, see generate)
+        {"number", "Number", "Options", Kind::Integer, 4, 1, 24, nullptr, GEN, nullptr},
+        {"spread", "Spread", "Options", Kind::Number, 1, 0, 4, nullptr, GEN, nullptr},
+        {"vary_spacing", "Vary Spacing", "Options", Kind::Number, 0.2, 0, 1, nullptr, GEN, nullptr},
+        {"vary_size", "Vary Size", "Options", Kind::Number, 0.5, 0, 1, nullptr, GEN, nullptr},
+        {"vary_brightness", "Vary Brightness", "Options", Kind::Number, 0.5, 0, 1, nullptr, GEN, nullptr},
+        {"vary_hue", "Vary Hue", "Options", Kind::Number, 0.1, 0, 1, nullptr, GEN, nullptr},
+        {"vary_rotate", "Vary Rotate", "Options", Kind::Number, 0, 0, 1, nullptr, GEN, nullptr},
         {"start_angle", "Start Angle", "Options", Kind::Number, 0, -360, 360, nullptr, SECTOR, nullptr},
         {"shift_edge", "Shift Edge", "Options", Kind::Number, 0, -2, 2, nullptr, SECTOR, nullptr},
         // Options: advanced elements (and the rays made of them)
@@ -322,6 +322,7 @@ Json new_element(const std::string &uitype, int number) {
     } else if (uitype == "ShimmerRays" || uitype == "SpikyRays") {
         e["type"] = "polar_flare";
         e["size"] = uitype == "ShimmerRays" ? 1.0 : 0.5;
+        e["brightness"] = 0.3;
         e.update(stops({0, 0.6, 1}, {1, 1, 1, 0.3, 0.3, 0.3, 0, 0, 0}));
         e["noise_brightness"] = 1.0;
         e["noise_freq"] = uitype == "ShimmerRays" ? 120.0 : 60.0;
@@ -335,6 +336,7 @@ Json new_element(const std::string &uitype, int number) {
         }
     } else if (uitype == "FanRays") {
         e["type"] = "polar_flare";
+        e["brightness"] = 0.3;
         e.update(stops({0, 1}, {1, 1, 1, 0, 0, 0}));
         e["wave_brightness"] = 1.0;
         e["wave_freq"] = 6.0;
@@ -359,6 +361,7 @@ Json new_element(const std::string &uitype, int number) {
         e["colors"] = {1, 1, 1};
     } else { // Advanced
         e["type"] = "polar_flare";
+        e["brightness"] = 0.3;
         e.update(stops({0, 1}, {1, 1, 1, 0, 0, 0}));
     }
     if (uitype == "MultiSpot" || uitype == "MultiStreak") {
@@ -456,16 +459,27 @@ bool has_gradient(const Json &e) {
 const Json *value(const Json &e, const std::string &name) {
     if (e.contains(name))
         return &e[name];
+    if (is_group(e)) // a group's values: relative to its elements' (neutral when left out)
+        return nullptr;
     const Json *p = first_primitive(e);
     if (p && p->contains(name))
         return &(*p)[name];
     return nullptr;
 }
 
-static void apply(Json &child, const std::string &name, const Json &old, const Json &now, Mode m,
+double neutral(const Json &e, const std::string &name) {
+    const Field *f = field(name);
+    if (is_group(e) && mode(e, name) == Mode::Offset)
+        return 0.0;
+    return f ? f->def : 0.0;
+}
+
+static void apply(Json &child, const std::string &key, const Json &old, const Json &now, Mode m,
                   int depth) {
     if (!child.is_object() || depth > 32)
         return;
+    // a group's colour: the rays' "color", the others' "tint"
+    const std::string name = key == "tint" && child.value("type", "") == "rays" ? "color" : key;
     const Field *f = field(name);
     const double def = f ? f->def : 0.0;
     if (m != Mode::Overwrite && now.is_number() && old.is_number()) {
@@ -489,7 +503,7 @@ static void apply(Json &child, const std::string &name, const Json &old, const J
     if (child.value("type", "") == "container" && child.contains("children") &&
         child["children"].is_array())
         for (Json &g : child["children"])
-            apply(g, name, old, now, m, depth + 1);
+            apply(g, key, old, now, m, depth + 1);
 }
 
 void set_field(Json &e, const std::string &name, const Json &v) {
@@ -497,10 +511,10 @@ void set_field(Json &e, const std::string &name, const Json &v) {
         e.contains("children") && e["children"].is_array() && !generator_field(name)) {
         const Json *was = value(e, name);
         const Field *f = field(name);
-        Json old = was ? *was : f ? Json(f->def) : Json();
+        const Mode m = mode(e, name);
+        Json old = was ? *was : Json(neutral(e, name));
         if (f && f->kind == Kind::Color && !was)
             old = {1.0, 1.0, 1.0};
-        const Mode m = mode(e, name);
         for (Json &c : e["children"])
             apply(c, name, old, v, m, 1);
     }
