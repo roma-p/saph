@@ -287,8 +287,10 @@ void ms_lens_shadow(GlareBuilder *b, int e, int owner) {
     b->rows[at][GLARE_TURNED_FRAME] = 1.0f;
     b->rows[at][GLARE_REL_X] *= row[GLARE_REL_X];
     b->rows[at][GLARE_REL_Y] *= row[GLARE_REL_Y];
-    // (and stretched as it, in the shadow's own turned frame: its rotation, not the
-    // element's; measured on an ellipse and a needle, centred and offset)
+    // (and stretched as it, taller along the element's own rotate, not the shadow's rotation
+    // nor rotate_to_pivot: the reference's shadow's long axis at 90 + rotate degrees, at
+    // rotate 0 / 45 / 90, with and without rotate_to_pivot, stretch 2 and 0.5)
+    b->rows[at][GLARE_ROTATE] = (float)((get(b, e, "rotate", 0.0) + g->rotate) * RADIANS);
     b->rows[at][GLARE_SCALE_X] *= row[GLARE_SCALE_X];
     b->rows[at][GLARE_SCALE_Y] *= row[GLARE_SCALE_Y];
     row[GLARE_SHADOW_ROW] = (float)(at + 1);
