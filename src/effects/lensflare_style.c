@@ -72,12 +72,14 @@ void ms_lens_place(const GlareBuilder *b, int e, float *row, double *size_k, dou
     // made s + o d (wider in their own frame, their area kept), 1 / (1 / s + o d) with
     // stretch_offset_inverted (taller; stretch_direction: no change). 12 polygons at 2
     // distances, a fancy spot's ellipse at s 0.038 to 2, o 0 to 5.34, both ways: exact.
+    // (the distance less 4 x offset_distance, as the other distance laws: by_dist)
     const double o = get(b, e, "offset_stretch_by_dist", 0.0);
+    const double od = fmax(d - 4.0 * get(b, e, "offset_distance", 0.0), 0.0);
     const int round_blob = is_type(b, e, "blob");
-    const double shrink = round_blob ? 1.0 / sqrt(fmax(1.0 + o * d, 1e-6)) : 1.0;
+    const double shrink = round_blob ? 1.0 / sqrt(fmax(1.0 + o * od, 1e-6)) : 1.0;
     const int inverted = get(b, e, "stretch_offset_inverted", 0.0) != 0.0;
-    stretch_add[0] = round_blob || inverted ? 0.0 : o * d;
-    stretch_add[1] = round_blob || !inverted ? 0.0 : o * d;
+    stretch_add[0] = round_blob || inverted ? 0.0 : o * od;
+    stretch_add[1] = round_blob || !inverted ? 0.0 : o * od;
     // rotate_to_pivot: turned along the axis (from the pivot to the hotspot), minus a half
     // turn, wherever the element is (center below 0 or 0, off the axis, offset: the same
     // turn, measured on a polar flare's sector)
