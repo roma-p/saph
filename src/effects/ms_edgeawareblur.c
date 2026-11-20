@@ -45,6 +45,7 @@ enum {
     SUBPIXEL,
     INVERT_MASK,
     MASK_USE,
+    SHOW_BLUR_AMOUNT,
 };
 static const MsParam params[] = {
     [BLUR_AMOUNT] = {.type = MS_PARAM_WIDTH,
@@ -113,6 +114,7 @@ static const MsParam params[] = {
                   .def = 1},
     [INVERT_MASK] = MS_PARAM_INVERT_MASK("Apply the effect where the Mask is black."),
     [MASK_USE] = MS_PARAM_MASK_USE,
+    MS_SHOW(SHOW_BLUR_AMOUNT, "ShowBlurAmount", "Show Blur Amount"),
 };
 
 static const int filter_passes[] = {1, 2, 3, 5}; // Box, Triangle, Gauss, Smooth
@@ -453,6 +455,28 @@ static int identity(const double *v, const int *connected) {
     return (blur_x <= 0 && blur_y <= 0) || v[EDGE_THRESHOLD] <= 0;
 }
 
+// The viewer: the Blur Amount, Blur Rel X and Y (the arrows).
+static const MsOverlay overlay[] = {
+    {.kind = MS_OVERLAY_ELLIPSE,
+     .colour = MS_OVERLAY_ORANGE,
+     .show = "ShowBlurAmount",
+     .size = "blur_amount",
+     .rel_x = "blur_rel_x",
+     .rel_y = "blur_rel_y"},
+    {.kind = MS_OVERLAY_ARROW_X,
+     .colour = MS_OVERLAY_ORANGE,
+     .show = "ShowBlurAmount",
+     .size = "blur_amount",
+     .rel_x = "blur_rel_x",
+     .rel_y = "blur_rel_y"},
+    {.kind = MS_OVERLAY_ARROW_Y,
+     .colour = MS_OVERLAY_ORANGE,
+     .show = "ShowBlurAmount",
+     .size = "blur_amount",
+     .rel_x = "blur_rel_x",
+     .rel_y = "blur_rel_y"},
+};
+
 const MsEffect ms_edgeawareblur_effect = {
     MS_ID("EdgeAwareBlur"),
     "MS_EdgeAwareBlur",
@@ -465,6 +489,6 @@ const MsEffect ms_edgeawareblur_effect = {
     identity,
     0,
     NULL,
-    NULL,
-    0,
+    overlay,
+    ARRAY_SIZE(overlay),
 };
