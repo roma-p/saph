@@ -7,8 +7,8 @@
 //     every one but the mean; X those across (any horizontal frequency u: by the setting
 //     below 1, by 1 + (s - 1) (u - v) / u above), Y the same down; Low, Mid, High by
 //     max(u, v): 0-1 low, 2 half low half mid, 3-4 mid, 5 half mid half high, 6-7 high;
-//     their product g taken as 1 + a (g - 1) on the luma (a: Affect Luma) and on the chroma
-//     (a: Affect Chroma)
+//     their product g taken as g^a on the luma (a: Affect Luma) and on the chroma (a: Affect
+//     Chroma)
 //   - Saturation, Scale Lights and Offset Darks on the result; the Mask mixes it over the
 //     Source
 //   - Res Factor r: the image compressed at max(floor(r Res Rel X), 1) x floor(r) times less
@@ -234,8 +234,10 @@ static void tables(const double *v, float steps[8][8][2], float decoder[8][8][2]
                 double gain = (low * v[LOW_FREQ] + (1.0 - low - high) * v[MID_FREQ] +
                                high * v[HIGH_FREQ]) *
                               v[ALL_FREQ] * axis_gain(v[X_FREQ], u, vv) * axis_gain(v[Y_FREQ], vv, u);
-                // Affect Luma / Affect Chroma: that much of the change on the table's plane
-                gain = 1.0 + v[t == 0 ? AFFECT_LUMA : AFFECT_CHROMA] * (gain - 1.0);
+                // Affect Luma / Affect Chroma a on the table's plane: above 1, 1 + a (g - 1);
+                // below, g^a (at gain 0, any a > 0 the same)
+                const double a = v[t == 0 ? AFFECT_LUMA : AFFECT_CHROMA];
+                gain = gain >= 1.0 ? 1.0 + a * (gain - 1.0) : pow(fmax(gain, 0.0), a);
                 if (u == 0 && vv == 0)
                     gain = 1.0;
                 steps[vv][u][t] = (float)s;
