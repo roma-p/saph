@@ -333,7 +333,7 @@ static int process(const MsRender *r, const Settings *s) {
     // one in the host: that one stands in (uploaded once).
     const MsInput *in = r->inputs;
     MsImage *edges = s->has_edge && !ms_same_input(&in[EDGE], &in[SOURCE]) ? &edge : &source;
-    MsImage *masks = !s->has_mask                              ? edges
+    MsImage *masks = !s->has_mask                            ? edges
                      : ms_same_input(&in[MASK], &in[SOURCE]) ? &source
                      : ms_same_input(&in[MASK], &in[EDGE])   ? edges
                                                              : &mask;
@@ -492,5 +492,5 @@ const MsEffect ms_edgeawareblur_effect = {
     overlay,
     ARRAY_SIZE(overlay),
     "edgeawareblur", // presets (common/preset.h)
-    NULL, // not varying with its settings
+    NULL,            // not varying with its settings
 };

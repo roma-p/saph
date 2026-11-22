@@ -16,7 +16,7 @@ Order: batch 1, then 2, 3, 4, 5. Tick what is done.
   the bundle has `Contents/MacOS` (`CMakeLists.txt:73`): ms_render.py cannot find it on a Mac.
 - [x] `src/effects/ms_glare.c:309-313`: when the style's nodes cannot be allocated, the message
   says the Style is not a glare style; it should say there is not enough memory.
-- [ ] `tools/format.sh --check`: about 470 lines in 37 files are not formatted (mostly the
+- [x] `tools/format.sh --check`: about 470 lines in 37 files are not formatted (mostly the
   effects added since 2026-11, `ae/plugin.c`, `glare_layout.h`): run `tools/format.sh` once, in
   a commit of its own (no code change), before the other batches.
 

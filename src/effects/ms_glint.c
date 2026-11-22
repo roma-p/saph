@@ -65,7 +65,8 @@ enum {
     SHOW_SIZE,
 };
 static const MsParam params[] = {
-    MS_RELATIVE(BRIGHTNESS, "brightness", "Brightness", "Scales the brightness of all the rays.", 1.0),
+    MS_RELATIVE(BRIGHTNESS, "brightness", "Brightness", "Scales the brightness of all the rays.",
+                1.0),
     [SCALE_COLORS] = {.type = MS_PARAM_RGB,
                       .name = "scale_colors",
                       .label = "Scale Colors",
@@ -76,9 +77,9 @@ static const MsParam params[] = {
     MS_RELATIVE(BRIGHTNESS_X, "brightness_x", "Brightness X", "Scales the horizontal rays.", 1.0),
     MS_RELATIVE(BRIGHTNESS_Y, "brightness_y", "Brightness Y", "Scales the vertical rays.", 1.0),
     MS_RELATIVE(BRIGHTNESS_DIAG1, "brightness_diag1", "Brightness Diag1",
-             "Scales the rays up to the right.", 1.0),
+                "Scales the rays up to the right.", 1.0),
     MS_RELATIVE(BRIGHTNESS_DIAG2, "brightness_diag2", "Brightness Diag2",
-             "Scales the rays down to the right.", 1.0),
+                "Scales the rays down to the right.", 1.0),
     [THRESHOLD] = {.type = MS_PARAM_DOUBLE,
                    .name = "threshold",
                    .label = "Threshold",
@@ -113,11 +114,12 @@ static const MsParam params[] = {
     MS_RELATIVE(SIZE_X, "size_x", "Size X", "Scales the length of the horizontal rays.", 1.0),
     MS_RELATIVE(SIZE_Y, "size_y", "Size Y", "Scales the length of the vertical rays.", 1.0),
     MS_RELATIVE(SIZE_DIAG1, "size_diag1", "Size Diag1",
-             "Scales the length of the rays up to the right.", 0.75),
+                "Scales the length of the rays up to the right.", 0.75),
     MS_RELATIVE(SIZE_DIAG2, "size_diag2", "Size Diag2",
-             "Scales the length of the rays down to the right.", 0.75),
+                "Scales the length of the rays down to the right.", 0.75),
     MS_RELATIVE(SIZE_RED, "size_red", "Size Red", "Scales the length of the red rays.", 0.5),
-    MS_RELATIVE(SIZE_GREEN, "size_green", "Size Green", "Scales the length of the green rays.", 1.0),
+    MS_RELATIVE(SIZE_GREEN, "size_green", "Size Green", "Scales the length of the green rays.",
+                1.0),
     MS_RELATIVE(SIZE_BLUE, "size_blue", "Size Blue", "Scales the length of the blue rays.", 1.5),
     [BLUR_GLINT] = {.type = MS_PARAM_WIDTH,
                     .name = "blur_glint",
@@ -136,11 +138,11 @@ static const MsParam params[] = {
                    .display_max = 1.0},
     MS_FRACTION(AFFECT_ALPHA, "affect_alpha", "Affect Alpha", "Adds the rays to the alpha.", 0.0),
     MS_FRACTION(FROM_ALPHA, "glint_from_alpha", "Glint From Alpha",
-             "Takes the rays from the alpha instead of the colors.", 0.0),
+                "Takes the rays from the alpha instead of the colors.", 0.0),
     MS_FRACTION(UNDER_SOURCE, "glint_under_source", "Glint Under Source",
-             "Puts the rays behind the Source, by its alpha.", 0.0),
+                "Puts the rays behind the Source, by its alpha.", 0.0),
     MS_FRACTION(SOURCE_OPACITY, "source_opacity", "Source Opacity",
-             "Scales the Source under the rays.", 1.0),
+                "Scales the Source under the rays.", 1.0),
     [INVERT_MASK] = MS_PARAM_INVERT_MASK("Use the black areas of the Mask."),
     [MASK_TYPE] = {.type = MS_PARAM_CHOICE,
                    .name = "mask_type",
@@ -165,9 +167,9 @@ typedef struct {
     MsImage *source, *mask, *glints, *totals[2], *output;
     int has_mask, invert_mask, mask_type, blur, glint_blur;
     float blur_frac, glint_blur_frac, threshold, add[3], from_alpha;
-    int used[4];      // the directions with rays
-    int r[4][3];      // total radius per direction and channel
-    float amp[4][3];  // amplitude per direction and channel
+    int used[4];     // the directions with rays
+    int r[4][3];     // total radius per direction and channel
+    float amp[4][3]; // amplitude per direction and channel
     float hue, source_opacity, under, affect_alpha;
 } Job;
 
@@ -180,19 +182,18 @@ static int run(MsApi api, void *user) {
         if (!j->used[d])
             continue;
         if (done == 0)
-            status = MS_KERNEL(
-                MS_K_GLINT_SOURCE, api, MS_IMAGE("source", j->source), MS_IMAGE("mask", j->mask),
-                MS_INT("has_mask", j->has_mask), MS_INT("invert_mask", j->invert_mask),
-                MS_INT("mask_type", j->mask_type), MS_FLOAT("from_alpha", j->from_alpha),
-                MS_INT("blur", j->blur), MS_FLOAT("blur_frac", j->blur_frac),
-                MS_FLOAT("threshold", j->threshold), MS_FLOAT("add_r", j->add[0]),
-                MS_FLOAT("add_g", j->add[1]), MS_FLOAT("add_b", j->add[2]),
-                MS_IMAGE("glints", j->glints));
+            status =
+                MS_KERNEL(MS_K_GLINT_SOURCE, api, MS_IMAGE("source", j->source),
+                          MS_IMAGE("mask", j->mask), MS_INT("has_mask", j->has_mask),
+                          MS_INT("invert_mask", j->invert_mask), MS_INT("mask_type", j->mask_type),
+                          MS_FLOAT("from_alpha", j->from_alpha), MS_INT("blur", j->blur),
+                          MS_FLOAT("blur_frac", j->blur_frac), MS_FLOAT("threshold", j->threshold),
+                          MS_FLOAT("add_r", j->add[0]), MS_FLOAT("add_g", j->add[1]),
+                          MS_FLOAT("add_b", j->add[2]), MS_IMAGE("glints", j->glints));
         if (status != 0)
             break;
         status = MS_KERNEL(ray_kernels[d], api, MS_IMAGE("glints", j->glints),
-                           MS_IMAGE("total", j->totals[(done + 1) % 2]),
-                           MS_INT("first", done == 0),
+                           MS_IMAGE("total", j->totals[(done + 1) % 2]), MS_INT("first", done == 0),
                            MS_INT("r_r", j->r[d][0]), MS_INT("r_g", j->r[d][1]),
                            MS_INT("r_b", j->r[d][2]), MS_FLOAT("amp_r", j->amp[d][0]),
                            MS_FLOAT("amp_g", j->amp[d][1]), MS_FLOAT("amp_b", j->amp[d][2]),
@@ -239,8 +240,8 @@ static int render(const MsRender *r) {
     int rays = 0;
     for (int d = 0; d < 4; ++d) {
         const int s = d < 2 || !swap ? d : 5 - d;
-        const double size = v[SIZE_X + s], gain = 4.0 * v[BRIGHTNESS] * v[BRIGHTNESS_X + s] *
-                                                   size * (d < 2 ? 1.0 : 1.333);
+        const double size = v[SIZE_X + s], gain = 4.0 * v[BRIGHTNESS] * v[BRIGHTNESS_X + s] * size *
+                                                  (d < 2 ? 1.0 : 1.333);
         for (int c = 0; c < 3; ++c) {
             double t = v[SIZE] * size * v[SIZE_RED + c];
             t = t > 0 ? (t < 1e7 ? t : 1e7) : 0;
@@ -353,5 +354,5 @@ const MsEffect ms_glint_effect = {
     overlay,
     ARRAY_SIZE(overlay),
     "glint", // presets (common/preset.h)
-    NULL, // not varying with its settings
+    NULL,    // not varying with its settings
 };

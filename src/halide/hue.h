@@ -14,8 +14,8 @@ inline Expr hue_shifted(Expr r, Expr g, Expr b, Expr c, Expr hue, Expr other) {
     Expr mx = max(r, max(g, b)), mn = min(r, min(g, b)), d = mx - mn;
     Expr safe = select(d > 0.0f, d, 1.0f);
     // The hue in sixths: 0 red, 2 green, 4 blue.
-    Expr h6 = select(mx == r, (g - b) / safe, mx == g, (b - r) / safe + 2.0f,
-                     (r - g) / safe + 4.0f);
+    Expr h6 =
+        select(mx == r, (g - b) / safe, mx == g, (b - r) / safe + 2.0f, (r - g) / safe + 4.0f);
     h6 = h6 + 6.0f * hue;
     h6 = h6 - 6.0f * floor(h6 / 6.0f);
     auto part = [&](float n) {

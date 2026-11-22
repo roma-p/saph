@@ -190,7 +190,6 @@ double ms_json_get(const MsJson *nodes, int object, const char *key, double fall
 
 int ms_json_is(const MsJson *nodes, int object, const char *key, const char *value) {
     const int m = ms_json_member(nodes, object, key);
-    return m >= 0 && nodes[m].type == MS_JSON_STRING &&
-           (size_t)nodes[m].length == strlen(value) &&
+    return m >= 0 && nodes[m].type == MS_JSON_STRING && (size_t)nodes[m].length == strlen(value) &&
            strncmp(nodes[m].text, value, (size_t)nodes[m].length) == 0;
 }

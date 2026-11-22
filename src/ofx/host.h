@@ -30,7 +30,7 @@ extern const OfxPropertySuiteV1 *ms_prop;
 extern const OfxImageEffectSuiteV1 *ms_effect;
 extern const OfxParameterSuiteV1 *ms_param;
 extern const OfxMessageSuiteV1 *ms_message;
-extern const OfxDrawSuiteV1 *ms_draw; // optional (overlays: else OpenGL)
+extern const OfxDrawSuiteV1 *ms_draw;         // optional (overlays: else OpenGL)
 extern const OfxInteractSuiteV1 *ms_interact; // optional (overlays: redraws on hover)
 
 // The overlay of effect e (ofx/overlay.c; MsEffect.overlay): the interact's main entry.

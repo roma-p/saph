@@ -189,5 +189,5 @@ const MsEffect ms_edgeblur_effect = {
     overlay,
     ARRAY_SIZE(overlay),
     "edgeblur", // presets (common/preset.h)
-    NULL, // not varying with its settings
+    NULL,       // not varying with its settings
 };

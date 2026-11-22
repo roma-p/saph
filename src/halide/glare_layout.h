@@ -46,12 +46,12 @@ enum {
 // The fields of a row (sizes, lengths in pixels of the render; angles in radians).
 enum {
     GLARE_KIND,
-    GLARE_R,          // the gradient's radius (stops) or the ray length (rays)
-    GLARE_FALLOFF_R,  // FALLOFF: the profile's radius
-    GLARE_GAIN_R,     // brightness x tint (x colour for FALLOFF and RAYS), per channel
+    GLARE_R,         // the gradient's radius (stops) or the ray length (rays)
+    GLARE_FALLOFF_R, // FALLOFF: the profile's radius
+    GLARE_GAIN_R,    // brightness x tint (x colour for FALLOFF and RAYS), per channel
     GLARE_GAIN_G,
     GLARE_GAIN_B,
-    GLARE_SCALE_X,    // the element frame: x / (rel_width x stretch), y / (rel_height x ...)
+    GLARE_SCALE_X, // the element frame: x / (rel_width x stretch), y / (rel_height x ...)
     GLARE_SCALE_Y,
     GLARE_ANGLE_X,    // the frame of the angles (sectors, waves) and of the rays' width:
     GLARE_ANGLE_Y,    // x / rel_width, y / rel_height (no stretch)
@@ -73,71 +73,71 @@ enum {
     GLARE_RN_OCTAVES,     // Lens Flare, radius noise (r_noise): octaves (0: none)
     GLARE_RN_MIN,         // its radius scale at the noise's 0 and 1
     GLARE_RN_MAX,
-    GLARE_RN_RHO,         // the radius of the circle the noise is read on (its frequency)
-    GLARE_RN_SEED,        // the noise's third coordinate
-    GLARE_RN_SCALE,       // the noise 0.47 + this x its octaves' sum (about 0..1)
-    GLARE_WAVE_LENS,      // 1 (Lens Flare): the waves x wave_brightness, by width and softness
-    GLARE_WAVE_SOFT,      // wave_softness
-    GLARE_WAVE_PHASE,     // wave_phase
-    GLARE_NB,             // Lens Flare, noise_brightness: x this x the thresholded noise (0: none)
-    GLARE_NB_WIDTH,       // noise_width, noise_softness: the threshold, as the waves'
+    GLARE_RN_RHO,     // the radius of the circle the noise is read on (its frequency)
+    GLARE_RN_SEED,    // the noise's third coordinate
+    GLARE_RN_SCALE,   // the noise 0.47 + this x its octaves' sum (about 0..1)
+    GLARE_WAVE_LENS,  // 1 (Lens Flare): the waves x wave_brightness, by width and softness
+    GLARE_WAVE_SOFT,  // wave_softness
+    GLARE_WAVE_PHASE, // wave_phase
+    GLARE_NB,         // Lens Flare, noise_brightness: x this x the thresholded noise (0: none)
+    GLARE_NB_WIDTH,   // noise_width, noise_softness: the threshold, as the waves'
     GLARE_NB_SOFT,
-    GLARE_NB_RHO,         // as GLARE_RN_*: the circle's radius, the third coordinate, octaves,
-    GLARE_NB_SEED,        // the scale of the octaves' sum (0.5 + this x the sum)
+    GLARE_NB_RHO,  // as GLARE_RN_*: the circle's radius, the third coordinate, octaves,
+    GLARE_NB_SEED, // the scale of the octaves' sum (0.5 + this x the sum)
     GLARE_NB_OCTAVES,
     GLARE_NB_SCALE,
-    GLARE_NB_BLUR,        // blur_theta_map: the thresholded noise averaged over this x a turn
-    GLARE_NOISE_SLOT,     // Lens Flare: the row of the noise rows with its noises (the rows
-                          // of a motion blur's times share them)
-    GLARE_TN_AMP,         // Lens Flare, noise_amp: x max(1 + this x a fbm, 0) (0: none), the
-    GLARE_TN_FX,          // fbm at (dx x FX, dy x FY, Z) (pixels from the centre), octaves
-    GLARE_TN_FY,          // PERSIST^k
-    GLARE_TN_Z,           // (Z and U: where it is read, by the element's position)
+    GLARE_NB_BLUR,    // blur_theta_map: the thresholded noise averaged over this x a turn
+    GLARE_NOISE_SLOT, // Lens Flare: the row of the noise rows with its noises (the rows
+                      // of a motion blur's times share them)
+    GLARE_TN_AMP,     // Lens Flare, noise_amp: x max(1 + this x a fbm, 0) (0: none), the
+    GLARE_TN_FX,      // fbm at (dx x FX, dy x FY, Z) (pixels from the centre), octaves
+    GLARE_TN_FY,      // PERSIST^k
+    GLARE_TN_Z,       // (Z and U: where it is read, by the element's position)
     GLARE_TN_U,
     GLARE_TN_PERSIST,
-    GLARE_STREAK_AMP,     // Lens Flare, RAYS' streaks: each line x max(1 + AMP (mean + k n), 0),
-    GLARE_STREAK_FREQ,    // n a fbm of t x FREQ, t the offset across it / its width, PERSIST^k
-                          // (a table per noise slot, lensflare_generator.cpp)
+    GLARE_STREAK_AMP,  // Lens Flare, RAYS' streaks: each line x max(1 + AMP (mean + k n), 0),
+    GLARE_STREAK_FREQ, // n a fbm of t x FREQ, t the offset across it / its width, PERSIST^k
+                       // (a table per noise slot, lensflare_generator.cpp)
     GLARE_STREAK_PERSIST,
     GLARE_STREAK_SEED,
     GLARE_BRIGHT_RESPONSE, // Lens Flare: brightness_response, width_response (Occlusion Scale)
     GLARE_WIDTH_RESPONSE,
-    GLARE_TEX,            // Lens Flare: 1 when an image multiplies the element (or is it)
-    GLARE_TEX_START,      // its first texel's index (floats), its size in texels
+    GLARE_TEX,       // Lens Flare: 1 when an image multiplies the element (or is it)
+    GLARE_TEX_START, // its first texel's index (floats), its size in texels
     GLARE_TEX_W,
     GLARE_TEX_H,
-    GLARE_TEX_X,          // its centre (pixels, y up)
+    GLARE_TEX_X, // its centre (pixels, y up)
     GLARE_TEX_Y,
-    GLARE_TEX_M00,        // a pixel's offset from the centre to texels (column, row), the
-    GLARE_TEX_M01,        // texel (w / 2, h / 2) at the centre
+    GLARE_TEX_M00, // a pixel's offset from the centre to texels (column, row), the
+    GLARE_TEX_M01, // texel (w / 2, h / 2) at the centre
     GLARE_TEX_M10,
     GLARE_TEX_M11,
-    GLARE_REL_X,          // Lens Flare: rel_width, rel_height x Rel Heights, in the screen's
-    GLARE_REL_Y,          // frame (GLARE_SCALE_*: the stretch alone)
-    GLARE_DISTORT,        // Lens Flare: stretch_distort's strength (ms_glare::element_value)
-    GLARE_LIMACON,        // Lens Flare, a polar flare's stretch_distort: b (ms_glare::element_value)
-    GLARE_RAY_MIN,        // RAYS: the shortest line / the longest (1: all the longest)
-    GLARE_RAY_SEED,       // RAYS: the lines' random lengths and turns: seed, jitter_angles
+    GLARE_REL_X,    // Lens Flare: rel_width, rel_height x Rel Heights, in the screen's
+    GLARE_REL_Y,    // frame (GLARE_SCALE_*: the stretch alone)
+    GLARE_DISTORT,  // Lens Flare: stretch_distort's strength (ms_glare::element_value)
+    GLARE_LIMACON,  // Lens Flare, a polar flare's stretch_distort: b (ms_glare::element_value)
+    GLARE_RAY_MIN,  // RAYS: the shortest line / the longest (1: all the longest)
+    GLARE_RAY_SEED, // RAYS: the lines' random lengths and turns: seed, jitter_angles
     GLARE_RAY_JITTER,
-    GLARE_START,      // the sector's start angle (and the polygon's first vertex)
-    GLARE_WIDTH,      // the sector's angular width (2 pi: whole)
-    GLARE_SOFTNESS,   // arc_edge_softness
-    GLARE_REPEATS,    // the angular window's repeats
-    GLARE_SIDES,      // polygon sides (0: a circle)
+    GLARE_START,    // the sector's start angle (and the polygon's first vertex)
+    GLARE_WIDTH,    // the sector's angular width (2 pi: whole)
+    GLARE_SOFTNESS, // arc_edge_softness
+    GLARE_REPEATS,  // the angular window's repeats
+    GLARE_SIDES,    // polygon sides (0: a circle)
     // Lens Flare: 1 when the polygon is irregular (random_side_lengths), its vertices' angles
     // from the first (GLARE_START), increasing, then 2 pi, then more than 2 pi up to
     // GLARE_MAX_SIDES (else regular: GLARE_SIDES alone)
     GLARE_IRREGULAR,
     GLARE_VERTICES,
     GLARE_VERTICES_END = GLARE_VERTICES + GLARE_MAX_SIDES,
-    GLARE_ROUNDNESS,  // the polygon's edge radius lerped towards the circle
-    GLARE_FADE,       // fade_gradient
-    GLARE_SIGMA,      // the radial profile's gaussian blur (Blur Gradient), 0: none
-    GLARE_BOOST,      // 1 + offset_bright
-    GLARE_WAVE,       // wave_brightness
+    GLARE_ROUNDNESS, // the polygon's edge radius lerped towards the circle
+    GLARE_FADE,      // fade_gradient
+    GLARE_SIGMA,     // the radial profile's gaussian blur (Blur Gradient), 0: none
+    GLARE_BOOST,     // 1 + offset_bright
+    GLARE_WAVE,      // wave_brightness
     GLARE_WAVE_FREQ,
     GLARE_WAVE_WIDTH,
-    GLARE_RW_MIN,     // radius waves: min, max, frequency, spikyness
+    GLARE_RW_MIN, // radius waves: min, max, frequency, spikyness
     GLARE_RW_MAX,
     GLARE_RW_FREQ,
     GLARE_RW_SPIKE,

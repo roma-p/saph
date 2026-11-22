@@ -203,8 +203,8 @@ static int render(const MsRender *r) {
         between[between_count++] = &mask.value;
     if (smooth > 0)
         between[between_count++] = &smooth_image;
-    const int ok = ms_run(run, &j, inputs, 2, between, between_count, &output, r->info, r->err,
-                          r->err_size);
+    const int ok =
+        ms_run(run, &j, inputs, 2, between, between_count, &output, r->info, r->err, r->err_size);
     ms_mask_free(&mask);
     free(smoothed);
     return ok;
@@ -231,5 +231,5 @@ const MsEffect ms_mosaic_effect = {
     NULL,
     0,
     "mosaic", // presets (common/preset.h)
-    NULL, // not varying with its settings
+    NULL,     // not varying with its settings
 };

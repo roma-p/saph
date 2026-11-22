@@ -166,8 +166,8 @@ static int render(const MsRender *r) {
     // Inputs uploaded to the GPU: the Source, and the Mask or the one mask value.
     MsImage *const inputs[] = {&source, mask.input};
     MsImage *const between[] = {&mask.value}; // made on the GPU from the Mask
-    const int ok = ms_run(run, &j, inputs, 2, between, mask.has_mask, &output, r->info, r->err,
-                          r->err_size);
+    const int ok =
+        ms_run(run, &j, inputs, 2, between, mask.has_mask, &output, r->info, r->err, r->err_size);
     ms_mask_free(&mask);
     return ok;
 }
@@ -215,5 +215,5 @@ const MsEffect ms_bandpass_effect = {
     overlay,
     ARRAY_SIZE(overlay),
     "bandpass", // presets (common/preset.h)
-    NULL, // not varying with its settings
+    NULL,       // not varying with its settings
 };

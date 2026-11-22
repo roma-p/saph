@@ -53,7 +53,7 @@ static int fetch_image(OfxImageEffectHandle effect, const char *clip, OfxTime ti
     // The image's depth: floats when the host does not say (the plugin's first choice).
     char *pixel_depth = kOfxBitDepthFloat;
     ms_prop->propGetString(img->handle, kOfxImageEffectPropPixelDepth, 0, &pixel_depth);
-    img->element = !pixel_depth                                 ? 4
+    img->element = !pixel_depth                                  ? 4
                    : strcmp(pixel_depth, kOfxBitDepthHalf) == 0  ? 2
                    : strcmp(pixel_depth, kOfxBitDepthFloat) == 0 ? 4
                                                                  : 0;
@@ -105,8 +105,7 @@ static void fill(char *out, size_t count, int element, float value) {
 // Fills `buffer` with the pixels of `img` covering `area`, packed (bottom row first,
 // no padding); `outside` (all four channels) where `img` has no pixels. `buffer` must
 // hold width x height x 4 channel values of `area`, in `element` bytes.
-static void pack_image(const Image *img, OfxRectI area, float outside, int element,
-                       void *buffer) {
+static void pack_image(const Image *img, OfxRectI area, float outside, int element, void *buffer) {
     const int width = area.x2 - area.x1, height = area.y2 - area.y1;
     const size_t value = (size_t)element * 4; // bytes of a pixel
     for (int row = 0; row < height; ++row) {

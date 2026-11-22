@@ -162,7 +162,7 @@ const MsEffect ms_flickermatch_effect = {
     overlay,
     ARRAY_SIZE(overlay),
     "flickermatch", // presets (common/preset.h)
-    NULL, // not varying with its settings
+    NULL,           // not varying with its settings
 };
 
 const MsEffect ms_flickermatchcolor_effect = {
@@ -181,5 +181,5 @@ const MsEffect ms_flickermatchcolor_effect = {
     overlay,
     ARRAY_SIZE(overlay),
     "flickermatchcolor", // presets (common/preset.h)
-    NULL, // not varying with its settings
+    NULL,                // not varying with its settings
 };

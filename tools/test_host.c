@@ -45,7 +45,7 @@
 
 // Odd sizes by default, to catch mistakes with odd rows and columns.
 static int width = 97, height = 61, photo = 0;
-static int pad = 0; // --pad: images cover the render window and `pad` more pixels per side
+static int pad = 0;  // --pad: images cover the render window and `pad` more pixels per side
 static int half = 0; // --half: images in 16-bit floats
 
 // ---------------------------------------------------------------- property sets
@@ -251,7 +251,7 @@ static OfxStatus param_get_value(OfxParamHandle handle, ...) {
 }
 
 static OfxStatus param_get_property_set(OfxParamHandle handle, OfxPropertySetHandle *props) {
-    *props = (OfxPropertySetHandle)&((Param *)handle)->props;
+    *props = (OfxPropertySetHandle) & ((Param *)handle)->props;
     return kOfxStatOK;
 }
 
@@ -278,7 +278,7 @@ static OfxStatus param_set_value(OfxParamHandle handle, ...) {
     } else {
         const int n = strcmp(p->type, kOfxParamTypeRGB) == 0        ? 3
                       : strcmp(p->type, kOfxParamTypeDouble2D) == 0 ? 2
-                                                                     : 1;
+                                                                    : 1;
         for (int k = 0; k < n; ++k)
             p->value[k] = va_arg(args, double);
     }
@@ -302,7 +302,7 @@ static OfxParameterSuiteV1 parameter_suite = {
 typedef struct {
     char name[64];
     PropSet props;
-    PropSet image; // the image the host gives for this clip
+    PropSet image;    // the image the host gives for this clip
     float *pixels;    // width x height RGBA
     uint16_t *halves; // --half: the same in 16-bit floats, what the plugin reads and writes
 } Clip;
@@ -497,7 +497,8 @@ static void set_values(int argc, char **argv) {
         Param *s = NULL;
         for (int i = 0; eq && i < param_count; ++i)
             if (strncmp(params[i].name, argv[a], (size_t)(eq - argv[a])) == 0 &&
-                params[i].name[eq - argv[a]] == 0 && strcmp(params[i].type, kOfxParamTypeString) == 0)
+                params[i].name[eq - argv[a]] == 0 &&
+                strcmp(params[i].type, kOfxParamTypeString) == 0)
                 s = &params[i];
         if (s) { // a string: name=text, or name=@file for the file's contents
             char *text = text_pool + text_used;

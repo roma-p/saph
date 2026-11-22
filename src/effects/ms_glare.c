@@ -86,7 +86,8 @@ static const MsParam params[] = {
                .hint = "The glare's elements, as JSON text: {\"elements\": [...]}, each a blob, "
                        "spot, ring, rays, polar_flare or fancy_spot (containers group them).",
                .def_text = default_style},
-    MS_RELATIVE(BRIGHTNESS, "brightness", "Brightness", "Scales the brightness of the glares.", 1.0),
+    MS_RELATIVE(BRIGHTNESS, "brightness", "Brightness", "Scales the brightness of the glares.",
+                1.0),
     [SCALE_COLORS] = {.type = MS_PARAM_RGB,
                       .name = "scale_colors",
                       .label = "Scale Colors",
@@ -126,8 +127,8 @@ static const MsParam params[] = {
               .min = 0.0,
               .max = MS_UNBOUNDED,
               .display_max = 0.5},
-    MS_RELATIVE(REL_HEIGHT, "rel_height", "Rel Height", "The glares' height relative to their width.",
-             1.0),
+    MS_RELATIVE(REL_HEIGHT, "rel_height", "Rel Height",
+                "The glares' height relative to their width.", 1.0),
     [ROTATE] = {.type = MS_PARAM_ANGLE,
                 .name = "rotate",
                 .label = "Rotate",
@@ -136,10 +137,11 @@ static const MsParam params[] = {
                 .max = MS_UNBOUNDED,
                 .display_min = -180.0,
                 .display_max = 180.0},
-    MS_RELATIVE(RAYS_NUM_SCALE, "rays_num_scale", "Rays Num Scale", "Scales the number of rays.", 1.0),
+    MS_RELATIVE(RAYS_NUM_SCALE, "rays_num_scale", "Rays Num Scale", "Scales the number of rays.",
+                1.0),
     MS_RELATIVE(RAYS_LENGTH, "rays_length", "Rays Length", "Scales the length of the rays.", 1.0),
     MS_RELATIVE(RAYS_THICKNESS, "rays_thickness", "Rays Thickness", "Scales the width of the rays.",
-             1.0),
+                1.0),
     [BLUR_GLARE] = {.type = MS_PARAM_WIDTH,
                     .name = "blur_glare",
                     .label = "Blur Glare",
@@ -163,11 +165,11 @@ static const MsParam params[] = {
                    .entry_count = ARRAY_SIZE(res_entries)},
     MS_FRACTION(AFFECT_ALPHA, "affect_alpha", "Affect Alpha", "Adds the glares to the alpha.", 0.0),
     MS_FRACTION(FROM_ALPHA, "glare_from_alpha", "Glare From Alpha",
-             "Takes the glares from the alpha instead of the colors.", 0.0),
+                "Takes the glares from the alpha instead of the colors.", 0.0),
     MS_FRACTION(UNDER_SOURCE, "glare_under_source", "Glare Under Source",
-             "Puts the glares behind the Source, by its alpha.", 0.0),
+                "Puts the glares behind the Source, by its alpha.", 0.0),
     MS_FRACTION(SOURCE_OPACITY, "source_opacity", "Source Opacity",
-             "Scales the Source under the glares.", 1.0),
+                "Scales the Source under the glares.", 1.0),
     [INVERT_MASK] = MS_PARAM_INVERT_MASK("Use the black areas of the Mask."),
     [MASK_TYPE] = {.type = MS_PARAM_CHOICE,
                    .name = "mask_type",
@@ -203,14 +205,13 @@ static int run(MsApi api, void *user) {
                                MS_IMAGE("half", j->small[1]));
     }
     if (status == 0)
-        status = MS_KERNEL(
-            MS_K_GLINT_SOURCE, api, MS_IMAGE("source", source), MS_IMAGE("mask", mask),
-            MS_INT("has_mask", j->has_mask), MS_INT("invert_mask", j->invert_mask),
-            MS_INT("mask_type", j->mask_type), MS_FLOAT("from_alpha", j->from_alpha),
-            MS_INT("blur", j->blur), MS_FLOAT("blur_frac", j->blur_frac),
-            MS_FLOAT("threshold", j->threshold), MS_FLOAT("add_r", j->add[0]),
-            MS_FLOAT("add_g", j->add[1]), MS_FLOAT("add_b", j->add[2]),
-            MS_IMAGE("glints", j->glints));
+        status = MS_KERNEL(MS_K_GLINT_SOURCE, api, MS_IMAGE("source", source),
+                           MS_IMAGE("mask", mask), MS_INT("has_mask", j->has_mask),
+                           MS_INT("invert_mask", j->invert_mask), MS_INT("mask_type", j->mask_type),
+                           MS_FLOAT("from_alpha", j->from_alpha), MS_INT("blur", j->blur),
+                           MS_FLOAT("blur_frac", j->blur_frac), MS_FLOAT("threshold", j->threshold),
+                           MS_FLOAT("add_r", j->add[0]), MS_FLOAT("add_g", j->add[1]),
+                           MS_FLOAT("add_b", j->add[2]), MS_IMAGE("glints", j->glints));
     if (status == 0)
         status = MS_KERNEL(MS_K_GLARE_LABEL_INIT, api, MS_IMAGE("glints", j->glints),
                            MS_IMAGE("labels", j->labels[0]));
@@ -243,9 +244,8 @@ static int run(MsApi api, void *user) {
     return MS_KERNEL(MS_K_GLARE_FINISH, api, MS_IMAGE("data", free_image),
                      MS_IMAGE("source", j->source), MS_INT("pad_x", j->pad),
                      MS_INT("pad_y", j->pad), MS_INT("res", j->res), MS_FLOAT("scale", j->scale),
-                     MS_FLOAT("hue", j->hue),
-                     MS_FLOAT("saturation", j->saturation), MS_INT("blur", j->glare_blur),
-                     MS_FLOAT("blur_frac", j->glare_blur_frac),
+                     MS_FLOAT("hue", j->hue), MS_FLOAT("saturation", j->saturation),
+                     MS_INT("blur", j->glare_blur), MS_FLOAT("blur_frac", j->glare_blur_frac),
                      MS_FLOAT("source_opacity", j->source_opacity), MS_FLOAT("under", j->under),
                      MS_FLOAT("affect_alpha", j->affect_alpha), MS_IMAGE("output", j->output));
 }
@@ -294,7 +294,7 @@ static int render(const MsRender *r) {
     // The style's rows; the drawing's reach gives the transforms' margin (nothing wraps around).
     const size_t text_length = strlen(style);
     MsJson *nodes = malloc((text_length + 1) * sizeof(MsJson));
-    float(*rows)[GLARE_FIELDS] = calloc(GLARE_MAX_ELEMENTS, sizeof *rows);
+    float (*rows)[GLARE_FIELDS] = calloc(GLARE_MAX_ELEMENTS, sizeof *rows);
     const MsGlareGlobals globals = {.size = size,
                                     .rel_height = v[REL_HEIGHT],
                                     .rotate = v[ROTATE],
@@ -335,8 +335,8 @@ static int render(const MsRender *r) {
     int ok = glints && labels[0] && labels[1] && buffers[0] && buffers[1] && buffers[2] &&
              (res == 1 || (small[0] && (small[1] || !has_mask)));
     if (ok) {
-        MsImage source, mask, small_images[2], glints_image, label_images[2], rows_image,
-            images[3], output;
+        MsImage source, mask, small_images[2], glints_image, label_images[2], rows_image, images[3],
+            output;
         ms_image_rgba(&source, r->inputs[SOURCE].pixels, r->inputs[SOURCE].row, r->half, w, h);
         ms_image_rgba(&mask, r->inputs[MASK].pixels, r->inputs[MASK].row, r->half, w, h);
         for (int i = 0; i < 2; ++i) {
@@ -389,9 +389,9 @@ static int render(const MsRender *r) {
 // Source as it is.
 static int identity(const double *v, const int *connected) {
     (void)connected;
-    const int no_glare = v[SIZE] <= 0.0 || v[BRIGHTNESS] == 0.0 ||
-                         (v[SCALE_COLORS] == 0.0 && v[SCALE_COLORS_G] == 0.0 &&
-                          v[SCALE_COLORS_B] == 0.0);
+    const int no_glare =
+        v[SIZE] <= 0.0 || v[BRIGHTNESS] == 0.0 ||
+        (v[SCALE_COLORS] == 0.0 && v[SCALE_COLORS_G] == 0.0 && v[SCALE_COLORS_B] == 0.0);
     return no_glare && v[SOURCE_OPACITY] == 1.0;
 }
 
@@ -424,5 +424,5 @@ const MsEffect ms_glare_effect = {
     overlay,
     ARRAY_SIZE(overlay),
     "glare", // presets (common/preset.h)
-    NULL, // not varying with its settings
+    NULL,    // not varying with its settings
 };

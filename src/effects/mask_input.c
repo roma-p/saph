@@ -24,9 +24,9 @@ int ms_mask_init(MsMask *m, const MsRender *r, int clip, int source_clip, MsImag
         ms_image(&m->value, m->pixels, w, w, h, 1);
     else
         ms_image_constant(&m->value, &m->one, w, h);
-    m->input = !m->has_mask ? &m->value
+    m->input = !m->has_mask                                               ? &m->value
                : ms_same_input(&r->inputs[clip], &r->inputs[source_clip]) ? source
-                                                                           : &m->mask;
+                                                                          : &m->mask;
     return 1;
 }
 

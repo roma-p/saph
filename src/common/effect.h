@@ -53,7 +53,7 @@ typedef enum {
 // thread, while the user waits): read and set them by name (POINT: x, its _y entry: y).
 typedef struct MsHost MsHost;
 struct MsHost {
-    const char *(*get_text)(MsHost *host, const char *name); // STRING (NULL: none)
+    const char *(*get_text)(MsHost *host, const char *name);           // STRING (NULL: none)
     int (*set_text)(MsHost *host, const char *name, const char *text); // 1: done
     double (*get_value)(MsHost *host, const char *name); // DOUBLE, WIDTH, CHOICE, BOOL...
     int (*set_value)(MsHost *host, const char *name, double value);
@@ -149,8 +149,8 @@ typedef struct MsRender {
     ptrdiff_t output_row;
     char *err; // reason of a failure
     size_t err_size;
-    int half; // the inputs and the output in 16-bit floats (else floats): engine.h,
-              // ms_image_rgba
+    int half;               // the inputs and the output in 16-bit floats (else floats): engine.h,
+                            // ms_image_rgba
     struct MsRunInfo *info; // what the effect's ms_run did (engine.h), or NULL
     // One per parameter: the STRING parameters' texts (NULL for the others). NULL when the
     // caller has none to give (the effects then take their default texts).

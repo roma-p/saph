@@ -214,10 +214,10 @@ static int levels_size(int length, int count) {
 // mask_generator.cpp).
 typedef struct {
     const Settings *s;
-    MsImage *source, *lens, *output;       // lens: the Source if none
+    MsImage *source, *lens, *output; // lens: the Source if none
     MsMask *mask;
-    MsImage *shift, *largest;              // between the kernels
-    MsImage *levels;                        // Filter: sized by run()
+    MsImage *shift, *largest; // between the kernels
+    MsImage *levels;          // Filter: sized by run()
     int width, height;
 } Job;
 
@@ -403,5 +403,5 @@ const MsEffect ms_distort_effect = {
     NULL,
     0,
     "distort", // presets (common/preset.h)
-    NULL, // not varying with its settings
+    NULL,      // not varying with its settings
 };

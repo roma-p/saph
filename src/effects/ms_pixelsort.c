@@ -39,9 +39,8 @@ enum { SOURCE, MASK };
 static const char *const modes[] = {"Linear", "Radial", "Circular"};
 static const char *const apply[] = {"Post-threshold", "Pre-effect"};
 static const char *const directions[] = {"sort below threshold", "sort above threshold"};
-static const char *const types[] = {"monochrome", "average", "minimum", "maximum", "red",
-                                    "green",      "blue",    "hue",     "saturation",
-                                    "brightness"};
+static const char *const types[] = {"monochrome", "average", "minimum", "maximum",    "red",
+                                    "green",      "blue",    "hue",     "saturation", "brightness"};
 static const char *const shows[] = {"Result", "Raw Sort Values", "Threshold Mask",
                                     "Random Restart Noise", "Combined Threshold Mask"};
 enum {
@@ -143,8 +142,7 @@ static const MsParam params[] = {
                      .def = 0.5},
     [RING_CENTER_Y] = {.type = MS_PARAM_POINT_Y, .name = "circle_center_y", .def = 0.5},
     MS_FRACTION(VARY_START, "vary_start", "Vary Start",
-                "Turns each ring's start by a random share of a turn up to this (Circular).",
-                0.15),
+                "Turns each ring's start by a random share of a turn up to this (Circular).", 0.15),
     MS_DISTANCE(RING_INNER, "inner_radius", "Inner Radius", "The smallest ring (Circular).", 0.0),
     MS_DISTANCE(THICKNESS, "thickness", "Thickness", "The rings' width (Circular).", 0.55),
     MS_FRACTION(THRESHOLD, "threshold", "Threshold",
@@ -175,8 +173,7 @@ static const MsParam params[] = {
                  .max = MS_UNBOUNDED,
                  .display_max = 1000.0},
     MS_DISTANCE(SOFTEN, "soften_threshold_mask", "Soften Threshold Mask",
-                "Blurs the threshold mask: the runs then end at random within its edges.",
-                0.0125),
+                "Blurs the threshold mask: the runs then end at random within its edges.", 0.0125),
     [DOWNSAMPLE] = {.type = MS_PARAM_BOOL,
                     .name = "downsample",
                     .label = "Downsample",
@@ -228,7 +225,7 @@ static const MsParam params[] = {
 // The share of restart pixels by Randomly Restart Sort / width (the reference's, measured;
 // linear between, held past the last).
 static double restart_share(double rate) {
-    static const double at[][2] = {{0.0, 0.0},     {0.039, 0.0009}, {0.098, 0.0053},
+    static const double at[][2] = {{0.0, 0.0},      {0.039, 0.0009}, {0.098, 0.0053},
                                    {0.195, 0.0069}, {0.29, 0.0103},  {0.39, 0.0117},
                                    {0.59, 0.012}};
     const int n = ARRAY_SIZE(at);
@@ -264,9 +261,8 @@ typedef struct {
         MS_FLOAT("slope", (j)->slope), MS_INT("offset", (j)->offset), MS_FLOAT("cx", (j)->cx),     \
         MS_FLOAT("cy", (j)->cy), MS_FLOAT("inner", (j)->inner), MS_FLOAT("extent", (j)->extent),   \
         MS_FLOAT("vary", (j)->vary), MS_FLOAT("a0", (j)->a0), MS_FLOAT("span", (j)->span),         \
-        MS_FLOAT("step", (j)->step), MS_INT("seed", (j)->seed),                                    \
-        MS_FLOAT("restart", (j)->restart), MS_INT("sort_type", (j)->sort_type),                    \
-        MS_INT("mask_post", (j)->mask_post)
+        MS_FLOAT("step", (j)->step), MS_INT("seed", (j)->seed), MS_FLOAT("restart", (j)->restart), \
+        MS_INT("sort_type", (j)->sort_type), MS_INT("mask_post", (j)->mask_post)
 
 static int run(MsApi api, void *user) {
     const Job *j = user;
@@ -321,7 +317,8 @@ static void lines(const double *v, int w, int sw, int sh, Job *j) {
         const int e = (int)nearest % 8;
         double dx = cos(angle * M_PI / 180.0), dy = sin(angle * M_PI / 180.0);
         if (on_eighth) { // (exactly: the diagonals' slope 1)
-            static const int ex[8] = {1, 1, 0, -1, -1, -1, 0, 1}, ey[8] = {0, 1, 1, 1, 0, -1, -1, -1};
+            static const int ex[8] = {1, 1, 0, -1, -1, -1, 0, 1},
+                             ey[8] = {0, 1, 1, 1, 0, -1, -1, -1};
             dx = ex[e];
             dy = ey[e];
         }
@@ -344,9 +341,11 @@ static void lines(const double *v, int w, int sw, int sh, Job *j) {
     const double inner = fmax(v[radial ? RAY_INNER : RING_INNER], 0.0) * RADIUS_SCALE * scale;
     const double extent = fmax(v[radial ? RAY_LENGTH : THICKNESS], 0.0) * RADIUS_SCALE * scale;
     // (only as far as the image's farthest corner)
-    const double far = sqrt(fmax(cx * cx, (sw - cx) * (sw - cx)) + fmax(cy * cy, (sh - cy) * (sh - cy)));
+    const double far =
+        sqrt(fmax(cx * cx, (sw - cx) * (sw - cx)) + fmax(cy * cy, (sh - cy) * (sh - cy)));
     const double reach = fmax(fmin(extent, far - inner), 0.0);
-    const double span = fmin(fmax(v[radial ? RAY_DEGREES : RING_DEGREES], 0.0), 360.0) * M_PI / 180.0;
+    const double span =
+        fmin(fmax(v[radial ? RAY_DEGREES : RING_DEGREES], 0.0), 360.0) * M_PI / 180.0;
     j->cx = (float)cx;
     j->cy = (float)cy;
     j->inner = (float)inner;
@@ -463,5 +462,5 @@ const MsEffect ms_pixelsort_effect = {
     NULL,
     0,
     "pixelsort", // presets (common/preset.h)
-    NULL, // not varying with its settings
+    NULL,        // not varying with its settings
 };

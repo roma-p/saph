@@ -148,8 +148,7 @@ inline Expr box_radius(Expr total, int i) { return total / 3 + select(i >= 3 - t
 // The 3-box blur of `in` (x, y, c): 3 horizontal boxes, then 3 vertical ones, of `kind` on
 // the GPU. Appends its 6 boxes to `boxes` (for schedule()).
 inline Func blur3(Func in, Expr total_x, Expr total_y, Expr width, Expr height, bool gpu,
-                  const std::string &name, std::vector<Box> &boxes,
-                  Boxes kind = Boxes::windows) {
+                  const std::string &name, std::vector<Box> &boxes, Boxes kind = Boxes::windows) {
     Func f = in;
     for (int i = 0; i < 6; ++i) {
         const bool along_x = i < 3;

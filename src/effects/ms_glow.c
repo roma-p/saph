@@ -174,8 +174,8 @@ static const MsParam params[] = {
                    .def = 1,
                    .entries = edge_entries,
                    .entry_count = ARRAY_SIZE(edge_entries)},
-    MS_FRACTION(BG_BRIGHTNESS, "bg_brightness", "Bg Brightness", "Scales the Back under the Source.",
-                1.0),
+    MS_FRACTION(BG_BRIGHTNESS, "bg_brightness", "Bg Brightness",
+                "Scales the Back under the Source.", 1.0),
     [ATMOSPHERE_AMP] = {.type = MS_PARAM_DOUBLE,
                         .name = "atmosphere_amp",
                         .label = "Atmosphere Amp",
@@ -251,11 +251,10 @@ static int run(MsApi api, void *user) {
         MS_FLOAT("gain_g", j->gain[1]), MS_FLOAT("gain_b", j->gain[2]),
         MS_INT("combine", j->combine), MS_FLOAT("source_opacity", j->source_opacity),
         MS_FLOAT("under", j->under), MS_FLOAT("light", j->light),
-        MS_FLOAT("affect_alpha", j->affect_alpha),
-        MS_INT("show_threshold", j->show_threshold), MS_FLOAT("amp", j->atmosphere.amp),
-        MS_FLOAT("freq", j->atmosphere.freq), MS_FLOAT("persistence", j->atmosphere.persistence),
-        MS_FLOAT("z", j->atmosphere.z), MS_INT("octaves", j->atmosphere.octaves),
-        MS_IMAGE("output", j->output));
+        MS_FLOAT("affect_alpha", j->affect_alpha), MS_INT("show_threshold", j->show_threshold),
+        MS_FLOAT("amp", j->atmosphere.amp), MS_FLOAT("freq", j->atmosphere.freq),
+        MS_FLOAT("persistence", j->atmosphere.persistence), MS_FLOAT("z", j->atmosphere.z),
+        MS_INT("octaves", j->atmosphere.octaves), MS_IMAGE("output", j->output));
 }
 
 static int render(const MsRender *r) {

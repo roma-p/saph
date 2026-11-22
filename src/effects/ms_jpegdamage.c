@@ -115,7 +115,8 @@ static const MsParam params[] = {
     [AFFECT_CHROMA] = {.type = MS_PARAM_DOUBLE,
                        .name = "affect_chroma",
                        .label = "Affect Chroma",
-                       .hint = "How much the Frequency settings change the colours (0: not at all).",
+                       .hint =
+                           "How much the Frequency settings change the colours (0: not at all).",
                        .def = 0.5,
                        .min = 0.0,
                        .max = MS_UNBOUNDED,
@@ -233,9 +234,9 @@ static void tables(const double *v, float steps[8][8][2], float decoder[8][8][2]
                 const int r = u > vv ? u : vv;
                 const double low = r <= 1 ? 1.0 : r == 2 ? 0.5 : 0.0;
                 const double high = r >= 6 ? 1.0 : r == 5 ? 0.5 : 0.0;
-                double gain = (low * v[LOW_FREQ] + (1.0 - low - high) * v[MID_FREQ] +
-                               high * v[HIGH_FREQ]) *
-                              v[ALL_FREQ] * axis_gain(v[X_FREQ], u, vv) * axis_gain(v[Y_FREQ], vv, u);
+                double gain =
+                    (low * v[LOW_FREQ] + (1.0 - low - high) * v[MID_FREQ] + high * v[HIGH_FREQ]) *
+                    v[ALL_FREQ] * axis_gain(v[X_FREQ], u, vv) * axis_gain(v[Y_FREQ], vv, u);
                 // Affect Luma / Affect Chroma a on the table's plane: above 1, 1 + a (g - 1);
                 // below, g^a (at gain 0, any a > 0 the same)
                 const double a = v[t == 0 ? AFFECT_LUMA : AFFECT_CHROMA];
@@ -268,9 +269,8 @@ static int run(MsApi api, void *user) {
                      MS_FLOAT("rate", j->rate), MS_FLOAT("amp", j->amp),
                      MS_FLOAT("density", j->density), MS_FLOAT("coherence", j->coherence),
                      MS_INT("seed", j->seed), MS_INT("epoch", j->epoch), MS_INT("flip", j->flip),
-                     MS_FLOAT("saturation", j->saturation),
-                     MS_FLOAT("lights", j->lights), MS_FLOAT("darks", j->darks),
-                     MS_IMAGE("output", j->output));
+                     MS_FLOAT("saturation", j->saturation), MS_FLOAT("lights", j->lights),
+                     MS_FLOAT("darks", j->darks), MS_IMAGE("output", j->output));
 }
 
 static int render(const MsRender *r) {
@@ -314,8 +314,8 @@ static int render(const MsRender *r) {
     // Inputs uploaded to the GPU: the Source, the Mask or the one mask value, the tables.
     MsImage *const inputs[] = {&source, mask.input, &steps_image, &decoder_image};
     MsImage *between[] = {&mask.value}; // made on the GPU from the Mask
-    const int ok = ms_run(run, &j, inputs, 4, between, mask.has_mask, &output, r->info, r->err,
-                          r->err_size);
+    const int ok =
+        ms_run(run, &j, inputs, 4, between, mask.has_mask, &output, r->info, r->err, r->err_size);
     ms_mask_free(&mask);
     return ok;
 }
@@ -335,5 +335,5 @@ const MsEffect ms_jpegdamage_effect = {
     NULL,
     0,
     "jpegdamage", // presets (common/preset.h)
-    NULL, // not varying with its settings
+    NULL,         // not varying with its settings
 };

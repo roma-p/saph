@@ -83,8 +83,8 @@ static int load(void) {
             *(void **)&host_register = find(driver, "cuMemHostRegister_v2");
             *(void **)&host_unregister = find(driver, "cuMemHostUnregister");
         }
-        loaded = pointer_attribute && push_context && pop_context && host_register &&
-                 host_unregister;
+        loaded =
+            pointer_attribute && push_context && pop_context && host_register && host_unregister;
         if (!loaded)
             ms_log("CUDA: cannot page-lock the images (driver functions missing): slower copies");
     }

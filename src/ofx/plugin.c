@@ -63,11 +63,11 @@ static OfxStatus describe(const MsEffect *e, OfxImageEffectHandle effect) {
 // host_handle: the host draws POINT parameters' handles (not when the effect's overlay does).
 static void define_param(OfxParamSetHandle params, const MsParam *p, int host_handle) {
     static const char *const types[] = {
-        [MS_PARAM_DOUBLE] = kOfxParamTypeDouble, [MS_PARAM_WIDTH] = kOfxParamTypeDouble,
-        [MS_PARAM_HEIGHT] = kOfxParamTypeDouble, [MS_PARAM_ANGLE] = kOfxParamTypeDouble,
-        [MS_PARAM_CHOICE] = kOfxParamTypeChoice, [MS_PARAM_BOOL] = kOfxParamTypeBoolean,
-        [MS_PARAM_TEXT] = kOfxParamTypeString,   [MS_PARAM_RGB] = kOfxParamTypeRGB,
-        [MS_PARAM_STRING] = kOfxParamTypeString, [MS_PARAM_POINT] = kOfxParamTypeDouble2D,
+        [MS_PARAM_DOUBLE] = kOfxParamTypeDouble,     [MS_PARAM_WIDTH] = kOfxParamTypeDouble,
+        [MS_PARAM_HEIGHT] = kOfxParamTypeDouble,     [MS_PARAM_ANGLE] = kOfxParamTypeDouble,
+        [MS_PARAM_CHOICE] = kOfxParamTypeChoice,     [MS_PARAM_BOOL] = kOfxParamTypeBoolean,
+        [MS_PARAM_TEXT] = kOfxParamTypeString,       [MS_PARAM_RGB] = kOfxParamTypeRGB,
+        [MS_PARAM_STRING] = kOfxParamTypeString,     [MS_PARAM_POINT] = kOfxParamTypeDouble2D,
         [MS_PARAM_BUTTON] = kOfxParamTypePushButton,
     };
     OfxPropertySetHandle props;
@@ -463,8 +463,7 @@ static int host_frame_size(MsHost *host, double size[2]) {
     return ms_effect->getPropertySet((OfxImageEffectHandle)host->data, &props) == kOfxStatOK &&
            ms_prop->propGetDouble(props, kOfxImageEffectPropProjectSize, 0, &size[0]) ==
                kOfxStatOK &&
-           ms_prop->propGetDouble(props, kOfxImageEffectPropProjectSize, 1, &size[1]) ==
-               kOfxStatOK;
+           ms_prop->propGetDouble(props, kOfxImageEffectPropProjectSize, 1, &size[1]) == kOfxStatOK;
 }
 
 // A parameter changed: a button pressed runs its press (errors shown by the host).
@@ -475,8 +474,8 @@ static OfxStatus instance_changed(const MsEffect *e, OfxImageEffectHandle effect
         strcmp(type, kOfxTypeParameter) != 0 ||
         ms_prop->propGetString(in_args, kOfxPropName, 0, &name) != kOfxStatOK)
         return kOfxStatReplyDefault;
-    MsHost host = {host_get_text, host_set_text, host_value, host_set_value, effect,
-                   host_frame_size};
+    MsHost host = {host_get_text,  host_set_text, host_value,
+                   host_set_value, effect,        host_frame_size};
     char err[512] = "";
     if (e->presets && strcmp(name, MS_LOAD_PRESET) == 0) {
         if (!ms_load_preset(e, &host, err, sizeof err) && ms_message)

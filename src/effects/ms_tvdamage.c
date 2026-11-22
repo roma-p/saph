@@ -206,16 +206,16 @@ static const MsParam params[] = {
            "The narrow bars' frequency, relative.", 6.0, 1.0, MS_UNBOUNDED, 1.0, 100.0),
     SLIDER(BAR2_SHARP, "bar2_sharpness", "Bar2 Sharpness", "The narrow bars' edges.", 0.5, 0.01,
            MS_UNBOUNDED, 0.01, 10.0),
-    SLIDER(COLOR_FREQ, "color_frequency", "Color Frequency",
-           "Stripes across half the width.", 10.0, 1.0, MS_UNBOUNDED, 1.0, 40.0),
+    SLIDER(COLOR_FREQ, "color_frequency", "Color Frequency", "Stripes across half the width.", 10.0,
+           1.0, MS_UNBOUNDED, 1.0, 40.0),
     SLIDER(COLOR_ANGLE, "color_angle", "Color Angle", "The stripes' angle.", 160.0, ANY,
            MS_UNBOUNDED, -360.0, 360.0),
     AMOUNT(ROLL_SPEED, "roll_speed", "Roll Speed", "How fast the stripes move.", 3.0, 5.0),
     AMOUNT(FF_FREQ, "FF_band_frequency", "FF Band Frequency", "Torn bands down the picture.", 4.0,
            25.0),
     AMOUNT(FF_SHIFT, "FF_band_shift", "FF Band Shift", "How far the bands tear.", 0.1, 5.0),
-    SLIDER(FF_HEIGHT, "FF_band_height", "FF Band Height", "The bands' height.", 0.16, 0.0, 1.0,
-           0.0, 1.0),
+    SLIDER(FF_HEIGHT, "FF_band_height", "FF Band Height", "The bands' height.", 0.16, 0.0, 1.0, 0.0,
+           1.0),
     SLIDER(DROP_LEN, "dropout_length", "Dropout Length", "A streak's length.", 0.25, 0.0, 1.0, 0.0,
            1.0),
     AMOUNT(DROP_GAP, "dropout_gap_length", "Dropout Gap Length", "The gaps between streaks.", 0.2,
@@ -228,22 +228,22 @@ static const MsParam params[] = {
            "How often frames have streaks (0: never).", 1.0, 0.0, 1.0, 0.0, 1.0),
     AMOUNT(VIG_RADIUS, "vignette_radius", "Vignette Radius",
            "Where the vignette darkens, in half widths.", 1.0, 5.0),
-    AMOUNT(VIG_SOFT, "vignette_edge_softness", "Vignette Edge Softness",
-           "The vignette's edge.", 0.5, 5.0),
+    AMOUNT(VIG_SOFT, "vignette_edge_softness", "Vignette Edge Softness", "The vignette's edge.",
+           0.5, 5.0),
     SLIDER(VIG_REL_H, "vignette_rel_height", "Vignette Rel Height",
            "The vignette's height, relative to its width.", 0.75, 0.1, MS_UNBOUNDED, 0.1, 5.0),
     SLIDER(SCANLINES, "scanlines", "Scanlines", "Dark lines across.", 0.1, 0.0, 1.0, 0.0, 1.0),
     AMOUNT(SCAN_FREQ, "scanlines_rel_freq", "Scanlines Rel Freq", "How many scanlines.", 1.0, 5.0),
     AMOUNT(ORTHICON, "orthicon", "Orthicon", "Dark halos around the bright parts.", 0.0, 5.0),
-    SLIDER(ORTH_THRESHOLD, "threshold", "Threshold", "Where the bright parts start.", 0.7, 0.0,
-           1.0, 0.0, 1.0),
+    SLIDER(ORTH_THRESHOLD, "threshold", "Threshold", "Where the bright parts start.", 0.7, 0.0, 1.0,
+           0.0, 1.0),
     AMOUNT(DARKS_WIDTH, "darks_width", "Darks Width", "The halos' width.", 0.2, 5.0),
     SLIDER(HUE, "hue_shift", "Hue Shift", "Turns the colours (in turns).", 0.0, ANY, MS_UNBOUNDED,
            -1.0, 1.0),
     AMOUNT(SATURATION, "saturation", "Saturation", "The colours' strength.", 1.0, 2.0),
     AMOUNT(SCALE_LIGHTS, "scale_lights", "Scale Lights", "Scales the picture.", 1.0, 5.0),
-    SLIDER(OFFSET_DARKS, "offset_darks", "Offset Darks", "Raises (or lowers) the blacks.", 0.0,
-           ANY, 1.0, -5.0, 1.0),
+    SLIDER(OFFSET_DARKS, "offset_darks", "Offset Darks", "Raises (or lowers) the blacks.", 0.0, ANY,
+           1.0, -5.0, 1.0),
     [TINT_LIGHTS] = {.type = MS_PARAM_RGB,
                      .name = "tint_lights",
                      .label = "Tint Lights",
@@ -325,8 +325,8 @@ static void static_share(double density, double *share, double *boost) {
 // the reference's (the ghost of a line at 320 wide: sides 0.13, 0.21, 0.25 at b 12, 16, 20;
 // then 0.87, 0.75, 0.55, 0.44, 0.14 of it at 24, 32, 48, 64, 80).
 static void ghost_blur(double b, double k, float *s) {
-    static const double at[] = {20, 24, 32, 48, 64, 80, 120}, kept[] = {1, 0.874, 0.746, 0.553,
-                                                                          0.436, 0.135, 0};
+    static const double at[] = {20, 24, 32, 48, 64, 80, 120},
+                        kept[] = {1, 0.874, 0.746, 0.553, 0.436, 0.135, 0};
     const double sd = fmax(b, 0.0) / 24.0, ref = fmax(b, 0.0) / fmax(k, 1e-6);
     double w1 = 0.0, w2 = 0.0;
     if (sd > 0.05) {
@@ -442,8 +442,7 @@ static void settings(const double *v, int w, int h, double time, float *s) {
 typedef struct {
     MsImage *source, *settings, *picture, *bright, *narrow, *wide, *screen, *cells, *output;
     MsMask *mask;
-    int orthicon, cells_on, narrow_radius,
-        wide_radius, reach_x, reach_y, ghosts, octaves;
+    int orthicon, cells_on, narrow_radius, wide_radius, reach_x, reach_y, ghosts, octaves;
 } Job;
 
 static int run(MsApi api, void *user) {
@@ -504,16 +503,16 @@ static int render(const MsRender *r) {
     MsImage source;
     ms_image_rgba(&source, r->inputs[SOURCE].pixels, r->inputs[SOURCE].row, r->half, w, h);
     MsMask mask = {0};
-    int ok = picture && screen && (!orthicon || (bright && narrowed && widened)) &&
-             (small || !cells_on);
+    int ok =
+        picture && screen && (!orthicon || (bright && narrowed && widened)) && (small || !cells_on);
     if (!ok)
         snprintf(r->err, r->err_size, "not enough memory");
     else
         ok = ms_mask_init(&mask, r, MASK, SOURCE, &source, v[MASK_USE], v[INVERT_MASK],
                           v[BLUR_MASK]);
     if (ok) {
-        MsImage settings_image, picture_image, bright_image, narrow_image, wide_image,
-            screen_image, cells_image, output;
+        MsImage settings_image, picture_image, bright_image, narrow_image, wide_image, screen_image,
+            cells_image, output;
         ms_image(&settings_image, row, TV_FIELDS, TV_FIELDS, 1, 1);
         ms_image(&picture_image, picture, (ptrdiff_t)w * 4, w, h, 4);
         ms_image(&bright_image, bright, (ptrdiff_t)w * 4, w, h, 4);
@@ -582,5 +581,5 @@ const MsEffect ms_tvdamage_effect = {
     NULL,
     0,
     "tvdamage", // presets (common/preset.h)
-    NULL, // not varying with its settings
+    NULL,       // not varying with its settings
 };
