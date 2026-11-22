@@ -208,7 +208,12 @@ is already well factored.
   **EdgeAwareBlur's largest mask value** is computed on the CPU before the GPU runs, with a CPU
   half-to-float copy (`ms_edgeawareblur.c:342-361`): run `DT_LARGEST` on the chosen API and read
   back one float, as Distort does for its largest LOD (`ms_distort.c:270-276`).
-- **Glare's spots on Metal and Direct3D 12** run on the CPU (no atomics there in Halide 21,
+- [x] (Done on `decisions-glare`: one GPU version for every API, no atomics, deterministic:
+  each row's runs listed, per row each label's first run sums its runs and links to the next
+  row's, the region's first pixel follows the links, the impulses added a row per thread; CPU
+  unchanged. 4K Metal, M1 Pro: Glare 707-740 -> 476-491 ms, Res Half 217 -> 162 ms; against
+  the CPU within 1e-4 of the peak.)
+  **Glare's spots on Metal and Direct3D 12** run on the CPU (no atomics there in Halide 21,
   `glare_generator.cpp:160-246`). No simple version without atomics: a spot can be any size,
   so a gather has no bounded window. Options, all real work: sums per tile then a merge pass;
   integer atomics if Halide's Metal codegen has them. First measure what the CPU stage costs.
