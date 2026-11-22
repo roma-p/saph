@@ -83,11 +83,14 @@ Order: batch 1, then 2, 3, 4, 5. Tick what is done.
 - [ ] **Two structs in the older effects** (Settings, then Job): Distort (`Settings` 182-193,
   `render` 356-389, `process` 295-352) and EdgeAwareBlur (134-140, 430-447, 282-410): fill
   Job directly, the mask in `MsMask`. About 60 lines.
-- [ ] **Dead fields**: Glare's `pad` always 0 (glare:322, passed at 232, 244); RackDefocus
-  `j.pad = j.half` (rackdefocus:393); unused `<string.h>` (distort), `<stdio.h>` (jpegdamage).
-- [ ] **Small repeats**: text-or-default (glare:265, lensflare:955): `ms_param_text()`;
+- [x] **Dead fields**: Glare's `pad` always 0 (glare:322, passed at 232, 244); RackDefocus
+  `j.pad = j.half` (rackdefocus:393); unused `<string.h>` (distort), `<stdio.h>` (jpegdamage). (Done: Glare's `pad`; RackDefocus' `pad`
+  and `half` are two meanings that happen to agree, kept; both includes are used.)
+- [x] **Small repeats**: text-or-default (glare:265, lensflare:955): `ms_param_text()`;
   `hue = v - floor(v)` 3 times; the "not enough memory" message 13 times: `ms_fail_memory(r)`;
   LensFlare's Job copies `MsAtmosphere`'s fields one by one (425-427, 723-730), Glow embeds it.
+  (Done: `ms_out_of_memory`, LensFlare's `MsAtmosphere`; the text-or-default (2) and the hue
+  (3 one-liners) left: a helper would not be shorter.)
 - [ ] Glare's `render()` (124 lines, glare:259-382): split as LensFlare's `build_rows`.
 
 ## Batch 4: Halide kernels

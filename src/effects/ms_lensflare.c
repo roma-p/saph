@@ -372,8 +372,7 @@ typedef struct {
     float occluded_bright, occluded_width; // Occlusion Scale Brightness, Widths, minus 1
     float flicker_amp, flicker_z, flicker_dead, flicker_scale; // (ms_lensflare_finish)
     // the Atmosphere (draw)
-    float amp, freq, persistence, z;
-    int octaves;
+    MsAtmosphere atmosphere;
     // the Diffraction Glow (glowed: NULL without)
     float glow_at[2], reach, edge_frac, glow_frac, glow_gain[3];
     int edge, glow_blur;
@@ -395,16 +394,18 @@ static int run(MsApi api, void *user) {
                            MS_INT("hotspot_x", j->spot[0]), MS_INT("hotspot_y", j->spot[1]),
                            MS_INT("reach", j->square), MS_IMAGE("visible", j->visible));
     if (status == 0)
-        status = MS_KERNEL(
-            MS_K_LENSFLARE_DRAW, api, MS_IMAGE("rows", j->rows),
-            MS_IMAGE("noise_rows", j->noise_rows), MS_INT("plain", j->sizes[0]),
-            MS_INT("shadowed", j->sizes[1]), MS_INT("special", j->sizes[2]),
-            MS_INT("special_shadowed", j->sizes[3]), MS_IMAGE("texels", j->texels),
-            MS_IMAGE("visible", j->visible), MS_INT("count", j->count > 0 ? j->count : 1),
-            MS_INT("samples", profile_samples(j->count)), MS_FLOAT("amp", j->amp),
-            MS_FLOAT("freq", j->freq), MS_FLOAT("persistence", j->persistence), MS_FLOAT("z", j->z),
-            MS_INT("octaves", j->octaves), MS_FLOAT("occluded_bright", j->occluded_bright),
-            MS_FLOAT("occluded_width", j->occluded_width), MS_IMAGE("flare", j->flare));
+        status =
+            MS_KERNEL(MS_K_LENSFLARE_DRAW, api, MS_IMAGE("rows", j->rows),
+                      MS_IMAGE("noise_rows", j->noise_rows), MS_INT("plain", j->sizes[0]),
+                      MS_INT("shadowed", j->sizes[1]), MS_INT("special", j->sizes[2]),
+                      MS_INT("special_shadowed", j->sizes[3]), MS_IMAGE("texels", j->texels),
+                      MS_IMAGE("visible", j->visible), MS_INT("count", j->count > 0 ? j->count : 1),
+                      MS_INT("samples", profile_samples(j->count)),
+                      MS_FLOAT("amp", j->atmosphere.amp), MS_FLOAT("freq", j->atmosphere.freq),
+                      MS_FLOAT("persistence", j->atmosphere.persistence),
+                      MS_FLOAT("z", j->atmosphere.z), MS_INT("octaves", j->atmosphere.octaves),
+                      MS_FLOAT("occluded_bright", j->occluded_bright),
+                      MS_FLOAT("occluded_width", j->occluded_width), MS_IMAGE("flare", j->flare));
     if (status == 0 && j->glowed)
         status = MS_KERNEL(MS_K_LENSFLARE_GLOW, api, MS_IMAGE("flare", j->flare),
                            MS_IMAGE("occluder", j->occluder), MS_INT("from", j->from),
@@ -656,16 +657,6 @@ static void frame_settings(const MsRender *r, Job *j) {
         j->gain[c] = (float)(v[BRIGHTNESS] * v[COLOR + c]);
 }
 
-// The Atmosphere (effects/atmosphere.h).
-static void atmosphere_settings(const MsRender *r, Job *j) {
-    const double *v = r->values;
-    const MsAtmosphere a =
-        ms_atmosphere(v[ATMOSPHERE_AMP], v[ATMOSPHERE_FREQ], v[ATMOSPHERE_DETAIL],
-                      v[ATMOSPHERE_SEED], v[ATMOSPHERE_SPEED], r->frame_width, r->time);
-    j->amp = a.amp, j->freq = a.freq, j->persistence = a.persistence, j->z = a.z;
-    j->octaves = a.octaves;
-}
-
 // The Motion Blur: the elements at `samples` times spread evenly over the shutter (Shutter
 // Angle / 360 of a frame, centred on the frame, as the reference's: no shift mid-motion, half
 // the blur on a key's still side), each 1 / samples as bright; samples about every
@@ -888,7 +879,8 @@ static int render(const MsRender *r) {
                                                     : params[LENS].def_text;
     Job j = {.count = 0};
     frame_settings(r, &j);
-    atmosphere_settings(r, &j);
+    j.atmosphere = ms_atmosphere(v[ATMOSPHERE_AMP], v[ATMOSPHERE_FREQ], v[ATMOSPHERE_DETAIL],
+                                 v[ATMOSPHERE_SEED], v[ATMOSPHERE_SPEED], r->frame_width, r->time);
     const int glow = glow_settings(v, &j);
 
     const size_t text_length = strlen(lens);

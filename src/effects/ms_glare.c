@@ -160,7 +160,7 @@ static const MsParam params[] = {
 typedef struct {
     MsImage *source, *mask, *small[2], *glints, *labels[2], *rows, *buffers[3], *output;
     MsGlintSource glint_source; // the spots' source
-    int glare_blur, rounds, count, pad, res;
+    int glare_blur, rounds, count, res;
     float glare_blur_frac, cap, norm, bc[3];
     float scale, hue, saturation, source_opacity, under, affect_alpha;
 } Job;
@@ -200,7 +200,7 @@ static int run(MsApi api, void *user) {
                            MS_IMAGE("labels", j->labels[j->rounds % 2]), MS_FLOAT("cap", j->cap),
                            MS_FLOAT("norm", j->norm), MS_FLOAT("bc_r", j->bc[0]),
                            MS_FLOAT("bc_g", j->bc[1]), MS_FLOAT("bc_b", j->bc[2]),
-                           MS_INT("pad_x", j->pad), MS_INT("pad_y", j->pad),
+                           MS_INT("pad_x", 0), MS_INT("pad_y", 0), // (the image at (0, 0))
                            MS_IMAGE("impulses", image));
     if (status == 0)
         status = ms_fft(api, &image, &free_image, 0);
@@ -212,10 +212,10 @@ static int run(MsApi api, void *user) {
     if (status != 0)
         return status;
     return MS_KERNEL(MS_K_GLARE_FINISH, api, MS_IMAGE("data", free_image),
-                     MS_IMAGE("source", j->source), MS_INT("pad_x", j->pad),
-                     MS_INT("pad_y", j->pad), MS_INT("res", j->res), MS_FLOAT("scale", j->scale),
-                     MS_FLOAT("hue", j->hue), MS_FLOAT("saturation", j->saturation),
-                     MS_INT("blur", j->glare_blur), MS_FLOAT("blur_frac", j->glare_blur_frac),
+                     MS_IMAGE("source", j->source), MS_INT("pad_x", 0), MS_INT("pad_y", 0),
+                     MS_INT("res", j->res), MS_FLOAT("scale", j->scale), MS_FLOAT("hue", j->hue),
+                     MS_FLOAT("saturation", j->saturation), MS_INT("blur", j->glare_blur),
+                     MS_FLOAT("blur_frac", j->glare_blur_frac),
                      MS_FLOAT("source_opacity", j->source_opacity), MS_FLOAT("under", j->under),
                      MS_FLOAT("affect_alpha", j->affect_alpha), MS_IMAGE("output", j->output));
 }
@@ -279,7 +279,6 @@ static int render(const MsRender *r) {
     // while their size is at least the image's plus the drawing's reach (one side).
     const int longest = w2 > h2 ? w2 : h2;
     const int margin = (int)ceil(fmin(reach, (double)longest));
-    j.pad = 0;
     const int nx = ms_fft_length(w2 + margin), ny = ms_fft_length(h2 + margin);
     j.scale = (float)(1.0 / ((double)nx * ny));
 
