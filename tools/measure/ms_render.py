@@ -34,7 +34,7 @@ import exr  # noqa: E402
 ROOT = os.path.dirname(os.path.dirname(HERE))
 HOST = os.path.join(ROOT, "build", "test_host")
 PLUGIN = os.path.join(ROOT, "build", "MillSaph.ofx.bundle", "Contents",
-                      "Darwin" if sys.platform == "darwin" else "Linux-x86-64", "MillSaph.ofx")
+                      "MacOS" if sys.platform == "darwin" else "Linux-x86-64", "MillSaph.ofx")
 ID = "com.xiaoluo.millsaph."
 # The reference's inputs that MillSaph's effects order differently (nuke_measure.py's INPUTS):
 # the job's input index -> MillSaph's (None: none).

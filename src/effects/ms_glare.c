@@ -301,13 +301,15 @@ static int render(const MsRender *r) {
                                     .rays_num_scale = v[RAYS_NUM_SCALE],
                                     .rays_length = v[RAYS_LENGTH],
                                     .rays_thickness = v[RAYS_THICKNESS]};
-    j.count = nodes && rows ? ms_glare_style(style, nodes, (int)text_length + 1, &globals, rows,
-                                             GLARE_MAX_ELEMENTS, NULL)
-                            : -1;
+    const int allocated = nodes && rows;
+    j.count = allocated ? ms_glare_style(style, nodes, (int)text_length + 1, &globals, rows,
+                                         GLARE_MAX_ELEMENTS, NULL)
+                        : -1;
     free(nodes);
     if (j.count < 0) {
+        snprintf(r->err, r->err_size,
+                 allocated ? "the Style is not a glare style (JSON)" : "not enough memory");
         free(rows);
-        snprintf(r->err, r->err_size, "the Style is not a glare style (JSON)");
         return 0;
     }
     double reach = 0;
