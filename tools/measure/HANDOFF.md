@@ -72,15 +72,30 @@ There were earlier, unmeasured guesses of some of these as Nuke Matchbox shaders
    needed: give them the two lines to paste.
 3. Fit a numpy model (`~/millsaph_measure/<effect>/model.py`) until it matches the renders;
    note what is measured and what is a guess.
-4. Implement: a generator in `src/halide/` (shared helpers: `blur.h` 3-box blurs, `mask.h`,
-   `shared.h`), its `ms_kernel(...)` lines in `CMakeLists.txt` (CPU and GPU), the effect in
-   `src/effects/ms_<effect>.c` (parameter and clip tables like `ms_bandpass.c`, its kernels run
-   through `ms_run`), listed in `src/effects/effects.c`. Add its node class to `EFFECTS` in
-   `nuke_measure.py` (the MillSaph column) and the `NODES` of `tools/perf/nuke_sweep.py`.
+4. Implement: a generator in `src/halide/` (shared helpers: `blur.h` 3-box blurs, one radius
+   or per axis, `mask.h`, `hue.h`, `shared.h`: `interleaved`, `schedule_rgba`,
+   `schedule_float4`, `schedule_2d`), its `ms_kernel(...)` lines in `CMakeLists.txt` (CPU and
+   GPU), the effect in `src/effects/ms_<effect>.c`, and one line in `src/effects/list.def`
+   (which makes the effect known everywhere: OFX, After Effects and its PiPL). In the effect,
+   as the recent ones (`ms_glow.c`, `ms_mosaic.c`):
+   - parameters by the macros of `common/effect.h` and `common/mask.h` (`MS_WIDTH`,
+     `MS_RELATIVE`, `MS_FRACTION`, `MS_DISTANCE`, `MS_COLOUR(_OF)`, `MS_PARAM_MASK_USE`,
+     `MS_PARAM_BLUR_MASK`, `MS_PARAM_INVERT_MASK`, `MS_SHOW`), overlays by `MS_OVERLAY_SIZED`,
+     `MS_OVERLAY_ARROWS`;
+   - `MsEffect` by field name (`MS_CLIPS`, `MS_PARAMS`, `MS_OVERLAYS`);
+   - the render: one malloc for the images between the kernels (`ms_parts_size`, `ms_parts`;
+     the mask value's part `ms_mask_floats`), the inputs by `ms_input_image`,
+     `ms_output_image`, `ms_input_or` (an input not connected or plugged into the Source),
+     widths in pixels by `ms_whole_pixels`, `ms_run` with NULL for the images not used,
+     `ms_out_of_memory`.
+   Add its node class to `EFFECTS` in `nuke_measure.py` (the MillSaph column) and the `NODES`
+   of `tools/perf/nuke_sweep.py`.
 5. Check: the same jobs on MillSaph's node, `compare.py`; `millsaph_bench --dump` GPU against
-   CPU; `tools/sanitize.sh` (add cases); `tools/tidy.sh`, `tools/format.sh --check`.
-6. Speed: bench cases in `tools/perf/bench.c`, then `tools/perf/sweep_all.sh` and the Nuke
-   sweep against the reference.
+   CPU; `tools/sanitize.sh` (add cases to `tools/test_cases.txt`); `tools/tidy.sh`,
+   `tools/format.sh --check`. A change to existing code: `tools/measure/bitexact.sh` (every
+   case byte for byte against the commit before).
+6. Speed: bench cases in `tools/perf/bench_cases.txt`, then `tools/perf/sweep_all.sh` and the
+   Nuke sweep against the reference.
 
 ## What the first three effects taught
 
