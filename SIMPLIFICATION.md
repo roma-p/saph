@@ -202,7 +202,10 @@ is already well factored.
 
 ## To decide (not factoring)
 
-- **EdgeAwareBlur's largest mask value** is computed on the CPU before the GPU runs, with a CPU
+- [x] (Done on `decisions-eab`: `DT_LARGEST` on the API of `run_passes`, per column then in one
+  thread on the GPU (no atomics), the one float read back, the spans set from it there; the CPU
+  half copy gone. Metal, Sharp with a Mask at 4K: about 106-110 -> 99 ms, noisy.)
+  **EdgeAwareBlur's largest mask value** is computed on the CPU before the GPU runs, with a CPU
   half-to-float copy (`ms_edgeawareblur.c:342-361`): run `DT_LARGEST` on the chosen API and read
   back one float, as Distort does for its largest LOD (`ms_distort.c:270-276`).
 - **Glare's spots on Metal and Direct3D 12** run on the CPU (no atomics there in Halide 21,

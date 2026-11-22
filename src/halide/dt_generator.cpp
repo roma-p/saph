@@ -171,7 +171,8 @@ class DtEdgeSmooth : public Generator<DtEdgeSmooth> {
 };
 
 // The largest mask value (mask.h) of the Mask, at least 1: the distances are at least its
-// inverse.
+// inverse. CPU: per row, then over the rows; GPU: per column (one thread each), then over
+// the columns in one thread (no atomics: Metal, Direct3D 12).
 class DtLargest : public Generator<DtLargest> {
   public:
     Input<Buffer<float, 3>> mask{"mask"};
@@ -179,14 +180,25 @@ class DtLargest : public Generator<DtLargest> {
     Output<Buffer<float, 1>> largest{"largest"}; // one value
 
     void generate() {
+        const bool gpu = get_target().has_gpu_feature();
         RDom rx(0, mask.width(), "rx"), ry(0, mask.height(), "ry");
-        Func row("row");
-        row(y) = maximum(ms_mask::value(mask, rx, y, mask_alpha, invert_mask));
-        largest(x) = max(1.0f, maximum(row(ry)));
+        Func line("line");
+        if (gpu) {
+            line(x) = maximum(ms_mask::value(mask, x, ry, mask_alpha, invert_mask));
+            largest(x) = max(1.0f, maximum(line(rx)));
+        } else {
+            line(y) = maximum(ms_mask::value(mask, rx, y, mask_alpha, invert_mask));
+            largest(x) = max(1.0f, maximum(line(ry)));
+        }
 
         ms::interleaved(mask);
-        Var yo("yo"), yi("yi");
-        row.compute_root().split(y, yo, yi, 16).parallel(yo);
+        Var xo("xo"), xi("xi"), yo("yo"), yi("yi");
+        if (gpu) {
+            line.compute_root().gpu_tile(x, xo, xi, 64);
+            largest.gpu_single_thread();
+        } else {
+            line.compute_root().split(y, yo, yi, 16).parallel(yo);
+        }
     }
 };
 

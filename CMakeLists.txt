@@ -228,12 +228,12 @@ foreach(name distort_shift distort_levels distort_warp)
 endforeach()
 # MS_EdgeAwareBlur, the Domain Transform filter: Sharp and Softer have a GPU version (in
 # float, per block of a row) besides the CPU one (in double, over whole lines), and so has
-# their preparation (Edge Smooth, distances); Soft, a recursion along whole lines, too (one
-# GPU thread per line).
-foreach(name dt_distances dt_edge_smooth dt_soft_weights dt_soft)
+# their preparation (largest mask value, Edge Smooth, distances); Soft, a recursion along
+# whole lines, too (one GPU thread per line).
+foreach(name dt_largest dt_distances dt_edge_smooth dt_soft_weights dt_soft)
   ms_kernel(${name} GENERATOR ms_${name} CPU GPU)
 endforeach()
-foreach(name dt_largest dt_sharp dt_softer)
+foreach(name dt_sharp dt_softer)
   ms_kernel(${name} GENERATOR ms_${name} CPU)
 endforeach()
 ms_kernel(dt_transpose GENERATOR ms_dt_transpose GPU)

@@ -1,7 +1,8 @@
 // MS_EdgeAwareBlur: blurs regions of similar color while keeping the edges between
 // them. It is a Domain Transform filter (Gastal & Oliveira, SIGGRAPH 2011), in Halide
-// (src/halide/dt_generator.cpp), with its preparation (Edge Smooth, distances) on the GPU
-// when the filter is (Sharp and Softer when possible, Soft where the profile says so):
+// (src/halide/dt_generator.cpp), with its preparation (largest mask value, Edge Smooth,
+// distances) on the GPU when the filter is (Sharp and Softer when possible, Soft where the
+// profile says so):
 //   - Blur Type: Sharp = normalised convolution, Soft = recursive, Softer = interpolated
 //   - Filter: number of passes, Box 1, Triangle 2, Gauss 3, Smooth 5
 //   - edge contrast = sum of the RGB differences (with Use Alpha Edges: 0.75 x the
@@ -14,7 +15,6 @@
 // use it without rendering).
 
 #include <math.h>
-#include <stdio.h>
 #include <stdlib.h>
 
 #include "common/defines.h"
@@ -119,6 +119,7 @@ typedef struct {
     MsImage *source, *output, *scratch; // images
     MsImage *dx, *dy, *wx, *wy;         // distances, and Soft's weights
     MsImage *dy_turned, *turned;        // GPU: dy and an image, transposed (GPU memory only)
+    MsImage *largest;                   // the largest mask value (one float)
     double radius_x, radius_y;          // Sharp and Softer: (blur + N) / N
     int span_x, span_y, span_wide, reach_x, reach_y;
     int margin; // GPU: the samples a window can reach beyond its pixel, per side
@@ -218,10 +219,30 @@ static int prepare(MsApi api, const Passes *p) {
     return status;
 }
 
-// The preparation, then all the passes, on `api`; on the GPU the images stay there in
-// between. The GPU takes Sharp, and Soft and Softer where the profile says so.
+// The spans, reaches and margin of the passes. Sharp and Softer: width (blur + N) / N per
+// pass; a window holds at most width / min_distance samples per side, min_distance =
+// 1 / (largest mask value), and the segment holding ct +- h (Softer) can be one sample
+// further.
+static void set_spans(Passes *p, float largest) {
+    const double n = p->dt.passes;
+    const double min_distance = 1.0 / largest;
+    p->radius_x = p->dt.blur_x > 0 ? (p->dt.blur_x + n) / n : 0.0;
+    p->radius_y = p->dt.blur_y > 0 ? (p->dt.blur_y + n) / n : 0.0;
+    p->span_x = (int)floor(p->radius_x / min_distance + 1e-6) + 1;
+    p->span_y = (int)floor(p->radius_y / min_distance + 1e-6) + 1;
+    p->span_wide = (int)ceil(1.0 / min_distance) + 1; // one more unit of distance
+    p->reach_x = (int)ceil(p->radius_x / min_distance) + 1;
+    p->reach_y = (int)ceil(p->radius_y / min_distance) + 1;
+    const int span = p->span_x > p->span_y ? p->span_x : p->span_y;
+    const int reach = p->reach_x > p->reach_y ? p->reach_x : p->reach_y;
+    p->margin = p->dt.type == MS_DT_SHARP ? span + p->span_wide + 2 : reach + 3;
+}
+
+// The largest mask value (read back: one float) and the spans, the preparation, then all
+// the passes, on `api`; on the GPU the images stay there in between. The GPU takes Sharp,
+// and Soft and Softer where the profile says so.
 static int run_passes(MsApi api, void *user) {
-    const Passes *p = user;
+    Passes *p = user;
     const MsDtType type = p->dt.type;
     if (api != MS_API_CPU) {
         const MsProfile *profile = ms_profile(api);
@@ -229,7 +250,20 @@ static int run_passes(MsApi api, void *user) {
             (type == MS_DT_SOFTER && !profile->softer_gpu))
             return MS_RUN_DECLINE;
     }
-    int status = prepare(api, p);
+    float largest = 1.0f;
+    int status = 0;
+    if (p->has_mask) {
+        status = MS_KERNEL(MS_K_DT_LARGEST, api, MS_IMAGE("mask", p->mask),
+                           MS_INT("mask_alpha", p->mask_alpha),
+                           MS_INT("invert_mask", p->invert_mask), MS_IMAGE("largest", p->largest));
+        if (status == 0)
+            status = halide_copy_to_host(NULL, &p->largest->b);
+        if (status == 0)
+            largest = *(const float *)p->largest->b.host;
+    }
+    set_spans(p, largest);
+    if (status == 0)
+        status = prepare(api, p);
     // GPU Sharp and Softer: the columns' distances, transposed like the image between the two
     // directions.
     if (status == 0 && api != MS_API_CPU && type != MS_DT_SOFT)
@@ -244,9 +278,9 @@ static int run_passes(MsApi api, void *user) {
     return status;
 }
 
-// With the settings of `p` (render), the largest mask value on the CPU, then the preparation
-// and the filter (run_passes) on the first API that takes them. Returns 1 on success, or 0
-// with the reason in err.
+// With the settings of `p` (render), the largest mask value, the preparation and the filter
+// (run_passes) on the first API that takes them. Returns 1 on success, or 0 with the reason
+// in err.
 static int process(const MsRender *r, Passes *p) {
     const int width = r->width, height = r->height;
     const size_t pixels = (size_t)width * height;
@@ -295,72 +329,34 @@ static int process(const MsRender *r, Passes *p) {
                      : ms_same_input(&in[MASK], &in[SOURCE]) ? &source
                      : ms_same_input(&in[MASK], &in[EDGE])   ? edges
                                                              : &mask;
-
-    int status = 0;
-    // The largest mask value, on the CPU: a Mask in 16-bit floats converted first.
-    float *mask_floats = p->has_mask && r->half ? malloc(pixels * 4 * sizeof(float)) : NULL;
-    MsImage mask_half, mask_float;
-    if (p->has_mask && r->half && !mask_floats)
-        status = halide_error_code_out_of_memory;
-    if (mask_floats) {
-        ms_image_half(&mask_half, r->inputs[MASK].pixels, r->inputs[MASK].row, width, height);
-        ms_image(&mask_float, mask_floats, (ptrdiff_t)width * 4, width, height, 4);
-        status = MS_KERNEL(MS_K_TO_FLOAT, MS_API_CPU, MS_IMAGE("input", &mask_half),
-                           MS_IMAGE("output", &mask_float));
-    }
-    if (p->has_mask && status == 0)
-        status = MS_KERNEL(MS_K_DT_LARGEST, MS_API_CPU,
-                           MS_IMAGE("mask", mask_floats ? &mask_float : &mask),
-                           MS_INT("mask_alpha", p->mask_alpha),
-                           MS_INT("invert_mask", p->invert_mask), MS_IMAGE("largest", &ilargest));
-    free(mask_floats);
-    int ok = status == 0;
-    if (!ok)
-        snprintf(r->err, r->err_size, "Halide error %d", status);
-
-    if (ok) {
-        // Sharp and Softer: width (blur + N) / N per pass; a window holds at most
-        // width / min_distance samples per side, min_distance = 1 / (largest mask value),
-        // and the segment holding ct +- h (Softer) can be one sample further.
-        const double n = dt->passes;
-        const double min_distance = 1.0 / largest;
-        p->edge = edges;
-        p->mask = masks;
-        p->smooth = &ismooth;
-        p->smooth_radius = smooth_radius;
-        p->source = &source;
-        p->output = &output;
-        p->scratch = &iscratch;
-        p->dx = &idx;
-        p->dy = &idy;
-        p->wx = &iwx;
-        p->wy = &iwy;
-        p->dy_turned = &dy_turned;
-        p->turned = &turned;
-        p->radius_x = dt->blur_x > 0 ? (dt->blur_x + n) / n : 0.0;
-        p->radius_y = dt->blur_y > 0 ? (dt->blur_y + n) / n : 0.0;
-        p->span_x = (int)floor(p->radius_x / min_distance + 1e-6) + 1;
-        p->span_y = (int)floor(p->radius_y / min_distance + 1e-6) + 1;
-        p->span_wide = (int)ceil(1.0 / min_distance) + 1; // one more unit of distance
-        p->reach_x = (int)ceil(p->radius_x / min_distance) + 1;
-        p->reach_y = (int)ceil(p->radius_y / min_distance) + 1;
-        const int span = p->span_x > p->span_y ? p->span_x : p->span_y;
-        const int reach = p->reach_x > p->reach_y ? p->reach_x : p->reach_y;
-        p->margin = dt->type == MS_DT_SHARP ? span + p->span_wide + 2 : reach + 3;
-        // Uploaded: the Source, the Edge Source and the Mask when connected (ms_run uploads an
-        // image standing in for another once).
-        MsImage *const inputs[] = {&source, edges, masks};
-        // Between the kernels: those of the preparation, of the passes, and of the GPU's
-        // directions (Sharp, Softer) or Soft's weights.
-        MsImage *const between[] = {&idx,
-                                    &idy,
-                                    &iscratch,
-                                    smooth_radius > 0 ? &ismooth : NULL,
-                                    soft ? &iwx : &dy_turned,
-                                    soft ? &iwy : &turned};
-        ok = ms_run(run_passes, p, inputs, ARRAY_SIZE(inputs), between, ARRAY_SIZE(between),
-                    &output, r->info, r->err, r->err_size);
-    }
+    p->edge = edges;
+    p->mask = masks;
+    p->smooth = &ismooth;
+    p->smooth_radius = smooth_radius;
+    p->source = &source;
+    p->output = &output;
+    p->scratch = &iscratch;
+    p->dx = &idx;
+    p->dy = &idy;
+    p->wx = &iwx;
+    p->wy = &iwy;
+    p->dy_turned = &dy_turned;
+    p->turned = &turned;
+    p->largest = &ilargest;
+    // Uploaded: the Source, the Edge Source and the Mask when connected (ms_run uploads an
+    // image standing in for another once).
+    MsImage *const inputs[] = {&source, edges, masks};
+    // Between the kernels: those of the preparation, of the passes, and of the GPU's
+    // directions (Sharp, Softer) or Soft's weights; the largest mask value (read back).
+    MsImage *const between[] = {&idx,
+                                &idy,
+                                &iscratch,
+                                smooth_radius > 0 ? &ismooth : NULL,
+                                soft ? &iwx : &dy_turned,
+                                soft ? &iwy : &turned,
+                                p->has_mask ? &ilargest : NULL};
+    const int ok = ms_run(run_passes, p, inputs, ARRAY_SIZE(inputs), between, ARRAY_SIZE(between),
+                          &output, r->info, r->err, r->err_size);
     free(block);
     return ok;
 }
