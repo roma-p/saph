@@ -945,6 +945,15 @@ static const MsOverlay overlay[] = {
      .point = "pivot"},
 };
 
+// What changes over time with the same settings: the Atmosphere (with a Speed), the Flicker
+// (with a Speed), and the Motion Blur (the settings around the frame: varying whenever it is
+// on).
+static int varying(const double *v) {
+    return (v[ATMOSPHERE_AMP] > 0 && v[ATMOSPHERE_SPEED] != 0) ||
+           (v[FLICKER_AMP] != 0 && v[FLICKER_SPEED] != 0) ||
+           (v[ENABLE_MOTION_BLUR] != 0 && v[SHUTTER_ANGLE] > 0);
+}
+
 const MsEffect ms_lensflare_effect = {
     .id = MS_ID("LensFlare"),
     .label = "MS_LensFlare",
@@ -955,7 +964,7 @@ const MsEffect ms_lensflare_effect = {
     MS_PARAMS(params),
     .render = render,
     .identity = identity,
-    .frame_varying = 1, // the Atmosphere changes over time
+    .varying = varying,
     .release = release,
     MS_OVERLAYS(overlay),
     .presets = "lensflare",

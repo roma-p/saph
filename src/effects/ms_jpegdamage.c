@@ -300,6 +300,9 @@ static int render(const MsRender *r) {
     return ok;
 }
 
+// The errors change over time with Jitter Frames (every that many frames), else they stay.
+static int varying(const double *v) { return v[JITTER_FRAMES] > 0; }
+
 const MsEffect ms_jpegdamage_effect = {
     .id = MS_ID("JpegDamage"),
     .label = "MS_JpegDamage",
@@ -308,6 +311,6 @@ const MsEffect ms_jpegdamage_effect = {
     MS_CLIPS(clips),
     MS_PARAMS(params),
     .render = render,
-    .frame_varying = 1, // the errors change over time (Jitter Frames)
+    .varying = varying,
     .presets = "jpegdamage",
 };

@@ -212,7 +212,7 @@ is already well factored.
   Note: float atomics on CUDA make the sums' order vary (last ulps between runs).
 - **PixelSort's Mask Use** (`ms_pixelsort.c:209`) does nothing (always 0.0, line 410): hide it
   rather than remove it (saved scripts, presets).
-- **Always varying over time**: JpegDamage (`ms_jpegdamage.c:332`, although nothing moves when
+- [x] (Done on `decisions`: `varying()` for both; test_host prints "frame varying".) **Always varying over time**: JpegDamage (`ms_jpegdamage.c:332`, although nothing moves when
   Jitter Frames is 0) and LensFlare (`ms_lensflare.c:1036`): a `varying()` as Glow's would let
   hosts cache. LensFlare: list everything that depends on time first.
 
