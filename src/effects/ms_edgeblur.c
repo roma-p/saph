@@ -14,6 +14,7 @@
 #include "common/defines.h"
 #include "common/effect.h"
 #include "effects/input.h"
+#include "effects/pixels.h"
 #include "engine/engine.h"
 
 // Inputs: clip, label in the host, value where there is no image, optional, mask.
@@ -94,14 +95,6 @@ static int run(MsApi api, void *user) {
                      MS_IMAGE("output", j->output));
 }
 
-// A total radius `t`: whole pixels (Subpixel: the fraction past them in *frac, else rounded).
-static int radius(double t, int subpixel, float *frac) {
-    t = t > 0 ? (t < 1e7 ? t : 1e7) : 0;
-    const double whole = subpixel ? floor(t) : floor(t + 0.5);
-    *frac = (float)(subpixel ? t - whole : 0.0);
-    return (int)whole;
-}
-
 static int render(const MsRender *r) {
     const double *v = r->values;
     const int w = r->width, h = r->height, has_matte = r->connected[MATTE];
@@ -124,9 +117,9 @@ static int render(const MsRender *r) {
              .show_edges = show_edges,
              .scale = (float)(v[EDGE_STRENGTH] * (0.8 * edge_width + r->frame_width / 100)),
              .threshold = (float)v[EDGE_THRESHOLD]};
-    j.edge_radius = radius(edge_width, subpixel, &j.edge_frac);
+    j.edge_radius = ms_whole_pixels(edge_width, subpixel, &j.edge_frac);
     // Show Edges: no blur.
-    j.blur_radius = show_edges ? 0 : radius(v[BLUR_WIDTH], subpixel, &j.blur_frac);
+    j.blur_radius = show_edges ? 0 : ms_whole_pixels(v[BLUR_WIDTH], subpixel, &j.blur_frac);
     // Inputs uploaded to the GPU: the Source, and the Matte.
     MsImage *const inputs[] = {&source, j.matte};
     MsImage *const between[] = {&edge_image};
@@ -140,7 +133,8 @@ static int render(const MsRender *r) {
 static int identity(const double *v, const int *connected) {
     (void)connected;
     float frac;
-    const int no_blur = radius(v[BLUR_WIDTH], v[SUBPIXEL] != 0, &frac) == 0 && frac == 0.0f;
+    const int no_blur =
+        ms_whole_pixels(v[BLUR_WIDTH], v[SUBPIXEL] != 0, &frac) == 0 && frac == 0.0f;
     return (int)v[SHOW] == 0 && (no_blur || v[EDGE_STRENGTH] == 0.0);
 }
 

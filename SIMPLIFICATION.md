@@ -71,14 +71,14 @@ Order: batch 1, then 2, 3, 4, 5. Tick what is done.
   distort:323-333, edgeawareblur:335-339, mask_input.c:27-29): `ms_input_or(r, clip, &img,
   &source)`, plus `ms_render_input()` / `ms_render_output()` for the 34 `ms_image_rgba` lines.
   About 50 lines.
-- [ ] **Whole pixels + fraction** of a width, 6 copies (edgeblur:116-121, glow:306-313,
+- [x] **Whole pixels + fraction** of a width, 6 copies (edgeblur:116-121, glow:306-313,
   glint:214-218 and 245-247, glare:253-257, lensflare:490-494, rackdefocus:357-359 with 1e5):
   `ms_whole_px()`. About 30 lines.
 - [ ] **Glint and Glare** make the same 13-argument `MS_K_GLINT_SOURCE` call (glint:183-191,
   glare:206-213) from the same 10 fields: one shared struct and call. About 30 lines. Related:
   Glare uses `MS_K_RACK_DEFOCUS_MULTIPLY`, TVDamage `MS_K_PIXEL_SORT_DOWN`: generic names
   (`fft_multiply`, `downsample`) would show they are shared.
-- [ ] **Inputs de-duplicated by hand** before `ms_run`, which already drops NULL and repeated
+- [x] **Inputs de-duplicated by hand** before `ms_run`, which already drops NULL and repeated
   images (`run.c:247-260`): glow:319-326, lensflare:935-937. About 8 lines.
 - [ ] **Two structs in the older effects** (Settings, then Job): Distort (`Settings` 182-193,
   `render` 356-389, `process` 295-352) and EdgeAwareBlur (134-140, 430-447, 282-410): fill

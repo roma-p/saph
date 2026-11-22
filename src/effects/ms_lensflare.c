@@ -29,6 +29,7 @@
 #include "effects/atmosphere.h"
 #include "effects/glare_style.h"
 #include "effects/input.h"
+#include "effects/pixels.h"
 #include "engine/engine.h"
 #include "lensflare_presets.h" // (generated from presets/lensflare)
 
@@ -428,13 +429,6 @@ static int run(MsApi api, void *user) {
         MS_IMAGE("output", j->output));
 }
 
-// A width in pixels: whole pixels and the fraction past them.
-static void split(double v, int *whole, float *frac) {
-    v = v > 0 ? (v < 1e7 ? v : 1e7) : 0;
-    *whole = (int)floor(v);
-    *frac = (float)(v - *whole);
-}
-
 // The 3-box blur's total radius for a gaussian of sigma s (each box of radius r has the
 // variance r (r + 1) / 3).
 static double box_total(double s) { return 1.5 * (sqrt(1.0 + 4.0 * fmax(s, 0.0) * s) - 1.0); }
@@ -638,7 +632,7 @@ static void frame_settings(const MsRender *r, Job *j) {
     j->combine = (int)v[COMBINE];
     j->tint = (int)v[TINT_BG_WHITES];
     j->affect_alpha = (float)v[AFFECT_ALPHA];
-    split(v[BLUR_FLARE], &j->blur, &j->blur_frac);
+    j->blur = ms_whole_pixels(v[BLUR_FLARE], 1, &j->blur_frac);
     // The occlusion: 1 - f^2, f the Occlusion input's mean over the square of half side
     // floor(0.7 Occlusion Softness) pixels (1 at its default, 0.0028 x the frame's width at
     // 512) around the hotspot's pixel (exact in ninths at the default softness on half
@@ -828,8 +822,8 @@ static int sort_rows(float (*rows)[GLARE_FIELDS], int count, int sizes[GLARE_DRA
 // Hotspot Bright and Color x how much of the flare shows. Glow Radius 0: the whole edges.
 // Returns 1 when there is one.
 static int glow_settings(const double *v, Job *j) {
-    split(box_total(0.218 * v[OCCLUSION_SOFTNESS]), &j->edge, &j->edge_frac);
-    split(box_total(0.365 * v[GLOW_WIDTH]), &j->glow_blur, &j->glow_frac);
+    j->edge = ms_whole_pixels(box_total(0.218 * v[OCCLUSION_SOFTNESS]), 1, &j->edge_frac);
+    j->glow_blur = ms_whole_pixels(box_total(0.365 * v[GLOW_WIDTH]), 1, &j->glow_frac);
     j->glow_at[0] = (float)v[HOTSPOT];
     j->glow_at[1] = (float)(v[HOTSPOT_Y] + 1.0);
     j->reach = (float)(1.937 * v[GLOW_RADIUS]);

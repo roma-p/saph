@@ -23,6 +23,7 @@
 #include "common/mask.h"
 #include "effects/atmosphere.h"
 #include "effects/input.h"
+#include "effects/pixels.h"
 #include "engine/engine.h"
 
 // Inputs: clip, label in the host, value where there is no image, optional, mask.
@@ -226,11 +227,8 @@ static int render(const MsRender *r) {
     const double channel[3] = {v[WIDTH_RED], v[WIDTH_GREEN], v[WIDTH_BLUE]};
     for (int a = 0; a < 2; ++a)
         for (int c = 0; c < 3; ++c) {
-            double t = v[WIDTH] * axis[a] * channel[c];
-            t = t > 0 ? (t < 1e7 ? t : 1e7) : 0;
-            const double whole = v[SUBPIXEL] != 0 ? floor(t) : floor(t + 0.5);
-            j.r[a][c] = (int)whole;
-            j.f[a][c] = (float)(v[SUBPIXEL] != 0 ? t - whole : 0.0);
+            j.r[a][c] =
+                ms_whole_pixels(v[WIDTH] * axis[a] * channel[c], v[SUBPIXEL] != 0, &j.f[a][c]);
         }
     for (int c = 0; c < 3; ++c) {
         j.add[c] = (float)v[ADD_COLOR + c];

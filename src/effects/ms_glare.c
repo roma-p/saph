@@ -24,6 +24,7 @@
 #include "effects/fft.h"
 #include "effects/glare_style.h"
 #include "effects/input.h"
+#include "effects/pixels.h"
 #include "engine/engine.h"
 
 // Inputs: clip, label in the host, value where there is no image, optional, mask.
@@ -223,13 +224,6 @@ static int run(MsApi api, void *user) {
                      MS_FLOAT("affect_alpha", j->affect_alpha), MS_IMAGE("output", j->output));
 }
 
-// A width in pixels: whole pixels and the fraction past them.
-static void split(double v, int *whole, float *frac) {
-    v = v > 0 ? (v < 1e7 ? v : 1e7) : 0;
-    *whole = (int)floor(v);
-    *frac = (float)(v - *whole);
-}
-
 static int render(const MsRender *r) {
     const double *v = r->values;
     const int w = r->width, h = r->height, has_mask = r->connected[MASK];
@@ -248,8 +242,8 @@ static int render(const MsRender *r) {
              .under = (float)v[UNDER_SOURCE],
              .affect_alpha = (float)v[AFFECT_ALPHA],
              .res = res};
-    split(v[THRESHOLD_BLUR] / res, &j.blur, &j.blur_frac);
-    split(v[BLUR_GLARE], &j.glare_blur, &j.glare_blur_frac);
+    j.blur = ms_whole_pixels(v[THRESHOLD_BLUR] / res, 1, &j.blur_frac);
+    j.glare_blur = ms_whole_pixels(v[BLUR_GLARE], 1, &j.glare_blur_frac);
     for (int c = 0; c < 3; ++c) {
         j.add[c] = (float)v[ADD_COLOR + c];
         j.bc[c] = (float)(v[BRIGHTNESS] * v[SCALE_COLORS + c]);

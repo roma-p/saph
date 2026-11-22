@@ -21,6 +21,7 @@
 #include "common/effect.h"
 #include "common/mask.h"
 #include "effects/input.h"
+#include "effects/pixels.h"
 #include "engine/engine.h"
 
 // Inputs: clip, label in the host, value where there is no image, optional, mask.
@@ -185,13 +186,6 @@ static int run(MsApi api, void *user) {
                      MS_FLOAT("affect_alpha", j->affect_alpha), MS_IMAGE("output", j->output));
 }
 
-// A width in pixels: whole pixels and the fraction past them.
-static void split(double v, int *whole, float *frac) {
-    v = v > 0 ? (v < 1e7 ? v : 1e7) : 0;
-    *whole = (int)floor(v);
-    *frac = (float)(v - *whole);
-}
-
 static int render(const MsRender *r) {
     const double *v = r->values;
     const int w = r->width, h = r->height, has_mask = r->connected[MASK];
@@ -204,8 +198,8 @@ static int render(const MsRender *r) {
              .source_opacity = (float)v[SOURCE_OPACITY],
              .under = (float)v[UNDER_SOURCE],
              .affect_alpha = (float)v[AFFECT_ALPHA]};
-    split(v[THRESHOLD_BLUR], &j.blur, &j.blur_frac);
-    split(v[BLUR_GLINT], &j.glint_blur, &j.glint_blur_frac);
+    j.blur = ms_whole_pixels(v[THRESHOLD_BLUR], 1, &j.blur_frac);
+    j.glint_blur = ms_whole_pixels(v[BLUR_GLINT], 1, &j.glint_blur_frac);
     for (int c = 0; c < 3; ++c)
         j.add[c] = (float)v[ADD_COLOR + c];
     // Per direction: its Size and Brightness (the diagonals' swapped by Swap Diagonals).
@@ -216,9 +210,8 @@ static int render(const MsRender *r) {
         const double size = v[SIZE_X + s], gain = 4.0 * v[BRIGHTNESS] * v[BRIGHTNESS_X + s] * size *
                                                   (d < 2 ? 1.0 : 1.333);
         for (int c = 0; c < 3; ++c) {
-            double t = v[SIZE] * size * v[SIZE_RED + c];
-            t = t > 0 ? (t < 1e7 ? t : 1e7) : 0;
-            j.r[d][c] = (int)floor(t + 0.5);
+            float unused;
+            j.r[d][c] = ms_whole_pixels(v[SIZE] * size * v[SIZE_RED + c], 0, &unused);
             j.amp[d][c] = (float)(gain * v[SCALE_COLORS + c]);
             j.used[d] |= j.amp[d][c] != 0.0f;
         }
