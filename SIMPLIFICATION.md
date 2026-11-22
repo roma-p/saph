@@ -156,9 +156,11 @@ is already well factored.
   (CMake's sanitizer flags already apply to it).
 - [x] **The plugin's path per system** in 4 scripts (`sanitize.sh:18-21`, `perf.sh:15-18`,
   `bitexact.sh:20`, `ms_render.py`): one `tools/plugin_path.sh` (ms_render.py keeps its own constant, the only Python one).
-- [ ] **`src/ofx/image.c` `ms_render_with` (168 lines, 191-358)**: `fetch_inputs()`,
+- [x] **`src/ofx/image.c` `ms_render_with` (168 lines, 191-358)**: `fetch_inputs()`,
   `log_render()`; the label asked of the host twice (309-312, 334-337) is `e->label`; the
-  "same pixels as an earlier input" loop (252-255) is `ms_same_input()`. About 20 lines.
+  "same pixels as an earlier input" loop (252-255) is `ms_same_input()`. About 20 lines. (Done: `fetch_inputs`, `log_render`, `ms_same_input`; the
+  copies of the inputs stay in it (malloc and free in one function); the label is still the
+  host's (a host may name the instance).)
 - [ ] **`src/ofx/plugin.c` parameters**: `host_get_value` (386-410) and `host_set_value`
   (419-458) each parse `_y`, `_green`, `_blue`; the Choice/Boolean/Integer test twice there
   and in `test_host.c:186-189`; `get_rgb/point/double/int/text` (177-235) near copies:
