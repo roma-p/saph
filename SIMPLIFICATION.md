@@ -209,6 +209,10 @@ is already well factored.
   `glare_generator.cpp:160-246`). No simple version without atomics: a spot can be any size,
   so a gather has no bounded window. Options, all real work: sums per tile then a merge pass;
   integer atomics if Halide's Metal codegen has them. First measure what the CPU stage costs.
+  Measured (2026-11-22, M1 Pro, 4K, default settings, timing added for the test only): the
+  stage takes 200-220 ms of Glare's ~700 ms on Metal (about 28 %; Res Half: 55-77 ms of
+  ~270 ms), nearly all of it the serial CPU work itself (the same stage on the CPU path:
+  160-225 ms; the impulses back to the GPU: 2-6 ms). A GPU version would save most of it.
   Note: float atomics on CUDA make the sums' order vary (last ulps between runs).
 - [x] (Done on `decisions`: `MsParam.hidden`, OFX secret, AE invisible.) **PixelSort's Mask Use** (`ms_pixelsort.c:209`) does nothing (always 0.0, line 410): hide it
   rather than remove it (saved scripts, presets).
