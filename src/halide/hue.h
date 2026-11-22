@@ -35,8 +35,8 @@ inline Expr hue_shifted(Expr r, Expr g, Expr b, Expr c, Expr hue, Expr other) {
 
 // The rays (or the glare) `ray` screened over the Source x Source Opacity, or under it by
 // `under`; the alpha raised by their largest channel x Affect Alpha. At (x, y, c).
-inline Expr screened(Func source, Func ray, Expr x, Expr y, Expr c, Expr source_opacity,
-                     Expr under, Expr affect_alpha) {
+inline Expr screened(Func source, Func ray, Expr x, Expr y, Expr c, Expr source_opacity, Expr under,
+                     Expr affect_alpha) {
     Expr a = source(x, y, 3) * source_opacity;
     Expr s = source(x, y, c) * source_opacity;
     Expr rc = ray(x, y, c);

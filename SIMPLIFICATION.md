@@ -140,10 +140,12 @@ is already well factored.
 
 ## Batch 5: adapters, editor, tools, build
 
-- [ ] **Editor windows**: `src/editor/main.cpp:1702-1787` and `browser_main.cpp:286-370` repeat
+- [x] **Editor windows**: `src/editor/main.cpp:1702-1787` and `browser_main.cpp:286-370` repeat
   the GLFW / ImGui setup, loop and shutdown; `screenshot()` (main:1642-1654,
   browser:270-282) and `read_file()` (main:103-108, browser:62-67) are copies:
   `editor/window.{h,cpp}` (`run_window`, `screenshot`, `read_file`, `style`, `fonts`). About 90 lines.
+  (Done: `window::run` with the programs' hooks, `screenshot`, `read_file`; each keeps its look
+  (the browser ImGui's dark one). Both programs' --screenshot the same pixel for pixel.)
 - [ ] **`editor/main.cpp` (1787 lines)**: tree and selection (118-352) to `tree.cpp`, properties
   (654-1156) to `properties.cpp`; "New lens" twice (1373-1376, 1431-1434), "Save or Save As"
   three times (1381-1385, 1443-1447, 1557): `new_lens()`, `save_or_ask()`;

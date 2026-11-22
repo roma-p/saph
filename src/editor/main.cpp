@@ -37,6 +37,7 @@
 #include "gradient.h"
 #include "lens.h"
 #include "preview.h"
+#include "window.h"
 #include "lensflare_presets.h" // (generated from presets/lensflare)
 
 using lens::Json;
@@ -98,13 +99,6 @@ struct App {
 double now() {
     using namespace std::chrono;
     return duration<double>(steady_clock::now().time_since_epoch()).count();
-}
-
-std::string read_file(const std::string &path) {
-    std::ifstream f(path, std::ios::binary);
-    std::stringstream s;
-    s << f.rdbuf();
-    return s.str();
 }
 
 bool write_file(const std::string &path, const std::string &text) {
@@ -1260,10 +1254,7 @@ void load_presets(App &app) {
         for (const auto &f : std::filesystem::directory_iterator(dir, ec)) {
             if (f.path().extension() != ".json")
                 continue;
-            std::ifstream in(f.path());
-            std::stringstream ss;
-            ss << in.rdbuf();
-            Json j = Json::parse(ss.str(), nullptr, false);
+            Json j = Json::parse(window::read_file(f.path().string()), nullptr, false);
             if (j.is_discarded() || !j.is_object() || !j.contains("params") ||
                 !j["params"].is_object() || !j["params"].contains("lens_") ||
                 !j["params"]["lens_"].is_string())
@@ -1518,7 +1509,7 @@ void file_dialog(App &app) {
             if (app.file_action == 3) {
                 save(app, app.file_path);
             } else {
-                const std::string text = read_file(app.file_path);
+                const std::string text = window::read_file(app.file_path);
                 if (text.empty())
                     app.status = std::string("Cannot open ") + app.file_path;
                 else {
@@ -1639,20 +1630,6 @@ void frame(App &app) {
     }
 }
 
-bool screenshot(const char *path, int w, int h) {
-    std::vector<uint8_t> px((size_t)w * h * 3);
-    glPixelStorei(GL_PACK_ALIGNMENT, 1);
-    glReadPixels(0, 0, w, h, GL_RGB, GL_UNSIGNED_BYTE, px.data());
-    FILE *f = std::fopen(path, "wb");
-    if (!f)
-        return false;
-    std::fprintf(f, "P6\n%d %d\n255\n", w, h);
-    for (int y = h - 1; y >= 0; --y)
-        std::fwrite(&px[(size_t)y * w * 3], 1, (size_t)w * 3, f);
-    std::fclose(f);
-    return true;
-}
-
 void style() {
     ImGui::StyleColorsDark();
     ImGuiStyle &s = ImGui::GetStyle();
@@ -1716,7 +1693,7 @@ int main(int argc, char **argv) {
             select = std::atoi(argv[i + 1]);
     }
     std::string err;
-    const std::string text = in_path.empty() ? std::string(ms_lensflare_preset_texts[0]) : read_file(in_path);
+    const std::string text = in_path.empty() ? std::string(ms_lensflare_preset_texts[0]) : window::read_file(in_path);
     if (!lens::parse(text, app.lens, err)) {
         std::fprintf(stderr, "millsaph_lens_editor: %s\n", err.c_str());
         lens::parse("{\"elements\": []}", app.lens, err);
@@ -1726,61 +1703,26 @@ int main(int argc, char **argv) {
     app.committed = lens::write(app.lens);
     app.screenshot = shot != nullptr;
 
-    if (!glfwInit())
-        return 2;
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 2);
-    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-    glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE); // (macOS)
-    GLFWwindow *window = glfwCreateWindow(1700, 960, "MillSaph Lens Editor", nullptr, nullptr);
-    if (!window) {
-        glfwTerminate();
-        return 2;
-    }
-    glfwMakeContextCurrent(window);
-    glfwSwapInterval(1);
-    IMGUI_CHECKVERSION();
-    ImGui::CreateContext();
-    ImGui::GetIO().IniFilename = nullptr; // (no imgui.ini next to the host)
-    style();
-    fonts();
-    ImGui_ImplGlfw_InitForOpenGL(window, true);
-    ImGui_ImplOpenGL3_Init("#version 150");
-
-    int frames = 0;
-    while (!glfwWindowShouldClose(window) && !app.quit) {
-        if (shot)
-            glfwPollEvents();
-        else
-            glfwWaitEventsTimeout(app.dirty || app.busy ? 0.0 : 0.5);
+    window::Loop loop;
+    loop.look = [] {
+        style();
+        fonts();
+    };
+    loop.frame = [&] {
         app.busy = false;
         app.thumbs_budget = shot ? 1000 : 3;
-        ImGui_ImplOpenGL3_NewFrame();
-        ImGui_ImplGlfw_NewFrame();
-        ImGui::NewFrame();
         frame(app);
-        ImGui::Render();
-        drop_unused_thumbs(app);
-        int w, h;
-        glfwGetFramebufferSize(window, &w, &h);
-        glViewport(0, 0, w, h);
-        glClearColor(0.1f, 0.1f, 0.1f, 1);
-        glClear(GL_COLOR_BUFFER_BIT);
-        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-        if (shot && ++frames == 5) {
-            screenshot(shot, w, h);
-            app.quit = true;
-        }
-        glfwSwapBuffers(window);
-    }
-    for (auto &t : app.thumbs)
-        if (t.second.texture)
-            glDeleteTextures(1, &t.second.texture);
-    ImGui_ImplOpenGL3_Shutdown();
-    ImGui_ImplGlfw_Shutdown();
-    ImGui::DestroyContext();
-    glfwDestroyWindow(window);
-    glfwTerminate();
+    };
+    loop.after_render = [&] { drop_unused_thumbs(app); };
+    loop.wait = [&] { return app.dirty || app.busy ? 0.0 : 0.5; };
+    loop.quit = [&] { return app.quit; };
+    loop.shut_down = [&] {
+        for (auto &t : app.thumbs)
+            if (t.second.texture)
+                glDeleteTextures(1, &t.second.texture);
+    };
+    if (window::run("MillSaph Lens Editor", 1700, 960, shot, 5, loop) != 0)
+        return 2;
     ms_effects_release();
     ms_engine_shutdown();
     return app.saved ? 0 : 1;

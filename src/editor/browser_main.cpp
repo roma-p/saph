@@ -25,6 +25,7 @@
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"
+#include "window.h"
 
 #define STB_IMAGE_IMPLEMENTATION
 #define STBI_ONLY_PNG
@@ -59,13 +60,6 @@ std::string lower(std::string s) {
     return s;
 }
 
-std::string read_file(const std::string &path) {
-    std::ifstream f(path, std::ios::binary);
-    std::stringstream s;
-    s << f.rdbuf();
-    return s.str();
-}
-
 // The presets of `dir`: "Default" first, then by name (case aside).
 void load(App &app, const std::string &dir) {
     std::error_code ec;
@@ -73,7 +67,7 @@ void load(App &app, const std::string &dir) {
     for (const auto &entry : fs::directory_iterator(dir, ec)) {
         if (entry.path().extension() != ".json")
             continue;
-        nlohmann::json j = nlohmann::json::parse(read_file(entry.path().string()), nullptr, false);
+        nlohmann::json j = nlohmann::json::parse(window::read_file(entry.path().string()), nullptr, false);
         if (!j.is_object() || !j.contains("params"))
             continue;
         Preset p;
@@ -267,20 +261,6 @@ void frame(App &app) {
         pick(app);
 }
 
-bool screenshot(const char *path, int w, int h) {
-    std::vector<uint8_t> px((size_t)w * h * 3);
-    glPixelStorei(GL_PACK_ALIGNMENT, 1);
-    glReadPixels(0, 0, w, h, GL_RGB, GL_UNSIGNED_BYTE, px.data());
-    FILE *f = std::fopen(path, "wb");
-    if (!f)
-        return false;
-    std::fprintf(f, "P6\n%d %d\n255\n", w, h);
-    for (int y = h - 1; y >= 0; --y)
-        std::fwrite(&px[(size_t)y * w * 3], 1, (size_t)w * 3, f);
-    std::fclose(f);
-    return true;
-}
-
 } // namespace
 
 int main(int argc, char **argv) {
@@ -310,61 +290,22 @@ int main(int argc, char **argv) {
     if (app.selected < 0)
         app.selected = 0;
 
-    if (!glfwInit())
-        return 2;
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 2);
-    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-    glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE); // (macOS)
     const std::string title = "MillSaph Presets" + (app.title.empty() ? "" : " - " + app.title);
-    GLFWwindow *window = glfwCreateWindow(1280, 780, title.c_str(), nullptr, nullptr);
-    if (!window) {
-        glfwTerminate();
-        return 2;
-    }
-    glfwMakeContextCurrent(window);
-    glfwSwapInterval(1);
-    IMGUI_CHECKVERSION();
-    ImGui::CreateContext();
-    ImGui::GetIO().IniFilename = nullptr; // (no imgui.ini next to the host)
-    ImGui::StyleColorsDark();
-    ImGui_ImplGlfw_InitForOpenGL(window, true);
-    ImGui_ImplOpenGL3_Init("#version 150");
-
-    int frames = 0;
-    while (!glfwWindowShouldClose(window) && !app.quit) {
-        // (thumbnails still to read: keep drawing)
-        bool pending = false;
+    window::Loop loop;
+    loop.frame = [&] { frame(app); };
+    loop.wait = [&] {
+        bool pending = false; // (thumbnails still to read: keep drawing)
         for (const Preset &p : app.presets)
             pending |= !p.tried;
-        if (shot || pending)
-            glfwPollEvents();
-        else
-            glfwWaitEventsTimeout(0.5);
-        ImGui_ImplOpenGL3_NewFrame();
-        ImGui_ImplGlfw_NewFrame();
-        ImGui::NewFrame();
-        frame(app);
-        ImGui::Render();
-        int w, h;
-        glfwGetFramebufferSize(window, &w, &h);
-        glViewport(0, 0, w, h);
-        glClearColor(0.1f, 0.1f, 0.1f, 1);
-        glClear(GL_COLOR_BUFFER_BIT);
-        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-        if (shot && ++frames == 60) {
-            screenshot(shot, w, h);
-            app.quit = true;
-        }
-        glfwSwapBuffers(window);
-    }
-    for (Preset &p : app.presets)
-        if (p.texture)
-            glDeleteTextures(1, &p.texture);
-    ImGui_ImplOpenGL3_Shutdown();
-    ImGui_ImplGlfw_Shutdown();
-    ImGui::DestroyContext();
-    glfwDestroyWindow(window);
-    glfwTerminate();
+        return pending ? -1.0 : 0.5;
+    };
+    loop.quit = [&] { return app.quit; };
+    loop.shut_down = [&] {
+        for (Preset &p : app.presets)
+            if (p.texture)
+                glDeleteTextures(1, &p.texture);
+    };
+    if (window::run(title.c_str(), 1280, 780, shot, 60, loop) != 0)
+        return 2;
     return app.picked ? 0 : 1;
 }
