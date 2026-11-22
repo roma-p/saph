@@ -79,6 +79,77 @@ static void soft_cpu(MsProfile *p) { p->soft_gpu = 0; }
 static void blur_windows(MsProfile *p) { p->blur_prefix = 0; }
 static void blur_prefix(MsProfile *p) { p->blur_prefix = 1; }
 
+// The variants of the profile a case names (profile=<name> in its settings).
+static const struct {
+    const char *name;
+    void (*tweak)(MsProfile *profile);
+} profiles[] = {
+    {"never_short", never_short}, {"always_short", always_short}, {"softer_cpu", softer_cpu},
+    {"plain", plain},             {"no_prefix", no_prefix},       {"rows", rows},
+    {"blocks", blocks},           {"soft_gpu", soft_gpu},         {"soft_cpu", soft_cpu},
+    {"blur_windows", blur_windows}, {"blur_prefix", blur_prefix},
+};
+
+#define MAX_CASES 1024
+
+// A whole text file (malloc, with its 0), or NULL.
+static char *read_text(const char *path) {
+    FILE *f = fopen(path, "rb");
+    if (!f)
+        return NULL;
+    fseek(f, 0, SEEK_END);
+    const long size = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    char *text = size >= 0 ? malloc((size_t)size + 1) : NULL;
+    if (text)
+        text[fread(text, 1, (size_t)size, f)] = 0;
+    fclose(f);
+    return text;
+}
+
+// Its words without the spaces around them (cut in place).
+static char *trimmed(char *s) {
+    while (*s == ' ' || *s == '\t')
+        ++s;
+    char *end = s + strlen(s);
+    while (end > s && (end[-1] == ' ' || end[-1] == '\t' || end[-1] == '\r'))
+        *--end = 0;
+    return s;
+}
+
+// The cases of bench_cases.txt in `text` (lines "label | effect | settings", # comments; cut
+// in place: the cases point into it). Returns how many, or -1 for a line it cannot read or a
+// profile it does not know.
+static int read_cases(char *text, Case *cases, int max) {
+    int n = 0;
+    for (char *line = strtok(text, "\n"); line; line = strtok(NULL, "\n")) {
+        line = trimmed(line);
+        if (!*line || *line == '#')
+            continue;
+        char *bar1 = strchr(line, '|'), *bar2 = bar1 ? strchr(bar1 + 1, '|') : NULL;
+        if (!bar2 || n == max) {
+            printf("bench_cases.txt: cannot read \"%s\"\n", line);
+            return -1;
+        }
+        *bar1 = *bar2 = 0;
+        Case c = {trimmed(line), trimmed(bar1 + 1), trimmed(bar2 + 1), NULL};
+        const char *named = strstr(c.settings, "profile=");
+        if (named) {
+            const size_t length = strcspn(named + 8, " ");
+            for (size_t k = 0; k < sizeof profiles / sizeof profiles[0] && !c.tweak; ++k)
+                if (strlen(profiles[k].name) == length &&
+                    strncmp(profiles[k].name, named + 8, length) == 0)
+                    c.tweak = profiles[k].tweak;
+            if (!c.tweak) {
+                printf("bench_cases.txt: no profile %s\n", named);
+                return -1;
+            }
+        }
+        cases[n++] = c;
+    }
+    return n;
+}
+
 static MsProfile defaults[MS_API_COUNT]; // the effects' own profiles
 
 // Every parameter at its default, then `settings`.
@@ -636,151 +707,16 @@ int main(int argc, char **argv) {
 
     for (int a = 0; a < MS_API_COUNT; ++a)
         defaults[a] = *ms_profile((MsApi)a);
-    const Case cases[] = {
-        {"BandPass", "MS_BandPass", "", NULL},
-        {"BandPass plain", "MS_BandPass", "", plain},
-        {"BandPass large", "MS_BandPass", "blur_amount1=0.05 blur_amount2=0.1", NULL},
-        {"BandPass large staged", "MS_BandPass", "blur_amount1=0.05 blur_amount2=0.1", no_prefix},
-        {"BandPass 960", "MS_BandPass", "blur_amount2=0.25", NULL},
-        {"BandPass 960 staged", "MS_BandPass", "blur_amount2=0.25", no_prefix},
-        {"EAB Sharp", "MS_EdgeAwareBlur", "blur_type=0", NULL},
-        {"EAB Sharp tile256", "MS_EdgeAwareBlur", "blur_type=0", never_short},
-        {"EAB Sharp 0.01", "MS_EdgeAwareBlur", "blur_type=0 blur_amount=0.01", NULL},
-        {"EAB Sharp 0.1", "MS_EdgeAwareBlur", "blur_type=0 blur_amount=0.1", NULL},
-        {"EAB Sharp 0.1 tile64", "MS_EdgeAwareBlur", "blur_type=0 blur_amount=0.1", always_short},
-        {"EAB Sharp 0.2", "MS_EdgeAwareBlur", "blur_type=0 blur_amount=0.2", NULL},
-        {"EAB Sharp 0.5", "MS_EdgeAwareBlur", "blur_type=0 blur_amount=0.5", NULL},
-        {"EAB Sharp rows", "MS_EdgeAwareBlur", "blur_type=0", rows},
-        {"EAB Sharp blocks", "MS_EdgeAwareBlur", "blur_type=0", blocks},
-        {"EAB Sharp 0.01 rows", "MS_EdgeAwareBlur", "blur_type=0 blur_amount=0.01", rows},
-        {"EAB Sharp 0.1 rows", "MS_EdgeAwareBlur", "blur_type=0 blur_amount=0.1", rows},
-        {"EAB Sharp 0.2 rows", "MS_EdgeAwareBlur", "blur_type=0 blur_amount=0.2", rows},
-        {"EAB Sharp thresh 1", "MS_EdgeAwareBlur", "blur_type=0 edge_threshold=1", NULL},
-        {"EAB Sharp thresh 0.01", "MS_EdgeAwareBlur", "blur_type=0 edge_threshold=0.01", NULL},
-        {"EAB Sharp smooth", "MS_EdgeAwareBlur", "blur_type=0 edge_smooth=0.0125", NULL},
-        {"EAB Sharp box", "MS_EdgeAwareBlur", "blur_type=0 filter=0", NULL},
-        {"EAB Sharp filter smooth", "MS_EdgeAwareBlur", "blur_type=0 filter=3", NULL},
-        {"EAB Soft", "MS_EdgeAwareBlur", "blur_type=1", NULL},
-        {"EAB Soft gpu", "MS_EdgeAwareBlur", "blur_type=1", soft_gpu},
-        {"EAB Soft cpu", "MS_EdgeAwareBlur", "blur_type=1", soft_cpu},
-        {"EAB Soft 0.5", "MS_EdgeAwareBlur", "blur_type=1 blur_amount=0.5", NULL},
-        {"EAB Soft smooth", "MS_EdgeAwareBlur", "blur_type=1 edge_smooth=0.0125", NULL},
-        {"EAB Softer", "MS_EdgeAwareBlur", "blur_type=2", NULL},
-        {"EAB Softer cpu", "MS_EdgeAwareBlur", "blur_type=2", softer_cpu},
-        {"EAB Softer 0.2", "MS_EdgeAwareBlur", "blur_type=2 blur_amount=0.2", NULL},
-        {"EAB Softer 0.2 cpu", "MS_EdgeAwareBlur", "blur_type=2 blur_amount=0.2", softer_cpu},
-        {"EAB Softer 0.5", "MS_EdgeAwareBlur", "blur_type=2 blur_amount=0.5", NULL},
-        {"EAB Softer rows", "MS_EdgeAwareBlur", "blur_type=2", rows},
-        {"EAB Softer blocks", "MS_EdgeAwareBlur", "blur_type=2", blocks},
-        {"EAB Softer 0.2 rows", "MS_EdgeAwareBlur", "blur_type=2 blur_amount=0.2", rows},
-        {"EAB Softer thresh 1", "MS_EdgeAwareBlur", "blur_type=2 edge_threshold=1", NULL},
-        {"BandPass same", "MS_BandPass", "same", NULL},
-        {"EAB Sharp same", "MS_EdgeAwareBlur", "blur_type=0 same", NULL},
-        {"EAB Soft same", "MS_EdgeAwareBlur", "blur_type=1 same", NULL},
-        {"BandPass half", "MS_BandPass", "half", NULL},
-        {"EAB Sharp half", "MS_EdgeAwareBlur", "blur_type=0 half", NULL},
-        {"EAB Soft half", "MS_EdgeAwareBlur", "blur_type=1 half", NULL},
-        {"EAB Softer half", "MS_EdgeAwareBlur", "blur_type=2 half", NULL},
-        {"EAB Sharp mask half", "MS_EdgeAwareBlur", "blur_type=0 same half", NULL},
-        {"Distort half", "MS_Distort", "half", NULL},
-        {"Distort lens half", "MS_Distort", "lens half", NULL},
-        {"Distort", "MS_Distort", "", NULL},
-        {"Distort same", "MS_Distort", "same", NULL},
-        {"Distort lens", "MS_Distort", "lens", NULL},
-        {"Distort lens pageable", "MS_Distort", "lens pageable", NULL},
-        {"EAB Sharp pageable", "MS_EdgeAwareBlur", "blur_type=0 pageable", NULL},
-        {"Distort enable_gpu=0", "MS_Distort", "enable_gpu=0", NULL},
-        {"Mosaic", "MS_Mosaic", "", NULL},
-        {"Mosaic 200", "MS_Mosaic", "pixel_frequency=200", NULL},
-        {"Mosaic 53", "MS_Mosaic", "pixel_frequency=53", NULL},
-        {"Mosaic mask", "MS_Mosaic", "same blur_mask=0.005", NULL},
-        {"Mosaic smooth", "MS_Mosaic", "smooth_colors=0.005", NULL},
-        {"Mosaic smooth prefix", "MS_Mosaic", "smooth_colors=0.005", blur_prefix},
-        {"Mosaic smooth large", "MS_Mosaic", "smooth_colors=0.05", NULL},
-        {"Mosaic smooth large win", "MS_Mosaic", "smooth_colors=0.05", blur_windows},
-        {"Mosaic half", "MS_Mosaic", "half", NULL},
-        {"Mosaic smooth half", "MS_Mosaic", "smooth_colors=0.005 half", NULL},
-        {"Glow", "MS_Glow", "", NULL},
-        {"Glow small", "MS_Glow", "glow_width=0.005", NULL},
-        {"Glow wide", "MS_Glow", "glow_width=0.25", NULL},
-        {"Glow atmosphere", "MS_Glow", "atmosphere_amp=1", NULL},
-        {"Glow whole", "MS_Glow", "subpixel=0", NULL},
-        {"Glow transparent", "MS_Glow", "edge_mode=0", NULL},
-        {"Glow mask", "MS_Glow", "same", NULL},
-        {"Glow threshold", "MS_Glow", "show=1", NULL},
-        {"Glow half", "MS_Glow", "half", NULL},
-        {"Glow t1", "MS_Glow", "threshold=1", NULL},
-        {"Glow t0.99", "MS_Glow", "threshold=0.99", NULL},
-        {"Glow t1.5", "MS_Glow", "threshold=1.5", NULL},
-        {"EdgeBlur", "MS_EdgeBlur", "", NULL},
-        {"EdgeBlur wide", "MS_EdgeBlur", "blur_width=0.1 edge_width=0.1", NULL},
-        {"EdgeBlur whole", "MS_EdgeBlur", "subpixel=0", NULL},
-        {"EdgeBlur edges", "MS_EdgeBlur", "show=1", NULL},
-        {"EdgeBlur matte", "MS_EdgeBlur", "matte matte_use=1", NULL},
-        {"EdgeBlur same", "MS_EdgeBlur", "same", NULL},
-        {"EdgeBlur half", "MS_EdgeBlur", "half", NULL},
-        {"RackDefocus", "MS_RackDefocus", "", NULL},
-        {"RackDefocus wide", "MS_RackDefocus", "defocus_width=0.05", NULL},
-        {"RackDefocus huge", "MS_RackDefocus", "defocus_width=0.25", NULL},
-        {"RackDefocus hexagon", "MS_RackDefocus", "shape=5 roundness=0.3 bokeh=0.5", NULL},
-        {"RackDefocus noise", "MS_RackDefocus", "lens_noise=2 noise_freq=10 rotate=30", NULL},
-        {"RackDefocus fringing", "MS_RackDefocus", "color_fringing=0.2 gauss_blur=0.002", NULL},
-        {"RackDefocus mono", "MS_RackDefocus", "mode=1 use_gamma=2", NULL},
-        {"RackDefocus boost", "MS_RackDefocus", "boost_highlights=1 hilight_threshold=0.5", NULL},
-        {"RackDefocus mask", "MS_RackDefocus", "same", NULL},
-        {"RackDefocus half", "MS_RackDefocus", "half", NULL},
-        {"Glint", "MS_Glint", "", NULL},
-        {"Glint long", "MS_Glint", "size=0.5", NULL},
-        {"Glint short", "MS_Glint", "size=0.02 threshold_blur=0", NULL},
-        {"Glint x only", "MS_Glint", "brightness_y=0 brightness_diag1=0 brightness_diag2=0", NULL},
-        {"Glint hue", "MS_Glint", "hue_shift=0.3 blur_glint=0.005", NULL},
-        {"Glint low", "MS_Glint", "threshold=0.2", NULL},
-        {"Glint mask", "MS_Glint", "same", NULL},
-        {"Glint half", "MS_Glint", "half", NULL},
-        {"Glare", "MS_Glare", "", NULL},
-        {"Glare big", "MS_Glare", "size=0.3", NULL},
-        {"Glare low", "MS_Glare", "threshold=0.3", NULL},
-        {"Glare res half", "MS_Glare", "glare_res=1", NULL},
-        {"Glare hue blur", "MS_Glare", "hue_shift=0.3 saturation=0.5 blur_glare=0.005", NULL},
-        {"Glare mask", "MS_Glare", "same", NULL},
-        {"Glare half", "MS_Glare", "half", NULL},
-        {"LensFlare", "MS_LensFlare", "", NULL},
-        {"LensFlare big", "MS_LensFlare", "scale_widths=0.6", NULL},
-        {"LensFlare centre", "MS_LensFlare", "hotspot=0.45 hotspot_y=0.55", NULL},
-        {"LensFlare hue blur", "MS_LensFlare", "hue_shift=0.3 saturation=0.5 blur_flare=0.005",
-         NULL},
-        {"LensFlare add tint", "MS_LensFlare", "combine=1 tint_bg_whites=1 affect_alpha=0.5", NULL},
-        {"LensFlare occluded", "MS_LensFlare", "same", NULL},
-        {"LensFlare atmosphere", "MS_LensFlare", "atmosphere_amp=1 atmosphere_detail=1", NULL},
-        {"LensFlare glow", "MS_LensFlare", "same diffraction_glow=1 glow_width=0.2", NULL},
-        {"LensFlare half", "MS_LensFlare", "half", NULL},
-        {"JpegDamage", "MS_JpegDamage", "", NULL},
-        {"JpegDamage q0.5 freq", "MS_JpegDamage", "quality=0.5 x_freq_scale=3 high_freq_scale=0", NULL},
-        {"JpegDamage mask", "MS_JpegDamage", "same blur_mask=0.005", NULL},
-        {"JpegDamage half", "MS_JpegDamage", "half", NULL},
-        {"PixelSort", "MS_PixelSort", "", NULL},
-        {"PixelSort 30deg", "MS_PixelSort", "sort_angle=30", NULL},
-        {"PixelSort full", "MS_PixelSort", "threshold=0 soften_threshold_mask=0", NULL},
-        {"PixelSort radial", "MS_PixelSort", "Mode=1", NULL},
-        {"PixelSort circular", "MS_PixelSort", "Mode=2", NULL},
-        {"PixelSort down", "MS_PixelSort", "downsample=1", NULL},
-        {"PixelSort mask", "MS_PixelSort", "same", NULL},
-        {"PixelSort half", "MS_PixelSort", "half", NULL},
-        {"FlickerMatch", "MS_FlickerMatch", "same", NULL},
-        {"FlickerMatch full", "MS_FlickerMatch",
-         "same rect_corner1=0 rect_corner1_y=0 rect_corner2=1 rect_corner2_y=1", NULL},
-        {"FlickerMatchColor", "MS_FlickerMatchColor", "same match_color=0.3", NULL},
-        {"FlickerMatch half", "MS_FlickerMatch", "same half", NULL},
-        {"Flicker", "MS_Flicker", "", NULL},
-        {"Flicker color wave", "MS_Flicker", "rand_color_amp=1 wave_amp=1 wave_g_phase=0.3", NULL},
-        {"Flicker half", "MS_Flicker", "half", NULL},
-        {"TVDamage", "MS_TVDamage", "", NULL},
-        {"TVDamage ghost blur", "MS_TVDamage", "blur_=0.06", NULL},
-        {"TVDamage orthicon", "MS_TVDamage", "orthicon=1 fast_forward_amount=1", NULL},
-        {"TVDamage fish off", "MS_TVDamage", "fish_eye=1 turn_off=0.2 downsample=0", NULL},
-        {"TVDamage mask", "MS_TVDamage", "same", NULL},
-        {"TVDamage half", "MS_TVDamage", "half", NULL},
-    };
+    // The cases: tools/perf/bench_cases.txt.
+    char *text = read_text(MILLSAPH_BENCH_CASES);
+    Case *cases = text ? malloc(MAX_CASES * sizeof(Case)) : NULL;
+    const int case_count = cases ? read_cases(text, cases, MAX_CASES) : 0;
+    if (case_count <= 0) {
+        printf("no cases in %s\n", MILLSAPH_BENCH_CASES);
+        free(cases);
+        free(text);
+        return 1;
+    }
 
     printf("%d x %d, best of %d renders after the first. GPU APIs built:", width, height,
            renders - 1);
@@ -790,9 +726,9 @@ int main(int argc, char **argv) {
     printf("\n%-24s %-12s %9s %9s %12s %12s\n", "case", "api", "best ms", "first ms", "max diff",
            "mean diff");
     int exact = 0;
-    for (size_t i = 0; argc > 4 && i < sizeof cases / sizeof cases[0]; ++i)
+    for (int i = 0; argc > 4 && i < case_count; ++i)
         exact |= strcmp(cases[i].label, argv[4]) == 0;
-    for (size_t i = 0; i < sizeof cases / sizeof cases[0]; ++i) {
+    for (int i = 0; i < case_count; ++i) {
         const Case *c = &cases[i];
         if (argc > 4 && (exact ? strcmp(c->label, argv[4]) != 0 : !strstr(c->label, argv[4])))
             continue; // only the case of this name, else those with this in their name
@@ -837,5 +773,7 @@ int main(int argc, char **argv) {
     free(source);
     free(cpu);
     free(gpu);
+    free(cases);
+    free(text);
     return 0;
 }

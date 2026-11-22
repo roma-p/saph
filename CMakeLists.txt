@@ -410,6 +410,8 @@ endif()
 # Every effect on every API of this machine (tools/perf/bench.c, run by tools/perf/collect.sh).
 add_executable(millsaph_bench tools/perf/bench.c tools/perf/images.c tools/perf/transfer.c)
 target_link_libraries(millsaph_bench PRIVATE millsaph_core)
+target_compile_definitions(millsaph_bench PRIVATE
+  MILLSAPH_BENCH_CASES="${CMAKE_SOURCE_DIR}/tools/perf/bench_cases.txt")
 if(NOT WIN32)
   target_link_libraries(millsaph_bench PRIVATE m)
 endif()

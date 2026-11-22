@@ -176,9 +176,10 @@ is already well factored.
   `find_package(OpenGL)` twice (322, 362), `enable_language(CXX)` twice (57, 347); the
   "benchmark" heading (340-342) is above the editor; AE's "copy the editor" block twice
   (454-458, 487-491). About 25 lines. (Done but AE's two copies: other folder, other system.)
-- [ ] **`tools/perf/bench.c`**: the 145 cases (619-763) in a text file like `test_cases.txt`;
+- [x] **`tools/perf/bench.c`**: the 145 cases (619-763) in a text file like `test_cases.txt`;
   worst / mean difference twice (297-300, 798-803); size arguments parsed twice (510-515,
-  598-603).
+  598-603). (Done: `tools/perf/bench_cases.txt`, profile=<name>; the same cases and pixels. The
+  two small repeats left.)
 - [ ] **`tools/measure/*.py`**: one `load_jobs()` (ms_render:66-70, scores:41, sheet:52,
   report:26, nuke_measure:326), `frame_pairs()` (scores:45-50, sheet:58-61), `argparse`
   instead of `argv.index("--x")` and the `print(open(__file__))` help (5 copies). About 40 lines.

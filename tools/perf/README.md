@@ -10,7 +10,8 @@ is:
 - the machine (OS, CPU, memory, GPU, drivers, CUDA libraries) and the build log;
 - `build/millsaph_bench` (`bench.c`): every effect at 4K and HD on every API built here (the
   CPU, then Metal or CUDA), each GPU result compared with the CPU's, and the
-  choices tuned on another machine (`src/effects/profile.c`) tried both ways;
+  choices tuned on another machine (`src/effects/profile.c`) tried both ways; its cases are in
+  `bench_cases.txt` (read when it runs);
 - `perf.sh` (below);
 - Nuke's timing, if `nuke_time.py` ran on this machine before (see below: run it first).
 
