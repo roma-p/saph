@@ -20,6 +20,7 @@
 #include "common/defines.h"
 #include "common/effect.h"
 #include "common/mask.h"
+#include "effects/glint_source.h"
 #include "effects/input.h"
 #include "effects/pixels.h"
 #include "engine/engine.h"
@@ -139,8 +140,9 @@ static const MsKernel ray_kernels[4] = {MS_K_GLINT_RAY_X, MS_K_GLINT_RAY_Y, MS_K
 // One render: images and settings of the kernels (src/halide/glint_generator.cpp).
 typedef struct {
     MsImage *source, *mask, *glints, *totals[2], *output;
-    int has_mask, invert_mask, mask_type, blur, glint_blur;
-    float blur_frac, glint_blur_frac, threshold, add[3], from_alpha;
+    MsGlintSource glint_source;
+    int glint_blur;
+    float glint_blur_frac;
     int used[4];     // the directions with rays
     int r[4][3];     // total radius per direction and channel
     float amp[4][3]; // amplitude per direction and channel
@@ -156,14 +158,7 @@ static int run(MsApi api, void *user) {
         if (!j->used[d])
             continue;
         if (done == 0)
-            status =
-                MS_KERNEL(MS_K_GLINT_SOURCE, api, MS_IMAGE("source", j->source),
-                          MS_IMAGE("mask", j->mask), MS_INT("has_mask", j->has_mask),
-                          MS_INT("invert_mask", j->invert_mask), MS_INT("mask_type", j->mask_type),
-                          MS_FLOAT("from_alpha", j->from_alpha), MS_INT("blur", j->blur),
-                          MS_FLOAT("blur_frac", j->blur_frac), MS_FLOAT("threshold", j->threshold),
-                          MS_FLOAT("add_r", j->add[0]), MS_FLOAT("add_g", j->add[1]),
-                          MS_FLOAT("add_b", j->add[2]), MS_IMAGE("glints", j->glints));
+            status = ms_glint_source(api, &j->glint_source, j->source, j->mask, j->glints);
         if (status != 0)
             break;
         status = MS_KERNEL(ray_kernels[d], api, MS_IMAGE("glints", j->glints),
@@ -189,19 +184,14 @@ static int run(MsApi api, void *user) {
 static int render(const MsRender *r) {
     const double *v = r->values;
     const int w = r->width, h = r->height, has_mask = r->connected[MASK];
-    Job j = {.has_mask = has_mask,
-             .invert_mask = (int)v[INVERT_MASK],
-             .mask_type = (int)v[MASK_TYPE],
-             .threshold = (float)v[THRESHOLD],
-             .from_alpha = (float)v[FROM_ALPHA],
+    Job j = {.glint_source =
+                 ms_glint_source_of(v[THRESHOLD], &v[ADD_COLOR], v[THRESHOLD_BLUR], v[FROM_ALPHA],
+                                    v[MASK_TYPE], v[INVERT_MASK], has_mask),
              .hue = (float)(v[HUE_SHIFT] - floor(v[HUE_SHIFT])),
              .source_opacity = (float)v[SOURCE_OPACITY],
              .under = (float)v[UNDER_SOURCE],
              .affect_alpha = (float)v[AFFECT_ALPHA]};
-    j.blur = ms_whole_pixels(v[THRESHOLD_BLUR], 1, &j.blur_frac);
     j.glint_blur = ms_whole_pixels(v[BLUR_GLINT], 1, &j.glint_blur_frac);
-    for (int c = 0; c < 3; ++c)
-        j.add[c] = (float)v[ADD_COLOR + c];
     // Per direction: its Size and Brightness (the diagonals' swapped by Swap Diagonals).
     const int swap = (int)v[SWAP_DIAGONALS];
     int rays = 0;

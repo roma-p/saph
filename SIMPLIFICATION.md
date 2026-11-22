@@ -74,7 +74,7 @@ Order: batch 1, then 2, 3, 4, 5. Tick what is done.
 - [x] **Whole pixels + fraction** of a width, 6 copies (edgeblur:116-121, glow:306-313,
   glint:214-218 and 245-247, glare:253-257, lensflare:490-494, rackdefocus:357-359 with 1e5):
   `ms_whole_px()`. About 30 lines.
-- [ ] **Glint and Glare** make the same 13-argument `MS_K_GLINT_SOURCE` call (glint:183-191,
+- [x] **Glint and Glare** make the same 13-argument `MS_K_GLINT_SOURCE` call (glint:183-191,
   glare:206-213) from the same 10 fields: one shared struct and call. About 30 lines. Related:
   Glare uses `MS_K_RACK_DEFOCUS_MULTIPLY`, TVDamage `MS_K_PIXEL_SORT_DOWN`: generic names
   (`fft_multiply`, `downsample`) would show they are shared.

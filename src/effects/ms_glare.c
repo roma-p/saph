@@ -23,6 +23,7 @@
 #include "common/mask.h"
 #include "effects/fft.h"
 #include "effects/glare_style.h"
+#include "effects/glint_source.h"
 #include "effects/input.h"
 #include "effects/pixels.h"
 #include "engine/engine.h"
@@ -158,8 +159,9 @@ static const MsParam params[] = {
 // One render: images and settings of the kernels.
 typedef struct {
     MsImage *source, *mask, *small[2], *glints, *labels[2], *rows, *buffers[3], *output;
-    int has_mask, invert_mask, mask_type, blur, glare_blur, rounds, count, pad, res;
-    float blur_frac, glare_blur_frac, threshold, add[3], from_alpha, cap, norm, bc[3];
+    MsGlintSource glint_source; // the spots' source
+    int glare_blur, rounds, count, pad, res;
+    float glare_blur_frac, cap, norm, bc[3];
     float scale, hue, saturation, source_opacity, under, affect_alpha;
 } Job;
 
@@ -179,13 +181,7 @@ static int run(MsApi api, void *user) {
                                MS_IMAGE("half", j->small[1]));
     }
     if (status == 0)
-        status = MS_KERNEL(MS_K_GLINT_SOURCE, api, MS_IMAGE("source", source),
-                           MS_IMAGE("mask", mask), MS_INT("has_mask", j->has_mask),
-                           MS_INT("invert_mask", j->invert_mask), MS_INT("mask_type", j->mask_type),
-                           MS_FLOAT("from_alpha", j->from_alpha), MS_INT("blur", j->blur),
-                           MS_FLOAT("blur_frac", j->blur_frac), MS_FLOAT("threshold", j->threshold),
-                           MS_FLOAT("add_r", j->add[0]), MS_FLOAT("add_g", j->add[1]),
-                           MS_FLOAT("add_b", j->add[2]), MS_IMAGE("glints", j->glints));
+        status = ms_glint_source(api, &j->glint_source, source, mask, j->glints);
     if (status == 0)
         status = MS_KERNEL(MS_K_GLARE_LABEL_INIT, api, MS_IMAGE("glints", j->glints),
                            MS_IMAGE("labels", j->labels[0]));
@@ -231,23 +227,18 @@ static int render(const MsRender *r) {
     const int res = (int)v[GLARE_RES] == 1 ? 2 : 1;
     const int w2 = (w + res - 1) / res, h2 = (h + res - 1) / res;
     const char *style = r->texts && r->texts[STYLE] ? r->texts[STYLE] : params[STYLE].def_text;
-    Job j = {.has_mask = has_mask,
-             .invert_mask = (int)v[INVERT_MASK],
-             .mask_type = (int)v[MASK_TYPE],
-             .threshold = (float)v[THRESHOLD],
-             .from_alpha = (float)v[FROM_ALPHA],
+    Job j = {.glint_source =
+                 ms_glint_source_of(v[THRESHOLD], &v[ADD_COLOR], v[THRESHOLD_BLUR] / res,
+                                    v[FROM_ALPHA], v[MASK_TYPE], v[INVERT_MASK], has_mask),
              .hue = (float)(v[HUE_SHIFT] - floor(v[HUE_SHIFT])),
              .saturation = (float)v[SATURATION],
              .source_opacity = (float)v[SOURCE_OPACITY],
              .under = (float)v[UNDER_SOURCE],
              .affect_alpha = (float)v[AFFECT_ALPHA],
              .res = res};
-    j.blur = ms_whole_pixels(v[THRESHOLD_BLUR] / res, 1, &j.blur_frac);
     j.glare_blur = ms_whole_pixels(v[BLUR_GLARE], 1, &j.glare_blur_frac);
-    for (int c = 0; c < 3; ++c) {
-        j.add[c] = (float)v[ADD_COLOR + c];
+    for (int c = 0; c < 3; ++c)
         j.bc[c] = (float)(v[BRIGHTNESS] * v[SCALE_COLORS + c]);
-    }
     // A spot's strength: at most Size^2 / 100; strength (frame width / 10)^2 / 100 draws the
     // elements at their brightness.
     const double size = fmax(v[SIZE], 0.0) / res, frame = r->frame_width / res;
