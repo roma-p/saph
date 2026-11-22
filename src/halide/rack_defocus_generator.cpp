@@ -43,16 +43,6 @@ Func toned(Func s, Expr gamma, Expr boost, Expr threshold) {
     return out;
 }
 
-// The GPU schedule of a whole-image stage: float4 pixels, tiles of threads.
-void tiles(Func f, bool gpu) {
-    Var xo("xo"), yo("yo"), xi("xi"), yi("yi");
-    f.bound(c, 0, 4).reorder(c, x, y);
-    if (gpu)
-        f.vectorize(c).gpu_tile(x, y, xo, yo, xi, yi, 32, 8);
-    else
-        f.unroll(c).vectorize(x, 8).parallel(y);
-}
-
 } // namespace
 
 class RackDefocusPrepare : public Generator<RackDefocusPrepare> {
@@ -115,7 +105,7 @@ class RackDefocusPrepare : public Generator<RackDefocusPrepare> {
 
         ms::interleaved(source);
         ms::interleaved(data);
-        tiles(data, gpu);
+        ms::schedule_float4(data, gpu, 32, 8);
     }
 };
 
@@ -144,7 +134,7 @@ class RackDefocusSoften : public Generator<RackDefocusSoften> {
         ms::interleaved(prepared);
         ms::interleaved(data);
         ms_blur::schedule(boxes, gpu, 4);
-        tiles(data, gpu);
+        ms::schedule_float4(data, gpu, 32, 8);
     }
 };
 
@@ -219,8 +209,8 @@ class RackDefocusKernel : public Generator<RackDefocusKernel> {
                          select(noise_amp > 0.0f, max(1.0f - noise_amp * max(n, 0.0f), 0.0f), 1.0f);
         // Gauss Blur: blur.h's 3 boxes, zero outside the lens' square.
         std::vector<ms_blur::Box> boxes;
-        Func blurred = ms_blur::blur3_subpixel(noisy, gauss, 0.0f, gauss, gauss, 0.0f, gauss,
-                                               Expr(1), size, size, gpu, "gauss", boxes);
+        Func blurred =
+            ms_blur::blur3_subpixel(noisy, gauss, 0.0f, Expr(1), size, size, gpu, "gauss", boxes);
         // Its sum: per row, then the rows.
         Func rows("rows"), total("total");
         RDom rx(0, size, "rx"), ry(0, size, "ry");
@@ -264,7 +254,7 @@ class RackDefocusKernel : public Generator<RackDefocusKernel> {
         } else {
             rows.update().parallel(y);
         }
-        tiles(kernel, gpu);
+        ms::schedule_float4(kernel, gpu, 32, 8);
     }
 };
 
@@ -308,7 +298,7 @@ class RackDefocusMultiply : public Generator<RackDefocusMultiply> {
         }
         product.dim(0).set_stride(4);
         product.dim(2).set_stride(1).set_bounds(0, 4);
-        tiles(product, gpu);
+        ms::schedule_float4(product, gpu, 32, 8);
     }
 };
 
@@ -338,7 +328,7 @@ class RackDefocusFinish : public Generator<RackDefocusFinish> {
         ms::interleaved(source);
         ms::interleaved(output);
         mask_value.dim(0).set_stride(Expr()); // without a mask: one value (stride 0)
-        tiles(output, gpu);
+        ms::schedule_float4(output, gpu, 32, 8);
     }
 };
 
@@ -369,7 +359,7 @@ class RackDefocusShow : public Generator<RackDefocusShow> {
             largest.gpu_tile(c, xo, xi, 4);
             largest.update().gpu_tile(c, xo, xi, 4);
         }
-        tiles(output, gpu);
+        ms::schedule_float4(output, gpu, 32, 8);
     }
 };
 

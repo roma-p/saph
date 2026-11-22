@@ -39,16 +39,6 @@ Var x("x"), y("y"), c("c"), e("e");
 // The label of a pixel in no spot (the largest).
 Expr none() { return Internal::UIntImm::make(UInt(32), 0xffffffffu); }
 
-// The schedule of a whole-image stage: float4 pixels, tiles of threads.
-void tiles(Func f, bool gpu) {
-    Var xo("xo"), yo("yo"), xi("xi"), yi("yi");
-    f.bound(c, 0, 4).reorder(c, x, y);
-    if (gpu)
-        f.vectorize(c).gpu_tile(x, y, xo, yo, xi, yi, 32, 8);
-    else
-        f.unroll(c).vectorize(x, 8).parallel(y);
-}
-
 } // namespace
 
 class GlareKernel : public Generator<GlareKernel> {
@@ -118,11 +108,7 @@ class GlareLabelInit : public Generator<GlareLabelInit> {
         Expr lit = glints(x, y, 0) + glints(x, y, 1) + glints(x, y, 2) > 0.0f;
         labels(x, y) = select(lit, cast<uint32_t>(y * glints.width() + x), none());
         ms::interleaved(glints);
-        Var xo("xo"), yo("yo"), xi("xi"), yi("yi");
-        if (gpu)
-            labels.gpu_tile(x, y, xo, yo, xi, yi, 32, 8);
-        else
-            labels.vectorize(x, 8).parallel(y);
+        ms::schedule_2d(labels, gpu, 32, 8);
     }
 };
 
@@ -261,7 +247,7 @@ class GlareHalf : public Generator<GlareHalf> {
                                  at(2 * x, 2 * y + 1, c) + at(2 * x + 1, 2 * y + 1, c));
         ms::interleaved(image);
         ms::interleaved(half);
-        tiles(half, gpu);
+        ms::schedule_float4(half, gpu, 32, 8);
     }
 };
 
@@ -302,29 +288,20 @@ class GlareFinish : public Generator<GlareFinish> {
         Expr luma = 0.3125f * hued(x, y, 0) + 0.5f * hued(x, y, 1) + 0.1875f * hued(x, y, 2);
         turned(x, y, c) = select(c < 3, luma + (hued(x, y, c) - luma) * saturation, 0.0f);
         std::vector<ms_blur::Box> boxes;
-        Func blurred = ms_blur::blur3_subpixel(turned, blur, blur_frac, blur, blur, blur_frac, blur,
-                                               Expr(0), source.width(), source.height(), gpu,
-                                               "gblur", boxes);
+        Func blurred = ms_blur::blur3_subpixel(turned, blur, blur_frac, Expr(0), source.width(),
+                                               source.height(), gpu, "gblur", boxes);
         Func ray("ray");
         ray(x, y, c) = blurred(x, y, c);
         // As Glint: screened over the Source x Source Opacity, or under it; Affect Alpha.
-        Expr a = source(x, y, 3) * source_opacity;
-        Expr s = source(x, y, c) * source_opacity;
-        Expr rc = ray(x, y, c);
-        Expr s0 = max(s, 0.0f);
-        Expr on = max(s0 + rc * max(1.0f - s0, 0.0f), rc);
-        Expr below = s + (1.0f - a) * rc;
-        Expr rgb = on + (below - on) * under;
-        Expr glare_alpha = max(ray(x, y, 0), max(ray(x, y, 1), ray(x, y, 2))) * affect_alpha;
-        output(x, y, c) = select(c == 3, a + (1.0f - a) * glare_alpha, rgb);
+        output(x, y, c) = ms::screened(source, ray, x, y, c, source_opacity, under, affect_alpha);
 
         ms::interleaved(data);
         ms::interleaved(source);
         ms::interleaved(output);
         ms_blur::schedule(boxes, gpu, 4);
         for (Func fn : {glare, turned, ray})
-            tiles(fn.compute_root(), gpu);
-        tiles(output, gpu);
+            ms::schedule_float4(fn.compute_root(), gpu, 32, 8);
+        ms::schedule_float4(output, gpu, 32, 8);
     }
 };
 

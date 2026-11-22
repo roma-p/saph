@@ -32,12 +32,8 @@ class Mask : public Generator<Mask> {
         mask_value(x, y) = mb(x, y, 0);
 
         ms::interleaved(mask);
-        Var xo("xo"), yo("yo"), xi("xi"), yi("yi");
         ms_blur::schedule(boxes, gpu, 1);
-        if (gpu)
-            mask_value.gpu_tile(x, y, xo, yo, xi, yi, 16, 16);
-        else
-            mask_value.vectorize(x, 8).parallel(y);
+        ms::schedule_2d(mask_value, gpu);
     }
 };
 

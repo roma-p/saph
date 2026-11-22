@@ -185,6 +185,12 @@ inline Func blur3_subpixel(Func in, Expr nx, Expr fx, Expr nx_max, Expr ny, Expr
     return f;
 }
 
+// The same radius (and fraction) on both axes.
+inline Func blur3_subpixel(Func in, Expr n, Expr frac, Expr zero, Expr width, Expr height, bool gpu,
+                           const std::string &name, std::vector<Box> &boxes) {
+    return blur3_subpixel(in, n, frac, n, n, frac, n, zero, width, height, gpu, name, boxes);
+}
+
 // GPU RGB staged boxes: each block first loads its pixels and their windows into on-chip
 // memory, then sums the windows there. Blocks of 64 x 4 pixels along x, 8 x 32
 // along y: on-chip memory (64 + 2r) x 4 or 8 x (32 + 2r) float4, within 32 KB (Metal) for

@@ -31,18 +31,6 @@ namespace {
 
 Var x("x"), y("y"), c("c"), e("e");
 
-// The schedule of a whole-image stage: float4 pixels, tiles of threads.
-void tiles(Func f, bool gpu, int channels = 4) {
-    Var xo("xo"), yo("yo"), xi("xi"), yi("yi");
-    f.bound(c, 0, channels).reorder(c, x, y);
-    if (gpu && channels > 1)
-        f.vectorize(c);
-    if (gpu)
-        f.gpu_tile(x, y, xo, yo, xi, yi, 32, 8);
-    else
-        f.unroll(c).vectorize(x, 8).parallel(y);
-}
-
 Expr luma(Expr r, Expr g, Expr b) { return 0.3125f * r + 0.5f * g + 0.1875f * b; }
 
 } // namespace
@@ -346,9 +334,8 @@ class LensFlareGlow : public Generator<LensFlareGlow> {
         a = clamp(a, 0.0f, 1.0f);
         occ(x, y, c) = select(invert != 0, 1.0f - a, a);
         std::vector<ms_blur::Box> boxes;
-        Func soft = ms_blur::blur3_subpixel(occ, edge, edge_frac, edge, edge, edge_frac, edge, Expr(0),
-                                            occluder.width(), occluder.height(), gpu, "eblur",
-                                            boxes);
+        Func soft = ms_blur::blur3_subpixel(occ, edge, edge_frac, Expr(0), occluder.width(),
+                                            occluder.height(), gpu, "eblur", boxes);
         Func clamped = BoundaryConditions::repeat_edge(soft, {{0, occluder.width()},
                                                               {0, occluder.height()},
                                                               {0, 1}});
@@ -358,9 +345,8 @@ class LensFlareGlow : public Generator<LensFlareGlow> {
         Expr d = sqrt(ex * ex + ey * ey) / max(reach, 1e-6f);
         Expr near = select(reach > 0.0f, exp(-pow(d, 1.70f)), 1.0f);
         edges(x, y, c) = sqrt(gx * gx + gy * gy) * near;
-        Func glow = ms_blur::blur3_subpixel(edges, blur, blur_frac, blur, blur, blur_frac, blur,
-                                            Expr(0), occluder.width(), occluder.height(), gpu,
-                                            "gblur", boxes);
+        Func glow = ms_blur::blur3_subpixel(edges, blur, blur_frac, Expr(0), occluder.width(),
+                                            occluder.height(), gpu, "gblur", boxes);
         Expr gain = select(c == 0, gain_r, c == 1, gain_g, gain_b) * visible(0, 0, 0);
         output(x, y, c) = flare(x, y, c) + select(c < 3, glow(x, y, 0) * gain, 0.0f);
 
@@ -371,9 +357,9 @@ class LensFlareGlow : public Generator<LensFlareGlow> {
         ms_blur::schedule(boxes, gpu, 1);
         for (Func fn : {occ, edges})
             fn.bound(c, 0, 1);
-        tiles(occ.compute_root(), gpu, 1);
-        tiles(edges.compute_root(), gpu, 1);
-        tiles(output, gpu);
+        ms::schedule_float4(occ.compute_root(), gpu, 32, 8, 1);
+        ms::schedule_float4(edges.compute_root(), gpu, 32, 8, 1);
+        ms::schedule_float4(output, gpu, 32, 8);
     }
 };
 
@@ -538,9 +524,8 @@ class LensFlareFinish : public Generator<LensFlareFinish> {
         Expr l = luma(hued(x, y, 0), hued(x, y, 1), hued(x, y, 2));
         turned(x, y, c) = select(c < 3, l + (hued(x, y, c) - l) * saturation, 0.0f);
         std::vector<ms_blur::Box> boxes;
-        Func blurred = ms_blur::blur3_subpixel(turned, blur, blur_frac, blur, blur, blur_frac, blur,
-                                               Expr(0), source.width(), source.height(), gpu,
-                                               "fblur", boxes);
+        Func blurred = ms_blur::blur3_subpixel(turned, blur, blur_frac, Expr(0), source.width(),
+                                               source.height(), gpu, "fblur", boxes);
         Func f("f");
         f(x, y, c) = blurred(x, y, c);
         // Screen: s + f (1 - s); Add: s + f; Flare Only: f, alpha 0. Tint Bg Whites: the
@@ -560,8 +545,8 @@ class LensFlareFinish : public Generator<LensFlareFinish> {
         ms::interleaved(output);
         ms_blur::schedule(boxes, gpu, 4);
         for (Func fn : {turned, f})
-            tiles(fn.compute_root(), gpu);
-        tiles(output, gpu);
+            ms::schedule_float4(fn.compute_root(), gpu, 32, 8);
+        ms::schedule_float4(output, gpu, 32, 8);
     }
 };
 

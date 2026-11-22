@@ -166,12 +166,7 @@ class DtEdgeSmooth : public Generator<DtEdgeSmooth> {
         ms::interleaved(edge);
         ms::interleaved(output);
         ms_blur::schedule(boxes, gpu, 4);
-        Var xo("xo"), yo("yo"), xi("xi"), yi("yi");
-        output.bound(c, 0, 4).reorder(c, x, y);
-        if (gpu)
-            output.vectorize(c).gpu_tile(x, y, xo, yo, xi, yi, 16, 16);
-        else
-            output.unroll(c).vectorize(x, 8).parallel(y);
+        ms::schedule_float4(output, gpu);
     }
 };
 

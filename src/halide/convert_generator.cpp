@@ -5,6 +5,7 @@
 // as two 32-bit integers, R and B in their low 16 bits (little-endian).
 
 #include "Halide.h"
+#include "shared.h"
 
 using namespace Halide;
 
@@ -18,16 +19,6 @@ void layout(OutputImageParam image, int values) {
 }
 
 Expr u32(uint32_t value) { return Internal::make_const(UInt(32), (uint64_t)value); }
-
-void schedule(Func output, int values, const Target &target) {
-    Var x = output.args()[0], y = output.args()[1], c = output.args()[2];
-    Var xo("xo"), yo("yo"), xi("xi"), yi("yi");
-    output.bound(c, 0, values).reorder(c, x, y).unroll(c);
-    if (target.has_gpu_feature())
-        output.gpu_tile(x, y, xo, yo, xi, yi, 16, 16);
-    else
-        output.vectorize(x, 8).parallel(y);
-}
 
 } // namespace
 
@@ -48,7 +39,7 @@ class ToFloat : public Generator<ToFloat> {
             select(exponent == 0, select(sign != 0, -small, small), reinterpret<float>(bits));
         layout(input, 2);
         layout(output, 4);
-        schedule(output, 4, get_target());
+        ms::schedule_rgba(output, get_target().has_gpu_feature(), 4);
     }
 };
 
@@ -76,7 +67,7 @@ class ToHalf : public Generator<ToHalf> {
         output(x, y, c) = half_of(input(x, y, 2 * c)) | (half_of(input(x, y, 2 * c + 1)) << 16);
         layout(input, 4);
         layout(output, 2);
-        schedule(output, 2, get_target());
+        ms::schedule_rgba(output, get_target().has_gpu_feature(), 2);
     }
 };
 

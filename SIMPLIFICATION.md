@@ -95,19 +95,24 @@ Order: batch 1, then 2, 3, 4, 5. Tick what is done.
 
 ## Batch 4: Halide kernels
 
-- [ ] **Schedules.** Three identical `tiles()` (`glare_generator.cpp:43-50`,
+- [x] **Schedules.** Three identical `tiles()` (`glare_generator.cpp:43-50`,
   `rack_defocus_generator.cpp:46-53`, `lensflare_generator.cpp:35-44`), the same schedule
   inline about 20 times (blur:42-46, edge_blur:88-92, glow:75-84 twice, glint:70-79,
   151-161, 209-218, jpeg_damage:350, 364, pixel_sort:353-358, 427-432, test:20-24 a copy of
   `ms::schedule_rgba`, convert:22-30), the scalar 2D one about 15 times (mask:37-40,
   edge_blur:57-60, glare:118-121, jpeg, distort...). Extend `ms::schedule_rgba` (channels,
   float4 or unrolled c, tile size, compute_root), add `ms::schedule_2d`. Each site keeps its
-  tile size and vectorisation: no render nor speed change. About 120 lines.
-- [ ] **Glare family finish**: screen over the Source x opacity, or under, + Affect Alpha,
+  tile size and vectorisation: no render nor speed change. About 120 lines. (Done:
+  `ms::schedule_float4`, `ms::schedule_2d`, `schedule_rgba(channels)`; the sites mixed with
+  other directives (jpeg, pixel_sort, distort, fft, dt's GPU passes) left. Halide's output is not
+  reproducible byte for byte, so checked by bitexact.sh and the bench, old and new binaries in
+  turn: the same times within noise.)
+- [x] **Glare family finish**: screen over the Source x opacity, or under, + Affect Alpha,
   identical in glint:192-203 and glare:310-319; Hue Shift, Saturation, blur chain in
   glare:298-308, lensflare:535-545, glint:180-191: `ms::toned_glare()`, `ms::screen_over()`
-  in `hue.h`. About 35 lines.
-- [ ] **`blur3_subpixel` with one radius**: 9 calls of 10 pass `(n, f, n, n, f, n)`
+  in `hue.h`. About 35 lines. (Done: `ms::screened` for Glint and Glare; LensFlare's finish
+  differs (Screen / Add / Flare Only, Tint Bg Whites) and the toning chains differ too: left.)
+- [x] **`blur3_subpixel` with one radius**: 9 calls of 10 pass `(n, f, n, n, f, n)`
   (edge_blur:42, 78; glare:305; glint:61, 187; lensflare:349, 361, 541; rack_defocus:222).
 - [ ] **Glow / Glint pre-threshold source** (glow:31-37, glint:53-58):
   `ms::from_alpha_masked()` in `threshold.h`. About 12 lines.

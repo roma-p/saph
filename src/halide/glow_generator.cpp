@@ -69,19 +69,11 @@ class GlowBlur : public Generator<GlowBlur> {
         ms::interleaved(source);
         ms::interleaved(mask);
         ms::interleaved(glow);
-        Var xo("xo"), yo("yo"), xi("xi"), yi("yi");
         ms_blur::schedule(boxes, gpu, 4); // RGB and a zero alpha: whole float4 on the GPU
         // The threshold once per pixel (the first boxes read it many times).
-        th.compute_root().bound(c, 0, 4).reorder_storage(c, x, y).reorder(c, x, y);
-        if (gpu)
-            th.vectorize(c).gpu_tile(x, y, xo, yo, xi, yi, 16, 16);
-        else
-            th.unroll(c).vectorize(x, 8).parallel(y);
-        if (gpu)
-            glow.bound(c, 0, 4).reorder(c, x, y).vectorize(c).gpu_tile(x, y, xo, yo, xi, yi, 16,
-                                                                       16);
-        else
-            glow.bound(c, 0, 4).reorder(c, x, y).unroll(c).vectorize(x, 8).parallel(y);
+        th.compute_root().reorder_storage(c, x, y);
+        ms::schedule_float4(th, gpu);
+        ms::schedule_float4(glow, gpu);
     }
 };
 
