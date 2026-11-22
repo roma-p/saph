@@ -19,13 +19,8 @@ import numpy as np
 sys.dont_write_bytecode = True  # (no __pycache__ in the repo)
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import exr  # noqa: E402
-
-
-def frame_names(job):
-    first, last = job.get("frames", [1, 1])
-    if first == last:
-        return [job["name"] + ".exr"]
-    return ["%s.%04d.exr" % (job["name"], f) for f in range(first, last + 1)]
+import jobfile  # noqa: E402
+from jobfile import frame_names  # noqa: E402,F401 (scores.frame_names, as before)
 
 
 def score(reference, millsaph):
@@ -38,13 +33,11 @@ def score(reference, millsaph):
 
 
 def batch_scores(jobs_path):
-    jobs = json.load(open(os.path.expanduser(jobs_path)))
-    out = os.path.expanduser(jobs["out"])
+    jobs = jobfile.load(jobs_path)
     result = {}
     for job in jobs["jobs"]:
         worst = None
-        for name in frame_names(job):
-            ref, ms = os.path.join(out, "reference", name), os.path.join(out, "millsaph", name)
+        for ref, ms in jobfile.frame_pairs(jobs, job):
             if not (os.path.exists(ref) and os.path.exists(ms)):
                 worst = None
                 break
@@ -67,23 +60,25 @@ def summary(values):
 
 
 def main(argv):
-    if not argv or argv[0] in ("-h", "--help"):
-        print(open(__file__).read().split("\nimport")[0])
-        return 2
-    opts = {k: argv[argv.index(k) + 1] for k in ("--save", "--diff") if k in argv}
-    scores = batch_scores(argv[0])
+    p = jobfile.parser(__file__)
+    p.add_argument("jobs")
+    p.add_argument("--save")
+    p.add_argument("--diff")
+    p.add_argument("--all", action="store_true")
+    args = p.parse_args(argv)
+    scores = batch_scores(args.jobs)
     if not scores:
         print("no renders to compare (both reference/ and millsaph/ are needed)")
         return 1
     rows = sorted(scores.items(), key=lambda kv: -kv[1]["p999"])
-    for name, s in rows if "--all" in argv else rows[:25]:
+    for name, s in rows if args.all else rows[:25]:
         print("  p99.9 %7.2f%%  L1 %7.2f%%  energy %.3f  %s" % (100 * s["p999"], 100 * s["l1"],
                                                                s["energy"], name))
     print("%d jobs: %s" % (len(rows), summary([s["p999"] for _, s in rows])))
-    if "--save" in opts:
-        json.dump(scores, open(opts["--save"], "w"), indent=1)
-    if "--diff" in opts:
-        old = json.load(open(opts["--diff"]))
+    if args.save:
+        json.dump(scores, open(args.save, "w"), indent=1)
+    if args.diff:
+        old = json.load(open(args.diff))
         both = [(scores[k]["p999"] - old[k]["p999"], k) for k in scores if k in old]
         worse = sorted((d, k) for d, k in both if d > 0.002)[::-1]
         better = sorted((d, k) for d, k in both if d < -0.002)

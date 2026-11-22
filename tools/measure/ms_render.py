@@ -17,7 +17,6 @@
 #   best, scores = ms_render.sweep(jobs, job, reference, values, lambda v: {...knobs...})
 #
 # Not on Windows (test_host: dlopen). The inputs: the jobs' probes (EXR) at the jobs' size.
-import json
 import os
 import re
 import subprocess
@@ -30,6 +29,7 @@ sys.dont_write_bytecode = True  # (no __pycache__ in the repo)
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import exr  # noqa: E402
+import jobfile  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(HERE))
 HOST = os.path.join(ROOT, "build", "test_host")
@@ -63,11 +63,7 @@ def describe(effect, plugin=PLUGIN):
     return _described[effect]
 
 
-def load(path):
-    """A jobs file, its jobs by name in ["by_name"]."""
-    jobs = json.load(open(os.path.expanduser(path)))
-    jobs["by_name"] = {j["name"]: j for j in jobs["jobs"]}
-    return jobs
+load = jobfile.load  # (ms_render.load, as before)
 
 
 def at_time(value, time):
@@ -160,19 +156,16 @@ def sweep(jobs, job, reference, values, knobs_for, time=1, channel=1):
 
 
 def main(argv):
-    if not argv or argv[0] in ("-h", "--help"):
-        print(__doc__ or open(__file__).read().split("\nimport")[0])
-        return 2
-    cpu = "--cpu" in argv
-    argv = [a for a in argv if a != "--cpu"]
-    out = None
-    if "--out" in argv:
-        i = argv.index("--out")
-        out = argv[i + 1]
-        argv = argv[:i] + argv[i + 2:]
-    jobs = load(argv[0])
-    names = argv[1:] or [j["name"] for j in jobs["jobs"]]
-    out = os.path.expanduser(out or os.path.join(jobs["out"], "millsaph"))
+    p = jobfile.parser(__file__)
+    p.add_argument("jobs")
+    p.add_argument("job", nargs="*")
+    p.add_argument("--out")
+    p.add_argument("--cpu", action="store_true")
+    args = p.parse_intermixed_args(argv)
+    cpu = args.cpu
+    jobs = load(args.jobs)
+    names = args.job or [j["name"] for j in jobs["jobs"]]
+    out = os.path.expanduser(args.out or os.path.join(jobs["out"], "millsaph"))
     os.makedirs(out, exist_ok=True)
     failed = 0
     for name in names:
