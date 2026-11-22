@@ -132,7 +132,7 @@ CPU (8, 16 or 32 bits), without the OFX plugin's in-place reads and 16-bit trans
 |---|---|
 | `src/ofx/` | The OFX adapter: it turns each effect into an OFX plugin (`plugin.c`, `image.c`, `host.c`). It reads and writes the host's images in place where it can. |
 | `src/ae/` | The After Effects adapter (macOS, Windows): `plugin.c`, and `pipl.r`, which lists the effects for After Effects. |
-| `src/effects/` | The effects (`ms_*.c`): parameters and inputs, then the kernels each render runs, in order, and on which API (`profile.c`). The list of effects: `effects.c`. |
+| `src/effects/` | The effects (`ms_*.c`): parameters and inputs, then the kernels each render runs, in order, and on which API (`profile.c`). The list of effects: `list.def` (one line each, read by `effects.c`, the OFX and After Effects adapters and the PiPL). |
 | `src/engine/` | What the effects run on (`engine.h`): kernels called by name, images, and `ms_run`, which runs an effect's kernels on the first API that works and keeps their GPU memory between renders. |
 | `src/halide/` | The kernels, in Halide (C++): compiled at build time for the CPU and each GPU API (Metal on macOS, CUDA on Linux, CUDA / Direct3D 12 on Windows). `CMakeLists.txt` lists them (`ms_kernel`) and generates their table. |
 | `src/common/` | Shared by every layer, without any host or GPU API: the effect description (`effect.h`), the Mask parameters, a mutex. |
