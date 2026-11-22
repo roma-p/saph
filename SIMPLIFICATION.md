@@ -80,9 +80,10 @@ Order: batch 1, then 2, 3, 4, 5. Tick what is done.
   (`fft_multiply`, `downsample`) would show they are shared.
 - [x] **Inputs de-duplicated by hand** before `ms_run`, which already drops NULL and repeated
   images (`run.c:247-260`): glow:319-326, lensflare:935-937. About 8 lines.
-- [ ] **Two structs in the older effects** (Settings, then Job): Distort (`Settings` 182-193,
+- [x] **Two structs in the older effects** (Settings, then Job): Distort (`Settings` 182-193,
   `render` 356-389, `process` 295-352) and EdgeAwareBlur (134-140, 430-447, 282-410): fill
-  Job directly, the mask in `MsMask`. About 60 lines.
+  Job directly, the mask in `MsMask`. About 60 lines. (Done: Distort's render fills its Job;
+  EdgeAwareBlur's Passes holds its settings, render then process.)
 - [x] **Dead fields**: Glare's `pad` always 0 (glare:322, passed at 232, 244); RackDefocus
   `j.pad = j.half` (rackdefocus:393); unused `<string.h>` (distort), `<stdio.h>` (jpegdamage). (Done: Glare's `pad`; RackDefocus' `pad`
   and `half` are two meanings that happen to agree, kept; both includes are used.)

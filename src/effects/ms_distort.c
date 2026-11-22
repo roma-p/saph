@@ -23,6 +23,7 @@
 #include "common/defines.h"
 #include "common/effect.h"
 #include "common/mask.h"
+#include "effects/input.h"
 #include "effects/mask_input.h"
 #include "engine/engine.h"
 
@@ -153,19 +154,6 @@ static const MsParam params[] = {
 
 #define MAX_LEVELS 16 // reduced copies per axis, at most (distort_generator.cpp)
 
-typedef struct {
-    double amount; // shift in pixels per unit of lens slope (per pixel)
-    double rel_x, rel_y;
-    double cos_r, sin_r;                   // Rotate Warp Dir
-    double blur_lens, blur_mask;           // pixels
-    double lens_gain;                      // the blurred lens' slope x this
-    double crop_l, crop_r, crop_b, crop_t; // pixels
-    int wrap_x, wrap_y;
-    int filter;
-    int has_lens, has_mask, mask_alpha, invert_mask, mask_lens, pre_effect;
-    int gpu;
-} Settings;
-
 // ---------------------------------------------------------------- Halide
 
 // Number of reduced copies along an axis of n pixels (down to 1 pixel).
@@ -187,24 +175,31 @@ static int levels_size(int length, int count) {
 // One render: the images and settings of the kernels (src/halide/distort_generator.cpp,
 // mask_generator.cpp).
 typedef struct {
-    const Settings *s;
     MsImage *source, *lens, *output; // lens: the Source if none
     MsMask *mask;
     MsImage *shift, *largest; // between the kernels
     MsImage *levels;          // Filter: sized by run()
     int width, height;
+    double amount; // shift in pixels per unit of lens slope (per pixel)
+    double rel_x, rel_y;
+    double cos_r, sin_r;                   // Rotate Warp Dir
+    double blur_lens;                      // pixels
+    double lens_gain;                      // the blurred lens' slope x this
+    double crop_l, crop_r, crop_b, crop_t; // pixels
+    int wrap_x, wrap_y;
+    int filter;
+    int mask_lens, pre_effect;
+    int gpu;
 } Job;
 
 static int run_shift(MsApi api, const Job *j) {
-    const Settings *s = j->s;
-    const double gain = s->lens_gain;
     return MS_KERNEL(
         MS_K_DISTORT_SHIFT, api, MS_IMAGE("lens", j->lens), MS_IMAGE("mask_value", &j->mask->value),
-        MS_INT("mask_lens", s->has_mask && s->mask_lens),
-        MS_INT("blur_lens", floor(s->blur_lens + 0.5)), MS_FLOAT("amount", s->amount * gain),
-        MS_FLOAT("rel_x", s->rel_x), MS_FLOAT("rel_y", s->rel_y), MS_FLOAT("cos_r", s->cos_r),
-        MS_FLOAT("sin_r", s->sin_r), MS_IMAGE("shift", j->shift),
-        MS_IMAGE("largest_lod", j->largest));
+        MS_INT("mask_lens", j->mask->has_mask && j->mask_lens),
+        MS_INT("blur_lens", floor(j->blur_lens + 0.5)),
+        MS_FLOAT("amount", j->amount * j->lens_gain), MS_FLOAT("rel_x", j->rel_x),
+        MS_FLOAT("rel_y", j->rel_y), MS_FLOAT("cos_r", j->cos_r), MS_FLOAT("sin_r", j->sin_r),
+        MS_IMAGE("shift", j->shift), MS_IMAGE("largest_lod", j->largest));
 }
 
 static int run_levels(MsApi api, const Job *j, int levels_x, int levels_y) {
@@ -214,14 +209,13 @@ static int run_levels(MsApi api, const Job *j, int levels_x, int levels_y) {
 }
 
 static int run_warp(MsApi api, const Job *j, MsImage *levels, int levels_x, int levels_y) {
-    const Settings *s = j->s;
     return MS_KERNEL(
         MS_K_DISTORT_WARP, api, MS_IMAGE("source", j->source), MS_IMAGE("shift", j->shift),
         MS_IMAGE("mask_value", &j->mask->value), MS_IMAGE("levels", levels),
-        MS_INT("filter", s->filter), MS_INT("levels_x", levels_x), MS_INT("levels_y", levels_y),
-        MS_INT("wrap_x", s->wrap_x), MS_INT("wrap_y", s->wrap_y), MS_FLOAT("crop_l", s->crop_l),
-        MS_FLOAT("crop_r", s->crop_r), MS_FLOAT("crop_b", s->crop_b), MS_FLOAT("crop_t", s->crop_t),
-        MS_INT("has_mask", s->has_mask), MS_INT("pre_effect", s->pre_effect),
+        MS_INT("filter", j->filter), MS_INT("levels_x", levels_x), MS_INT("levels_y", levels_y),
+        MS_INT("wrap_x", j->wrap_x), MS_INT("wrap_y", j->wrap_y), MS_FLOAT("crop_l", j->crop_l),
+        MS_FLOAT("crop_r", j->crop_r), MS_FLOAT("crop_b", j->crop_b), MS_FLOAT("crop_t", j->crop_t),
+        MS_INT("has_mask", j->mask->has_mask), MS_INT("pre_effect", j->pre_effect),
         MS_IMAGE("output", j->output));
 }
 
@@ -229,7 +223,7 @@ static int run_warp(MsApi api, const Job *j, MsImage *levels, int levels_x, int 
 // off, only on the CPU.
 static int run(MsApi api, void *user) {
     Job *j = user;
-    if (!j->s->gpu && api != MS_API_CPU)
+    if (!j->gpu && api != MS_API_CPU)
         return MS_RUN_DECLINE;
     int status = ms_mask_run(j->mask, api);
     if (status != 0)
@@ -241,7 +235,7 @@ static int run(MsApi api, void *user) {
     // Filter: the levels the largest level of detail needs, capped by the image size.
     MsImage *levels = j->source;
     int levels_x = 1, levels_y = 1;
-    if (j->s->filter) {
+    if (j->filter) {
         status = halide_copy_to_host(NULL, &j->largest->b);
         if (status != 0)
             return status;
@@ -266,96 +260,78 @@ static int run(MsApi api, void *user) {
     return run_warp(api, j, levels, levels_x, levels_y);
 }
 
-static int process(const MsRender *r, const Settings *s) {
-    const MsInput *inputs = r->inputs;
-    const int half = r->half, width = r->width, height = r->height;
-    const size_t pixels = (size_t)width * height;
+// ---------------------------------------------------------------- render
+
+static int render(const MsRender *r) {
+    const double *v = r->values;
+    const int width = r->width, height = r->height;
+    const double w = r->frame_width; // a width of 1.0 in pixels
+    const double angle = v[ROTATE] * M_PI / 180.0;
+    Job job = {.width = width,
+               .height = height,
+               // Shift = Amount x 0.005 x W x (lens slope per pixel x W).
+               .amount = v[AMOUNT] * 0.005 * w * w,
+               .rel_x = v[REL_X],
+               .rel_y = v[REL_Y],
+               .cos_r = cos(angle),
+               .sin_r = sin(angle),
+               .blur_lens = v[BLUR_LENS],
+               .crop_l = v[CROP_LEFT],
+               .crop_r = v[CROP_RIGHT],
+               .crop_b = v[CROP_BOTTOM],
+               .crop_t = v[CROP_TOP],
+               .wrap_x = (int)v[WRAP_X],
+               .wrap_y = (int)v[WRAP_Y],
+               .filter = (int)v[FILTER],
+               .mask_lens = (int)v[MASK_LENS],
+               .pre_effect = v[APPLY_MASK] == 1,
+               .gpu = (int)v[ENABLE_GPU]};
+    if (v[FINE])
+        job.amount /= 100.0;
+    // a blurred lens' slopes x 1 + 80 Blur Lens (a fraction of the width): 1 + blur / 24 at
+    // 1920 wide, 1 + blur / 6 at 480 (the reference's, exact on a ramp at 480 and 960)
+    job.lens_gain = job.blur_lens > 0 ? 1.0 + 80.0 * job.blur_lens / fmax(w, 1.0) : 1.0;
+
     // Between the kernels: the shift (4 values per pixel), with the Filter the levels (at most
     // 4 times the image; only the part the levels need is written, the rest never touched),
     // the mask value.
-    const size_t levels_floats = s->filter ? (size_t)levels_size(width, max_levels(width)) *
-                                                 levels_size(height, max_levels(height)) * 4
-                                           : 0;
-    const size_t floats[] = {pixels * 4, levels_floats, ms_mask_floats(r, MASK)};
+    const size_t levels_floats = job.filter ? (size_t)levels_size(width, max_levels(width)) *
+                                                  levels_size(height, max_levels(height)) * 4
+                                            : 0;
+    const size_t floats[] = {(size_t)width * height * 4, levels_floats, ms_mask_floats(r, MASK)};
     float *block = malloc(ms_parts_size(floats, ARRAY_SIZE(floats))), *part[ARRAY_SIZE(floats)];
     if (!block)
         return ms_out_of_memory(r);
     ms_parts(block, floats, ARRAY_SIZE(floats), part);
     float largest[2] = {0.0f, 0.0f};
-    MsImage bsource;
-    const MsInput *source = &inputs[SOURCE];
-    ms_image_rgba(&bsource, source->pixels, source->row, half, width, height);
+    MsImage source, lens, output, shift, largest_image, levels;
+    ms_input_image(&source, r, SOURCE);
+    ms_output_image(&output, r);
+    ms_image(&shift, part[0], (ptrdiff_t)width * 4, width, height, 4);
+    ms_image(&largest_image, largest, 2, 2, 1, 1);
+    largest_image.b.dimensions = 1;
+    ms_image(&levels, part[1], 4, 1, 1, 4); // sized by run()
     MsMask mask;
-    ms_mask_init(&mask, r, MASK, SOURCE, &bsource, part[2], s->mask_alpha, s->invert_mask,
-                 s->blur_mask);
-    MsImage blens, boutput, bshift, blargest, blevels;
-    // Without a Lens, the Source stands in (only read without a Lens; the same image: on
-    // the GPU it is uploaded once). A Lens that is the Source's image itself (the host
-    // gives the same pixels): the Source stands in, uploaded once.
-    const MsInput *lens = &inputs[s->has_lens ? LENS : SOURCE];
-    const int lens_is_source = s->has_lens && ms_same_input(lens, source);
-    ms_image_rgba(&blens, lens->pixels, lens->row, half, width, height);
-    ms_image_rgba(&boutput, r->output, r->output_row, half, width, height);
-    ms_image(&bshift, part[0], (ptrdiff_t)width * 4, width, height, 4);
-    ms_image(&blargest, largest, 2, 2, 1, 1);
-    blargest.b.dimensions = 1;
-    ms_image(&blevels, part[1], 4, 1, 1, 4); // sized by run()
-    Job job = {.s = s,
-               .source = &bsource,
-               .lens = s->has_lens && !lens_is_source ? &blens : &bsource,
-               .mask = &mask,
-               .output = &boutput,
-               .shift = &bshift,
-               .largest = &blargest,
-               .levels = &blevels,
-               .width = width,
-               .height = height};
+    ms_mask_init(&mask, r, MASK, SOURCE, &source, part[2], v[MASK_USE], v[INVERT_MASK],
+                 v[BLUR_MASK]);
+    job.source = &source;
+    // Without a Lens, the Source stands in (only read without a Lens); a Lens that is the
+    // Source's image itself (the host gives the same pixels): the Source, uploaded once.
+    job.lens = ms_input_or(&lens, r, LENS, r->connected[LENS], &source, SOURCE);
+    job.mask = &mask;
+    job.output = &output;
+    job.shift = &shift;
+    job.largest = &largest_image;
+    job.levels = &levels;
     // Uploaded: the Source, the Lens and Mask standing in (ms_run uploads an image given
     // twice once); without a mask, its one value (with one, it is made there).
-    MsImage *const in[] = {&bsource, job.lens, mask.input};
-    MsImage *const between[] = {&bshift, ms_mask_between(&mask), &blargest,
-                                s->filter ? &blevels : NULL};
-    const int ok = ms_run(run, &job, in, ARRAY_SIZE(in), between, ARRAY_SIZE(between), &boutput,
-                          r->info, r->err, r->err_size);
+    MsImage *const inputs[] = {&source, job.lens, mask.input};
+    MsImage *const between[] = {&shift, ms_mask_between(&mask), &largest_image,
+                                job.filter ? &levels : NULL};
+    const int ok = ms_run(run, &job, inputs, ARRAY_SIZE(inputs), between, ARRAY_SIZE(between),
+                          &output, r->info, r->err, r->err_size);
     free(block);
     return ok;
-}
-
-// ---------------------------------------------------------------- render
-
-static int render(const MsRender *r) {
-    const double *v = r->values;
-    const double w = r->frame_width; // a width of 1.0 in pixels
-    Settings s;
-    // Shift = Amount x 0.005 x W x (lens slope per pixel x W).
-    s.amount = v[AMOUNT] * 0.005 * w * w;
-    if (v[FINE])
-        s.amount /= 100.0;
-    s.rel_x = v[REL_X];
-    s.rel_y = v[REL_Y];
-    const double angle = v[ROTATE] * M_PI / 180.0;
-    s.cos_r = cos(angle);
-    s.sin_r = sin(angle);
-    s.blur_lens = v[BLUR_LENS];
-    s.blur_mask = v[BLUR_MASK];
-    // a blurred lens' slopes x 1 + 80 Blur Lens (a fraction of the width): 1 + blur / 24 at
-    // 1920 wide, 1 + blur / 6 at 480 (the reference's, exact on a ramp at 480 and 960)
-    s.lens_gain = s.blur_lens > 0 ? 1.0 + 80.0 * s.blur_lens / fmax(w, 1.0) : 1.0;
-    s.crop_l = v[CROP_LEFT];
-    s.crop_r = v[CROP_RIGHT];
-    s.crop_b = v[CROP_BOTTOM];
-    s.crop_t = v[CROP_TOP];
-    s.wrap_x = (int)v[WRAP_X];
-    s.wrap_y = (int)v[WRAP_Y];
-    s.filter = (int)v[FILTER];
-    s.has_lens = r->connected[LENS];
-    s.has_mask = r->connected[MASK];
-    s.mask_alpha = (int)v[MASK_USE];
-    s.invert_mask = (int)v[INVERT_MASK];
-    s.mask_lens = (int)v[MASK_LENS];
-    s.pre_effect = v[APPLY_MASK] == 1;
-    s.gpu = (int)v[ENABLE_GPU];
-    return process(r, &s);
 }
 
 const MsEffect ms_distort_effect = {
