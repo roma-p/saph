@@ -13,7 +13,8 @@
 //   ms_glare_spots        per region: its sums (colour, weight, weighted offsets), then one
 //                         impulse at its centroid (bilinear), of strength min(m b, cap) /
 //                         norm with m its largest channel, its colour kept, times Brightness
-//                         x Scale Colors again (b), into the transform's image
+//                         x Scale Colors again (b), into the transform's image (on the GPU
+//                         without atomics: row by row, then along each region's rows)
 //   ms_glare_half         Glare Res Half: an image at half its size (means of 2 x 2 pixels)
 //   ms_glare_finish       the glare (the inverse transform, scaled; at half size, enlarged
 //                         bilinearly): Hue Shift, Saturation,
@@ -152,26 +153,47 @@ class GlareSpots : public Generator<GlareSpots> {
     Output<Buffer<float, 3>> impulses{"impulses"};
 
     void generate() {
-        // Halide has no atomic updates in Metal and Direct3D 12 code: there the sums and
-        // impulses run on the CPU (Halide copies the images to and from the GPU around this
-        // kernel).
-        const Target t = get_target();
-        const bool gpu = t.has_gpu_feature() && !t.has_feature(Target::Metal) &&
-                         !t.has_feature(Target::D3D12Compute);
+        const bool gpu = get_target().has_gpu_feature();
         Expr w = labels.width(), h = labels.height();
-        // Each region's sums, at its first pixel: colour (0..2), weight (3), weighted offsets
-        // from that pixel (4, 5: kept small for the floats). First summed along each row's
-        // runs of one label (a scan, restarting where the label changes), then each run's
-        // last pixel adds its run: few atomic additions to one region (one per row it spans,
-        // not one per pixel: contended additions are slow on the GPU).
-        Var k("k");
-        Func values("values"), runs("runs"), sums("sums");
-        Expr lv = labels(x, y);
+        // (on the GPU, the edges repeated: Halide reads past them in its blocks of rows)
+        lab = gpu ? BoundaryConditions::repeat_edge(labels) : Func(labels);
+        glint = gpu ? BoundaryConditions::repeat_edge(glints) : Func(glints);
+        // Each region's sums: colour (0..2), weight (3), weighted offsets from its first pixel
+        // (4, 5: kept small for the floats), first summed along each row's runs of one label.
+        Expr lv = lab(x, y);
         Expr lvi = cast<int>(min(lv, cast<uint32_t>(w * h - 1)));
-        Expr weight = glints(x, y, 0) + glints(x, y, 1) + glints(x, y, 2);
-        values(x, y, k) = select(lv == none(), 0.0f, k < 3, glints(x, y, clamp(k, 0, 2)), k == 3,
-                                 weight, k == 4, weight * cast<float>(x - lvi % w),
-                                 weight * cast<float>(y - lvi / w));
+        Expr weight = glint(x, y, 0) + glint(x, y, 1) + glint(x, y, 2);
+        values(x, y, k) =
+            select(lv == none(), 0.0f, k < 3, glint(x, y, clamp(k, 0, 2)), k == 3, weight, k == 4,
+                   weight * cast<float>(x - lvi % w), weight * cast<float>(y - lvi / w));
+        if (gpu)
+            on_gpu();
+        else
+            on_cpu();
+        ms::interleaved(glints);
+        ms::interleaved(impulses);
+    }
+
+  private:
+    Var k{"k"}, i{"i"};
+    Func lab{"lab"}, glint{"glint"}, values{"values"};
+
+    // The strength of an impulse in channel ch, the region's colour sums s0..s2: min(m b,
+    // cap) / norm with m its largest channel, its colour kept, times b again.
+    Expr strength(Expr s0, Expr s1, Expr s2, Expr ch) {
+        auto bc = [&](Expr n) { return select(n == 0, bc_r, n == 1, bc_g, bc_b); };
+        Expr e0 = s0 * bc_r, e1 = s1 * bc_g, e2 = s2 * bc_b;
+        Expr m = max(e0, max(e1, e2));
+        Expr ec = select(ch == 0, e0, ch == 1, e1, e2);
+        return select(m > 0.0f, min(m, cap) / norm * (ec / m) * bc(ch), 0.0f);
+    }
+
+    // The CPU: the runs (a scan along each row, restarting where the label changes), each
+    // run's last pixel adding its run to the region's sums at its first pixel, then one
+    // impulse per region; one pass over the image each, in order.
+    void on_cpu() {
+        Expr w = labels.width(), h = labels.height();
+        Func runs("runs"), sums("sums");
         RDom rx(1, max(w - 1, 1), "rx");
         runs(x, y, k) = values(x, y, k);
         Expr same = labels(rx, y) == labels(max(rx - 1, 0), y) && w > 1;
@@ -196,42 +218,150 @@ class GlareSpots : public Generator<GlareSpots> {
         Expr fx = cx - floor(cx), fy = cy - floor(cy);
         Expr ix = cast<int>(floor(cx)) + q.z % 2, iy = cast<int>(floor(cy)) + q.z / 2;
         Expr corner = select(q.z % 2 == 1, fx, 1.0f - fx) * select(q.z / 2 == 1, fy, 1.0f - fy);
-        auto bc = [&](Expr ch) { return select(ch == 0, bc_r, ch == 1, bc_g, bc_b); };
-        Expr e0 = sums(q.x, q.y, 0) * bc_r, e1 = sums(q.x, q.y, 1) * bc_g, e2 = sums(q.x, q.y, 2) * bc_b;
-        Expr m = max(e0, max(e1, e2));
-        Expr ec = select(q.w == 0, e0, q.w == 1, e1, e2);
-        Expr strength = select(m > 0.0f, min(m, cap) / norm * (ec / m) * bc(q.w), 0.0f);
+        Expr s = strength(sums(q.x, q.y, 0), sums(q.x, q.y, 1), sums(q.x, q.y, 2), q.w);
         Expr nx = impulses.width(), ny = impulses.height();
-        impulses(clamp(ix + pad_x, 0, nx - 1), clamp(iy + pad_y, 0, ny - 1), q.w) += corner * strength;
+        impulses(clamp(ix + pad_x, 0, nx - 1), clamp(iy + pad_y, 0, ny - 1), q.w) += corner * s;
 
-        ms::interleaved(glints);
-        ms::interleaved(impulses);
-        Var xo("xo"), yo("yo"), xi("xi"), yi("yi");
-        RVar po("po"), pi("pi"), qo("qo"), qi("qi");
-        sums.compute_root().bound(k, 0, 6);
-        runs.compute_root().bound(k, 0, 6).reorder(k, x, y);
-        impulses.bound(c, 0, 4);
-        if (gpu) {
-            Var yo2("yo2"), yi2("yi2");
-            runs.gpu_tile(x, y, xo, yo, xi, yi, 32, 8);
-            runs.update()
-                .unroll(k)
-                .split(y, yo2, yi2, 64, TailStrategy::GuardWithIf)
-                .gpu_blocks(yo2)
-                .gpu_threads(yi2);
-            sums.gpu_tile(x, y, xo, yo, xi, yi, 32, 8);
-            sums.update().atomic().split(p.x, po, pi, 64).gpu_blocks(p.y).gpu_threads(pi);
-            impulses.gpu_tile(x, y, xo, yo, xi, yi, 32, 8);
-            impulses.update().atomic().split(q.x, qo, qi, 64).gpu_blocks(q.y).gpu_threads(qi);
-        } else {
-            // The sums and impulses: one pass over the image each, in order.
-            runs.parallel(y);
-            runs.update().parallel(y);
-            sums.parallel(y);
-            sums.update().unscheduled();
-            impulses.parallel(y);
-            impulses.update().unscheduled();
+        sums.compute_root().bound(k, 0, 6).parallel(y);
+        sums.update().unscheduled();
+        runs.compute_root().bound(k, 0, 6).reorder(k, x, y).parallel(y);
+        runs.update().parallel(y);
+        impulses.bound(c, 0, 4).parallel(y);
+        impulses.update().unscheduled();
+    }
+
+    // The GPU, without atomics (none in Metal and Direct3D 12 code; the same order on every
+    // API), each stage gathering or writing its own row only: each row's runs listed (label,
+    // sums; at most (width + 1) / 2); in each row the first run of a label (its head) sums the
+    // label's runs there and finds the label's head in the next row (a region's rows are
+    // contiguous); the head of a region's first pixel follows these links, a row at a time,
+    // to the region's sums; the head in the row of the centroid holds the impulse, added by
+    // one thread per row (the lower corners into its row, then the upper ones into the next).
+    void on_gpu() {
+        Expr w = labels.width(), h = labels.height(), slots = (w + 1) / 2;
+        Func ends("ends"), before("before"), count("count"), run_label("run_label"),
+            run_sums("run_sums");
+        Expr lv = lab(x, y);
+        ends(x, y) = lv != none() && (x == w - 1 || lab(min(x + 1, w - 1), y) != lv);
+        // The run of a pixel: how many runs end before it in its row.
+        before(x, y) = 0;
+        RDom rx(1, max(w - 1, 1), "rx");
+        before(rx, y) = before(rx - 1, y) + select(ends(rx - 1, y), 1, 0);
+        count(y) = before(w - 1, y) + select(ends(w - 1, y), 1, 0);
+        run_label(i, y) = none();
+        RDom pe(0, w, "pe");
+        pe.where(ends(pe, y));
+        run_label(clamp(before(pe, y), 0, slots - 1), y) = lab(pe, y);
+        run_sums(i, y, k) = 0.0f;
+        RDom pl(0, w, "pl");
+        pl.where(lab(pl, y) != none());
+        run_sums(clamp(before(pl, y), 0, slots - 1), y, k) += values(pl, y, k);
+
+        // The heads (no run of their label before them in the row), their row's sums and the
+        // next row's head (slots: none).
+        Func dup("dup"), group("group"), link("link");
+        Expr n = count(y), label = run_label(i, y);
+        dup(i, y) = 0;
+        RDom ja(0, slots, "ja");
+        ja.where(ja < min(i, n));
+        dup(i, y) += select(run_label(ja, y) == label, 1, 0);
+        // (the loops' ends as bounds: Halide trims the loops to them)
+        Expr head = i < n && dup(i, y) == 0;
+        group(i, y, k) = 0.0f;
+        RDom jb(0, slots, "jb");
+        jb.where(jb >= i && jb < select(head, n, 0));
+        group(i, y, k) += select(run_label(jb, y) == label, run_sums(jb, y, k), 0.0f);
+        Expr up = min(y + 1, h - 1);
+        link(i, y) = slots;
+        RDom jc(0, slots, "jc");
+        jc.where(jc < select(head && y + 1 < h, count(up), 0));
+        link(i, y) = min(link(i, y), select(run_label(jc, up) == label, jc, slots));
+
+        // The region's sums at the head of its first pixel: (sums, head) along the links (the
+        // head last: Halide stores a tuple's values in order, the sums read the one before).
+        Func chase("chase");
+        std::vector<Expr> start(6, 0.0f), next;
+        start.push_back(i);
+        chase(i, y) = Tuple(start);
+        RDom r(0, h, "r");
+        Expr at = chase(i, y)[6];
+        Expr first = head && label / cast<uint32_t>(w) == cast<uint32_t>(y);
+        r.where(r < select(first, h - y, 0) && at < slots);
+        Expr row = min(y + r, h - 1), ai = clamp(at, 0, slots - 1);
+        for (int s = 0; s < 6; ++s)
+            next.push_back(chase(i, y)[s] + group(ai, row, s));
+        next.push_back(link(ai, row));
+        chase(i, y) = Tuple(next);
+
+        // A head's impulse (its column, or -1; fx, fy; the 3 strengths): the head in the row
+        // of the centroid (or in the last row, should the rounding put the centroid past it).
+        Func spot("spot");
+        Expr li = cast<int>(min(label, cast<uint32_t>(w * h - 1)));
+        Expr x0 = clamp(li % w, 0, w - 1), y0 = clamp(li / w, 0, h - 1);
+        Expr i0 = clamp(before(x0, y0), 0, slots - 1);
+        auto sum = [&](int s) { return chase(i0, y0)[s]; };
+        Expr total = sum(3);
+        Expr cx = cast<float>(x0) + sum(4) / total, cy = cast<float>(y0) + sum(5) / total;
+        Expr ky = cast<int>(floor(cy));
+        Expr here = head && total > 0.0f && (ky == y || (ky > y && link(i, y) == slots));
+        spot(i, y) = Tuple(select(here, cast<int>(floor(cx)), -1), cx - floor(cx), cy - floor(cy),
+                           strength(sum(0), sum(1), sum(2), 0), strength(sum(0), sum(1), sum(2), 1),
+                           strength(sum(0), sum(1), sum(2), 2));
+
+        // The impulses: by the thread of the head's row, its corners below (into that row),
+        // then above (into the next; the transform's image is larger than the image: no two
+        // rows clamped together).
+        impulses(x, y, c) = 0.0f;
+        Expr nx = impulses.width(), ny = impulses.height();
+        std::vector<RDom> d;
+        for (int above = 0; above < 2; ++above) {
+            d.push_back(RDom(0, 2, 0, 3, 0, slots, 0, h, "d")); // corner, channel, run, row
+            RDom q = d.back();
+            q.where(q.z < count(q.w) && spot(q.z, q.w)[0] >= 0);
+            Expr fx = spot(q.z, q.w)[1], fy = spot(q.z, q.w)[2];
+            Expr s =
+                select(q.y == 0, spot(q.z, q.w)[3], q.y == 1, spot(q.z, q.w)[4], spot(q.z, q.w)[5]);
+            Expr corner = select(q.x == 1, fx, 1.0f - fx) * (above ? fy : 1.0f - fy);
+            impulses(clamp(spot(q.z, q.w)[0] + q.x + pad_x, 0, nx - 1),
+                     clamp(q.w + above + pad_y, 0, ny - 1), q.y) += corner * s;
         }
+
+        // A thread per row for the scans along rows and the impulses; tiles of threads (run,
+        // row) for the rest.
+        const TailStrategy guard = TailStrategy::GuardWithIf;
+        Var xo("xo"), yo("yo"), xi("xi"), yi("yi"), ro("ro"), ri("ri");
+        RVar rqo("rqo"), rqi("rqi");
+        auto tiles = [&](Stage st, Var a) { st.gpu_tile(a, y, xo, yo, xi, yi, 32, 8, guard); };
+        auto rows = [&](Stage st) {
+            st.split(y, ro, ri, 64, guard).gpu_blocks(ro).gpu_threads(ri);
+        };
+        before.compute_root();
+        tiles(before, x);
+        rows(before.update());
+        run_label.compute_root();
+        tiles(run_label, i);
+        rows(run_label.update());
+        for (Func f : {run_sums, group}) {
+            f.compute_root().bound(k, 0, 6).reorder_storage(k, i, y);
+            tiles(f.reorder(k, i, y).unroll(k), i);
+        }
+        rows(run_sums.update().reorder(k, pl, y).unroll(k));
+        tiles(group.update().reorder(k, jb, i, y).unroll(k), i);
+        for (Func f : {dup, link, chase, spot}) {
+            tiles(f.compute_root(), i);
+            if (f.has_update_definition())
+                tiles(f.update(), i);
+        }
+        impulses.bound(c, 0, 4).reorder(c, x, y).vectorize(c);
+        tiles(impulses, x);
+        for (int above = 0; above < 2; ++above)
+            impulses.update(above)
+                .allow_race_conditions()
+                .unroll(d[above].x)
+                .unroll(d[above].y)
+                .split(d[above].w, rqo, rqi, 64, guard)
+                .gpu_blocks(rqo)
+                .gpu_threads(rqi);
     }
 };
 
