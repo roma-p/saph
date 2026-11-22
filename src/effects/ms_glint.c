@@ -20,6 +20,7 @@
 #include "common/defines.h"
 #include "common/effect.h"
 #include "common/mask.h"
+#include "effects/input.h"
 #include "engine/engine.h"
 
 // Inputs: clip, label in the host, value where there is no image, optional, mask.
@@ -231,17 +232,15 @@ static int render(const MsRender *r) {
         return ms_out_of_memory(r);
     ms_parts(block, floats, ARRAY_SIZE(floats), part);
     MsImage source, mask, glints_image, total_images[2], output;
-    ms_image_rgba(&source, r->inputs[SOURCE].pixels, r->inputs[SOURCE].row, r->half, w, h);
-    ms_image_rgba(&mask, r->inputs[MASK].pixels, r->inputs[MASK].row, r->half, w, h);
+    ms_input_image(&source, r, SOURCE);
     ms_image(&glints_image, part[0], (ptrdiff_t)w * 4, w, h, 4);
     ms_image(&total_images[0], part[1], (ptrdiff_t)w * 4, w, h, 4);
     ms_image(&total_images[1], part[rays > 1 ? 2 : 1], (ptrdiff_t)w * 4, w, h, 4);
-    ms_image_rgba(&output, r->output, r->output_row, r->half, w, h);
+    ms_output_image(&output, r);
     // Without a Mask, or one that is the Source's image in the host: the Source stands in
     // (uploaded once).
-    const int mask_is_source = has_mask && ms_same_input(&r->inputs[MASK], &r->inputs[SOURCE]);
     j.source = &source;
-    j.mask = has_mask && !mask_is_source ? &mask : &source;
+    j.mask = ms_input_or(&mask, r, MASK, has_mask, &source, SOURCE);
     j.glints = &glints_image;
     j.totals[0] = &total_images[0];
     j.totals[1] = &total_images[1];

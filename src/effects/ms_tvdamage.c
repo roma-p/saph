@@ -18,6 +18,7 @@
 #include "common/defines.h"
 #include "common/effect.h"
 #include "common/mask.h"
+#include "effects/input.h"
 #include "effects/mask_input.h"
 #include "effects/profile.h"
 #include "engine/engine.h"
@@ -473,7 +474,7 @@ static int render(const MsRender *r) {
     ms_parts(block, floats, ARRAY_SIZE(floats), part);
     MsImage source, settings_image, picture_image, screen_image, bright_image, narrow_image,
         wide_image, cells_image, output;
-    ms_image_rgba(&source, r->inputs[SOURCE].pixels, r->inputs[SOURCE].row, r->half, w, h);
+    ms_input_image(&source, r, SOURCE);
     ms_image(&settings_image, row, TV_FIELDS, TV_FIELDS, 1, 1);
     ms_image(&picture_image, part[0], (ptrdiff_t)w * 4, w, h, 4);
     ms_image(&screen_image, part[1], (ptrdiff_t)w * 4, w, h, 4);
@@ -481,7 +482,7 @@ static int render(const MsRender *r) {
     ms_image(&narrow_image, part[3], (ptrdiff_t)w * 4, w, h, 4);
     ms_image(&wide_image, part[4], (ptrdiff_t)w * 4, w, h, 4);
     ms_image(&cells_image, part[5], (ptrdiff_t)sw * 4, sw, sh, 4);
-    ms_image_rgba(&output, r->output, r->output_row, r->half, w, h);
+    ms_output_image(&output, r);
     MsMask mask;
     ms_mask_init(&mask, r, MASK, SOURCE, &source, part[6], v[MASK_USE], v[INVERT_MASK],
                  v[BLUR_MASK]);

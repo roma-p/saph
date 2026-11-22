@@ -28,6 +28,7 @@
 #include "common/process.h"
 #include "effects/atmosphere.h"
 #include "effects/glare_style.h"
+#include "effects/input.h"
 #include "engine/engine.h"
 #include "lensflare_presets.h" // (generated from presets/lensflare)
 
@@ -852,8 +853,7 @@ static int draw(const MsRender *r, Job *j, float (*rows)[GLARE_FIELDS],
     float visible[4] = {1, 1, 1, 1};
     MsImage source, occluder, rows_image, noise_image, texels_image, visible_image, flare_image,
         glowed_image, output;
-    ms_image_rgba(&source, r->inputs[SOURCE].pixels, r->inputs[SOURCE].row, r->half, w, h);
-    ms_image_rgba(&occluder, r->inputs[OCCLUSION].pixels, r->inputs[OCCLUSION].row, r->half, w, h);
+    ms_input_image(&source, r, SOURCE);
     ms_image(&rows_image, &rows[0][0], GLARE_FIELDS, GLARE_FIELDS, GLARE_MAX_ROWS, 1);
     ms_image(&noise_image, &noise_rows[0][0], GLARE_FIELDS, GLARE_FIELDS, GLARE_MAX_ELEMENTS, 1);
     ms_image(&texels_image, texels, GLARE_TEXEL_ROW, GLARE_TEXEL_ROW,
@@ -862,12 +862,11 @@ static int draw(const MsRender *r, Job *j, float (*rows)[GLARE_FIELDS],
     ms_image(&flare_image, part[0], (ptrdiff_t)w * 4, w, h, 4);
     if (glow)
         ms_image(&glowed_image, part[1], (ptrdiff_t)w * 4, w, h, 4);
-    ms_image_rgba(&output, r->output, r->output_row, r->half, w, h);
+    ms_output_image(&output, r);
     // Without an Occlusion input, or one that is the Source's image in the host: the Source
     // stands in (not read without one).
-    const int same = j->from && ms_same_input(&r->inputs[OCCLUSION], &r->inputs[SOURCE]);
     j->source = &source;
-    j->occluder = j->from && !same ? &occluder : &source;
+    j->occluder = ms_input_or(&occluder, r, OCCLUSION, j->from, &source, SOURCE);
     j->rows = &rows_image;
     j->noise_rows = &noise_image;
     j->texels = &texels_image;

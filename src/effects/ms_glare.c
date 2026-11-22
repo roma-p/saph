@@ -23,6 +23,7 @@
 #include "common/mask.h"
 #include "effects/fft.h"
 #include "effects/glare_style.h"
+#include "effects/input.h"
 #include "engine/engine.h"
 
 // Inputs: clip, label in the host, value where there is no image, optional, mask.
@@ -316,8 +317,7 @@ static int render(const MsRender *r) {
     ms_parts(block, floats, ARRAY_SIZE(floats), part);
     MsImage source, mask, small_images[2], glints_image, label_images[2], rows_image, images[3],
         output;
-    ms_image_rgba(&source, r->inputs[SOURCE].pixels, r->inputs[SOURCE].row, r->half, w, h);
-    ms_image_rgba(&mask, r->inputs[MASK].pixels, r->inputs[MASK].row, r->half, w, h);
+    ms_input_image(&source, r, SOURCE);
     for (int i = 0; i < 2; ++i) {
         ms_image(&small_images[i], part[i], (ptrdiff_t)w2 * 4, w2, h2, 4);
         j.small[i] = &small_images[i];
@@ -332,11 +332,10 @@ static int render(const MsRender *r) {
         ms_image(&images[i], part[5 + i], (ptrdiff_t)nx * 4, nx, ny, 4);
         j.buffers[i] = &images[i];
     }
-    ms_image_rgba(&output, r->output, r->output_row, r->half, w, h);
+    ms_output_image(&output, r);
     // Without a Mask, or one that is the Source's image in the host: the Source stands in.
-    const int mask_is_source = has_mask && ms_same_input(&r->inputs[MASK], &r->inputs[SOURCE]);
     j.source = &source;
-    j.mask = has_mask && !mask_is_source ? &mask : &source;
+    j.mask = ms_input_or(&mask, r, MASK, has_mask, &source, SOURCE);
     j.glints = &glints_image;
     j.rows = &rows_image;
     j.output = &output;

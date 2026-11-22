@@ -14,6 +14,7 @@
 
 #include "common/defines.h"
 #include "common/effect.h"
+#include "effects/input.h"
 #include "engine/engine.h"
 
 // Inputs: clip, label in the host, value where there is no image, optional, mask.
@@ -94,14 +95,12 @@ static int render_with(const MsRender *r, int luma) {
     const double *v = r->values;
     const int w = r->width, h = r->height, has_match = r->connected[MATCH];
     MsImage source, match, output;
-    ms_image_rgba(&source, r->inputs[SOURCE].pixels, r->inputs[SOURCE].row, r->half, w, h);
-    ms_image_rgba(&match, r->inputs[MATCH].pixels, r->inputs[MATCH].row, r->half, w, h);
-    ms_image_rgba(&output, r->output, r->output_row, r->half, w, h);
+    ms_input_image(&source, r, SOURCE);
+    ms_output_image(&output, r);
     int x1, y1;
     // Without a Match input: no target, gains of 1 (the Source stands in for the Match).
-    const int match_is_source = !has_match || ms_same_input(&r->inputs[MATCH], &r->inputs[SOURCE]);
     Job j = {.source = &source,
-             .match = match_is_source ? &source : &match,
+             .match = ms_input_or(&match, r, MATCH, has_match, &source, SOURCE),
              .output = &output,
              .luma = luma,
              .target = {has_match ? (float)v[TARGET] : 0.0f,

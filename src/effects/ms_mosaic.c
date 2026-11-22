@@ -17,6 +17,7 @@
 #include "common/defines.h"
 #include "common/effect.h"
 #include "common/mask.h"
+#include "effects/input.h"
 #include "effects/mask_input.h"
 #include "effects/profile.h"
 #include "engine/engine.h"
@@ -143,8 +144,8 @@ static int render(const MsRender *r) {
     const int w = r->width, h = r->height;
     const int smooth = (int)floor(v[SMOOTH] + 0.5);
     MsImage source, smooth_image, output;
-    ms_image_rgba(&source, r->inputs[SOURCE].pixels, r->inputs[SOURCE].row, r->half, w, h);
-    ms_image_rgba(&output, r->output, r->output_row, r->half, w, h);
+    ms_input_image(&source, r, SOURCE);
+    ms_output_image(&output, r);
     // The mask value and the smoothed Source.
     const size_t floats[] = {ms_mask_floats(r, MASK), smooth > 0 ? (size_t)w * h * 4 : 0};
     float *block = malloc(ms_parts_size(floats, ARRAY_SIZE(floats))), *part[ARRAY_SIZE(floats)];

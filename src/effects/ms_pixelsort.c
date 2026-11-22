@@ -26,6 +26,7 @@
 #include "common/defines.h"
 #include "common/effect.h"
 #include "common/mask.h"
+#include "effects/input.h"
 #include "effects/mask_input.h"
 #include "engine/engine.h"
 
@@ -398,14 +399,14 @@ static int render(const MsRender *r) {
         return ms_out_of_memory(r);
     ms_parts(block, floats, ARRAY_SIZE(floats), part);
     MsImage source, image, soft_image, line_images[2], output;
-    ms_image_rgba(&source, r->inputs[SOURCE].pixels, r->inputs[SOURCE].row, r->half, w, h);
+    ms_input_image(&source, r, SOURCE);
     ms_image(&image, part[0], (ptrdiff_t)sw * 4, sw, sh, 4);
     ms_image(&soft_image, part[1], sw, sw, sh, 1);
     for (int k = 0; k < 2; ++k) {
         ms_image_uint(&line_images[k], part[2 + k], 2 * j.samples, 2 * j.samples, j.count);
         j.lines[k] = &line_images[k];
     }
-    ms_image_rgba(&output, r->output, r->output_row, r->half, w, h);
+    ms_output_image(&output, r);
     MsMask mask; // (the reference reads the Mask's luma whatever Mask Use says)
     ms_mask_init(&mask, r, MASK, SOURCE, &source, part[4], 0.0, v[INVERT_MASK], v[BLUR_MASK]);
     j.source = &source;

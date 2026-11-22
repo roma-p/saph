@@ -2,6 +2,7 @@
 
 #include <math.h>
 
+#include "effects/input.h"
 #include "effects/mask_input.h"
 
 size_t ms_mask_floats(const MsRender *r, int clip) {
@@ -16,14 +17,11 @@ void ms_mask_init(MsMask *m, const MsRender *r, int clip, int source_clip, MsIma
                   .alpha = (int)mask_use,
                   .invert = (int)invert_mask,
                   .blur = (int)floor(blur_mask + 0.5)};
-    ms_image_rgba(&m->mask, r->inputs[clip].pixels, r->inputs[clip].row, r->half, w, h);
     if (m->has_mask)
         ms_image(&m->value, pixels, w, w, h, 1);
     else
         ms_image_constant(&m->value, &m->one, w, h);
-    m->input = !m->has_mask                                               ? &m->value
-               : ms_same_input(&r->inputs[clip], &r->inputs[source_clip]) ? source
-                                                                          : &m->mask;
+    m->input = m->has_mask ? ms_input_or(&m->mask, r, clip, 1, source, source_clip) : &m->value;
 }
 
 int ms_mask_run(MsMask *m, MsApi api) {

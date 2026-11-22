@@ -28,6 +28,7 @@
 #include "common/effect.h"
 #include "common/mask.h"
 #include "effects/fft.h"
+#include "effects/input.h"
 #include "effects/mask_input.h"
 #include "engine/engine.h"
 
@@ -362,8 +363,8 @@ static int render(const MsRender *r) {
         return ms_out_of_memory(r);
     ms_parts(block, floats, ARRAY_SIZE(floats), part);
     MsImage source, output, images[3];
-    ms_image_rgba(&source, r->inputs[SOURCE].pixels, r->inputs[SOURCE].row, r->half, w, h);
-    ms_image_rgba(&output, r->output, r->output_row, r->half, w, h);
+    ms_input_image(&source, r, SOURCE);
+    ms_output_image(&output, r);
     for (int i = 0; i < 3; ++i) {
         ms_image(&images[i], part[i], (ptrdiff_t)nx * 4, nx, ny, 4);
         j.buffers[i] = &images[i];

@@ -13,6 +13,7 @@
 
 #include "common/defines.h"
 #include "common/effect.h"
+#include "effects/input.h"
 #include "engine/engine.h"
 
 // Inputs: clip, label in the host, value where there is no image, optional, mask.
@@ -109,16 +110,14 @@ static int render(const MsRender *r) {
     if (!edges)
         return ms_out_of_memory(r);
     MsImage source, matte, edge_image, output;
-    ms_image_rgba(&source, r->inputs[SOURCE].pixels, r->inputs[SOURCE].row, r->half, w, h);
-    ms_image_rgba(&matte, r->inputs[MATTE].pixels, r->inputs[MATTE].row, r->half, w, h);
+    ms_input_image(&source, r, SOURCE);
     ms_image(&edge_image, edges, w, w, h, 1);
-    ms_image_rgba(&output, r->output, r->output_row, r->half, w, h);
+    ms_output_image(&output, r);
     // Without a Matte, or one that is the Source's image in the host: the Source stands in
     // (uploaded once).
-    const int matte_is_source = has_matte && ms_same_input(&r->inputs[MATTE], &r->inputs[SOURCE]);
     const double edge_width = v[EDGE_WIDTH] > 0 ? v[EDGE_WIDTH] : 0;
     Job j = {.source = &source,
-             .matte = has_matte && !matte_is_source ? &matte : &source,
+             .matte = ms_input_or(&matte, r, MATTE, has_matte, &source, SOURCE),
              .edges = &edge_image,
              .output = &output,
              .use_alpha = has_matte && (int)v[MATTE_USE] == 1,

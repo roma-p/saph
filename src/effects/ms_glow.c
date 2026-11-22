@@ -22,6 +22,7 @@
 #include "common/effect.h"
 #include "common/mask.h"
 #include "effects/atmosphere.h"
+#include "effects/input.h"
 #include "engine/engine.h"
 
 // Inputs: clip, label in the host, value where there is no image, optional, mask.
@@ -193,19 +194,15 @@ static int render(const MsRender *r) {
     if (!show_threshold && !glow)
         return ms_out_of_memory(r);
     MsImage source, mask, back, glow_image, output;
-    ms_image_rgba(&source, r->inputs[SOURCE].pixels, r->inputs[SOURCE].row, r->half, w, h);
-    ms_image_rgba(&back, r->inputs[BACK].pixels, r->inputs[BACK].row, r->half, w, h);
-    ms_image_rgba(&mask, r->inputs[MASK].pixels, r->inputs[MASK].row, r->half, w, h);
+    ms_input_image(&source, r, SOURCE);
     ms_image(&glow_image, glow, (ptrdiff_t)w * 4, w, h, 4);
-    ms_image_rgba(&output, r->output, r->output_row, r->half, w, h);
-    // Without a Mask, or one that is the Source's image in the host: the Source stands in
-    // (uploaded once).
-    const int mask_is_source = has_mask && ms_same_input(&r->inputs[MASK], &r->inputs[SOURCE]);
+    ms_output_image(&output, r);
+    // Without a Mask or a Back, or one that is the Source's image in the host: the Source
+    // stands in (uploaded once).
     const int has_back = r->connected[BACK];
-    const int back_is_source = has_back && ms_same_input(&r->inputs[BACK], &r->inputs[SOURCE]);
     Job j = {.source = &source,
-             .mask = has_mask && !mask_is_source ? &mask : &source,
-             .back = has_back && !back_is_source ? &back : &source,
+             .mask = ms_input_or(&mask, r, MASK, has_mask, &source, SOURCE),
+             .back = ms_input_or(&back, r, BACK, has_back, &source, SOURCE),
              .has_back = has_back,
              .bg = (float)v[BG_BRIGHTNESS],
              .glow = &glow_image,

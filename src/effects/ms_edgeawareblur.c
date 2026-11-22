@@ -20,6 +20,7 @@
 #include "common/defines.h"
 #include "common/effect.h"
 #include "common/mask.h"
+#include "effects/input.h"
 #include "effects/profile.h"
 #include "engine/engine.h"
 
@@ -277,9 +278,9 @@ static int process(const MsRender *r, const Settings *s) {
     MsImage source, edge, mask, output, ismooth, iscratch, idx, idy, iwx, iwy, ilargest;
     MsImage dy_turned, turned;
     ms_image_rgba(&source, source_in->pixels, source_in->row, r->half, width, height);
-    ms_image_rgba(&edge, r->inputs[EDGE].pixels, r->inputs[EDGE].row, r->half, width, height);
-    ms_image_rgba(&mask, r->inputs[MASK].pixels, r->inputs[MASK].row, r->half, width, height);
-    ms_image_rgba(&output, r->output, r->output_row, r->half, width, height);
+    ms_input_image(&edge, r, EDGE);
+    ms_input_image(&mask, r, MASK);
+    ms_output_image(&output, r);
     ms_image(&ismooth, smooth, (ptrdiff_t)width * 4, width, height, 4);
     ms_image(&iscratch, scratch, (ptrdiff_t)width * 4, width, height, 4);
     ms_image(&idx, dx, width, width, height, 1);

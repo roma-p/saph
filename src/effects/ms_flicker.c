@@ -12,6 +12,7 @@
 
 #include "common/defines.h"
 #include "common/effect.h"
+#include "effects/input.h"
 #include "engine/engine.h"
 
 // Inputs: clip, label in the host, value where there is no image, optional, mask.
@@ -121,10 +122,9 @@ static int run(MsApi api, void *user) {
 
 static int render(const MsRender *r) {
     const double *v = r->values;
-    const int w = r->width, h = r->height;
     MsImage source, output;
-    ms_image_rgba(&source, r->inputs[SOURCE].pixels, r->inputs[SOURCE].row, r->half, w, h);
-    ms_image_rgba(&output, r->output, r->output_row, r->half, w, h);
+    ms_input_image(&source, r, SOURCE);
+    ms_output_image(&output, r);
     // Where the noise and the wave are at this frame, in double (long sequences); the cell
     // kept in the hash's range.
     const double at = fmax(v[RAND_FREQ], 0.0) * r->time / 24.0 * NOISE_LATTICE;

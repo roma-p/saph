@@ -66,7 +66,7 @@ Order: batch 1, then 2, 3, 4, 5. Tick what is done.
 - [x] **Overlays**: ellipse + arrow X + arrow Y repeated (bandpass:176-201,
   edgeawareblur:459-478, glow:347-390, glare:397-408, rackdefocus:443-454,
   lensflare:1000-1012): one `MS_OVERLAY_ELLIPSE_ARROWS(...)`. About 70 lines.
-- [ ] **"An input plugged into the Source stands for it"**, 9 times (glow:279-284, glint:273-275,
+- [x] **"An input plugged into the Source stands for it"**, 9 times (glow:279-284, glint:273-275,
   glare:356-358, edgeblur:139-142, lensflare:926-928, flickermatch:106-108,
   distort:323-333, edgeawareblur:335-339, mask_input.c:27-29): `ms_input_or(r, clip, &img,
   &source)`, plus `ms_render_input()` / `ms_render_output()` for the 34 `ms_image_rgba` lines.
