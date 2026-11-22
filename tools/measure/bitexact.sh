@@ -16,10 +16,7 @@ root=$PWD
 commit=$(git rev-parse "${1:-HEAD}") # (resolved here, not in the worktree)
 cases=${2:-tools/test_cases.txt}
 tree=${MILLSAPH_BITEXACT:-${TMPDIR:-/tmp}/millsaph_bitexact}
-case "$(uname)" in
-Darwin) lib=Contents/MacOS/MillSaph.ofx ;;
-*)      lib=Contents/Linux-x86-64/MillSaph.ofx ;;
-esac
+. tools/plugin_path.sh
 
 if [ ! -d "$tree" ]; then
     git worktree add --detach "$tree" "$commit"
@@ -49,9 +46,9 @@ render() {
         i=$((i + 1))
     done
 }
-render "$tree/build/MillSaph.ofx.bundle/$lib" "$out/before"
-render "$root/build/MillSaph.ofx.bundle/$lib" "$out/after"
-render "$root/build/MillSaph.ofx.bundle/$lib" "$out/again"
+render "$tree/build/MillSaph.ofx.bundle/$plugin_lib" "$out/before"
+render "$root/build/MillSaph.ofx.bundle/$plugin_lib" "$out/after"
+render "$root/build/MillSaph.ofx.bundle/$plugin_lib" "$out/again"
 # the largest difference of two renders
 largest() {
     python3 -c "import sys, numpy as n; a, b = (n.fromfile(f, n.float32) for f in sys.argv[1:]); print('%.3g' % abs(a - b).max())" "$1" "$2"

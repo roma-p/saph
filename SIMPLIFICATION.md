@@ -133,11 +133,11 @@ is already well factored.
   three times (1381-1385, 1443-1447, 1557): `new_lens()`, `save_or_ask()`;
   `open_file_dialog(app, 1|2|3)`: an enum; `load_presets` (1260-1263) re-reads a file
   inline instead of `read_file`. About 40 lines.
-- [ ] **`test_host` built three ways**: CMake (`CMakeLists.txt:408-413`), and by hand with `cc`
+- [x] **`test_host` built three ways**: CMake (`CMakeLists.txt:408-413`), and by hand with `cc`
   in `tools/perf/perf.sh:23-24` and `tools/sanitize.sh:19-23`: use `build/test_host`
   (CMake's sanitizer flags already apply to it).
-- [ ] **The plugin's path per system** in 4 scripts (`sanitize.sh:18-21`, `perf.sh:15-18`,
-  `bitexact.sh:20`, `ms_render.py`): one `tools/plugin_path.sh`, one Python constant.
+- [x] **The plugin's path per system** in 4 scripts (`sanitize.sh:18-21`, `perf.sh:15-18`,
+  `bitexact.sh:20`, `ms_render.py`): one `tools/plugin_path.sh` (ms_render.py keeps its own constant, the only Python one).
 - [ ] **`src/ofx/image.c` `ms_render_with` (168 lines, 191-358)**: `fetch_inputs()`,
   `log_render()`; the label asked of the host twice (309-312, 334-337) is `e->label`; the
   "same pixels as an earlier input" loop (252-255) is `ms_same_input()`. About 20 lines.
