@@ -5,13 +5,16 @@
 
 // The Mask Use and Invert Mask parameters (MsParam initializers, see effect.h).
 extern const char *const ms_mask_use_entries[2];
-#define MS_PARAM_MASK_USE                                                                          \
+#define MS_PARAM_MASK_USE MS_PARAM_MASK_USE_HIDDEN(0)
+// (hidden: kept in scripts and presets, not shown; MsParam.hidden)
+#define MS_PARAM_MASK_USE_HIDDEN(hide)                                                             \
     {.type = MS_PARAM_CHOICE,                                                                      \
      .name = "mask_use",                                                                           \
      .label = "Mask Use",                                                                          \
      .hint = "How the Mask input channels make a monochrome mask.",                                \
      .entries = ms_mask_use_entries,                                                               \
-     .entry_count = 2}
+     .entry_count = 2,                                                                             \
+     .hidden = (hide)}
 // Blur Mask: a width, `d` by default, its slider to `dm` (an MsParam initializer, see effect.h).
 #define MS_PARAM_BLUR_MASK(d, dm)                                                                  \
     {.type = MS_PARAM_WIDTH,                                                                       \

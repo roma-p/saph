@@ -204,7 +204,9 @@ static const MsParam params[] = {
                       "pixels.",
               .entries = shows,
               .entry_count = 5},
-    [MASK_USE] = MS_PARAM_MASK_USE,
+    // (the reference reads the Mask's luma whatever its Mask Use says: kept for the scripts
+    // and presets that set it, not shown)
+    [MASK_USE] = MS_PARAM_MASK_USE_HIDDEN(1),
     [BLUR_MASK] = MS_PARAM_BLUR_MASK(0.00625, 0.2),
     [INVERT_MASK] = MS_PARAM_INVERT_MASK("Sorts the black areas of the Mask."),
 };

@@ -76,6 +76,8 @@ static void define_param(OfxParamSetHandle params, const MsParam *p, int host_ha
     ms_prop->propSetString(props, kOfxPropLabel, 0, p->label);
     if (p->hint)
         ms_prop->propSetString(props, kOfxParamPropHint, 0, p->hint);
+    if (p->hidden)
+        ms_prop->propSetInt(props, kOfxParamPropSecret, 0, 1);
 
     switch (p->type) {
     case MS_PARAM_CHOICE:

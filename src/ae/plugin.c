@@ -296,6 +296,8 @@ static PF_Err params_setup(AeEffect *ae, PF_InData *in_data, PF_OutData *out_dat
             def.u.fs_d.display_flags =
                 percent ? PF_ValueDisplayFlag_PERCENT : PF_ValueDisplayFlag_NONE;
         }
+        if (p->hidden)
+            def.ui_flags |= PF_PUI_INVISIBLE;
         err = add_param(in_data, &def);
     }
     for (int c = 1; c < e->clip_count && !err; ++c) {

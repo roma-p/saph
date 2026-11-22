@@ -210,7 +210,7 @@ is already well factored.
   so a gather has no bounded window. Options, all real work: sums per tile then a merge pass;
   integer atomics if Halide's Metal codegen has them. First measure what the CPU stage costs.
   Note: float atomics on CUDA make the sums' order vary (last ulps between runs).
-- **PixelSort's Mask Use** (`ms_pixelsort.c:209`) does nothing (always 0.0, line 410): hide it
+- [x] (Done on `decisions`: `MsParam.hidden`, OFX secret, AE invisible.) **PixelSort's Mask Use** (`ms_pixelsort.c:209`) does nothing (always 0.0, line 410): hide it
   rather than remove it (saved scripts, presets).
 - [x] (Done on `decisions`: `varying()` for both; test_host prints "frame varying".) **Always varying over time**: JpegDamage (`ms_jpegdamage.c:332`, although nothing moves when
   Jitter Frames is 0) and LensFlare (`ms_lensflare.c:1036`): a `varying()` as Glow's would let

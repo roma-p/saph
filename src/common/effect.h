@@ -78,6 +78,8 @@ typedef struct {
     const char *def_text;      // STRING: the default text
     // BUTTON: what pressing it does; returns 0 with the reason in err (shown by the host)
     int (*press)(MsHost *host, char *err, size_t err_size);
+    // 1: kept (saved in scripts and presets) but not shown (it does nothing, or no longer)
+    int hidden;
 } MsParam;
 
 // Common kinds of parameter, as table entries ([id] = ...): name n, label l, hint h, default d.
