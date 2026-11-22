@@ -369,16 +369,10 @@ static int identity(const double *v, const int *connected) {
 
 // The viewer: the Size and the Rel Height (the arrow).
 static const MsOverlay overlay[] = {
-    {.kind = MS_OVERLAY_ELLIPSE,
-     .colour = MS_OVERLAY_ORANGE,
-     .show = "ShowSize",
-     .size = "size",
-     .rel_y = "rel_height"},
-    {.kind = MS_OVERLAY_ARROW_Y,
-     .colour = MS_OVERLAY_ORANGE,
-     .show = "ShowSize",
-     .size = "size",
-     .rel_y = "rel_height"},
+    MS_OVERLAY_SIZED(MS_OVERLAY_ELLIPSE, "ShowSize", "size", NULL, NULL, "rel_height", 0.0,
+                     MS_OVERLAY_ORANGE),
+    MS_OVERLAY_SIZED(MS_OVERLAY_ARROW_Y, "ShowSize", "size", NULL, NULL, "rel_height", 0.0,
+                     MS_OVERLAY_ORANGE),
 };
 
 const MsEffect ms_glare_effect = {

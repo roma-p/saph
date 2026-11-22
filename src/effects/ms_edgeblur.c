@@ -147,11 +147,8 @@ static int identity(const double *v, const int *connected) {
 
 // The viewer: the Blur Width (a circle of 4 x it).
 static const MsOverlay overlay[] = {
-    {.kind = MS_OVERLAY_ELLIPSE,
-     .colour = MS_OVERLAY_ORANGE,
-     .show = "ShowBlurWidth",
-     .size = "blur_width",
-     .factor = 4.0},
+    MS_OVERLAY_SIZED(MS_OVERLAY_ELLIPSE, "ShowBlurWidth", "blur_width", NULL, NULL, NULL, 4.0,
+                     MS_OVERLAY_ORANGE),
 };
 
 const MsEffect ms_edgeblur_effect = {

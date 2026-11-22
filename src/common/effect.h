@@ -235,6 +235,22 @@ typedef struct {
 #define MS_PARAMS(a) .params = (a), .param_count = ARRAY_SIZE(a)
 #define MS_OVERLAYS(a) .overlay = (a), .overlay_count = ARRAY_SIZE(a)
 
+// A shape drawn from a width: `size` x `scale` (NULL: 1) x `factor` (0: 1), its relative
+// width and height `rel_x`, `rel_y` (NULL: 1), in the colour last (an MS_OVERLAY_ colour);
+// MS_OVERLAY_ARROWS: its two arrows (ARROW_X, ARROW_Y). MsOverlay initializers.
+#define MS_OVERLAY_SIZED(k, sh, sz, sc, rx, ry, f, ...)                                            \
+    {.kind = (k),                                                                                  \
+     .colour = __VA_ARGS__,                                                                        \
+     .show = (sh),                                                                                 \
+     .size = (sz),                                                                                 \
+     .scale = (sc),                                                                                \
+     .rel_x = (rx),                                                                                \
+     .rel_y = (ry),                                                                                \
+     .factor = (f)}
+#define MS_OVERLAY_ARROWS(sh, sz, rx, ry, f, ...)                                                  \
+    MS_OVERLAY_SIZED(MS_OVERLAY_ARROW_X, sh, sz, NULL, rx, ry, f, __VA_ARGS__),                    \
+        MS_OVERLAY_SIZED(MS_OVERLAY_ARROW_Y, sh, sz, NULL, rx, ry, f, __VA_ARGS__)
+
 // Shape colours of the viewer overlays.
 #define MS_OVERLAY_ORANGE {0.9f, 0.4f, 0.1f}
 #define MS_OVERLAY_WHITE {1.0f, 1.0f, 1.0f}

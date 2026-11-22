@@ -393,16 +393,10 @@ static int identity(const double *v, const int *connected) {
 
 // The viewer: the Defocus Width and the Rel Height (the arrow).
 static const MsOverlay overlay[] = {
-    {.kind = MS_OVERLAY_ELLIPSE,
-     .colour = MS_OVERLAY_ORANGE,
-     .show = "ShowDefocusWidth",
-     .size = "defocus_width",
-     .rel_y = "rel_height"},
-    {.kind = MS_OVERLAY_ARROW_Y,
-     .colour = MS_OVERLAY_ORANGE,
-     .show = "ShowDefocusWidth",
-     .size = "defocus_width",
-     .rel_y = "rel_height"},
+    MS_OVERLAY_SIZED(MS_OVERLAY_ELLIPSE, "ShowDefocusWidth", "defocus_width", NULL, NULL,
+                     "rel_height", 0.0, MS_OVERLAY_ORANGE),
+    MS_OVERLAY_SIZED(MS_OVERLAY_ARROW_Y, "ShowDefocusWidth", "defocus_width", NULL, NULL,
+                     "rel_height", 0.0, MS_OVERLAY_ORANGE),
 };
 
 const MsEffect ms_rackdefocus_effect = {

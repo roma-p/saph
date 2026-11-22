@@ -146,30 +146,12 @@ static int render(const MsRender *r) {
 
 // The viewer: Blur Amount1 (red), Blur Amount2 (green) and Blur Rel X and Y (its arrows).
 static const MsOverlay overlay[] = {
-    {.kind = MS_OVERLAY_ELLIPSE,
-     .colour = MS_OVERLAY_RED,
-     .show = "ShowBlurAmount1",
-     .size = "blur_amount1",
-     .rel_x = "blur_rel_x",
-     .rel_y = "blur_rel_y"},
-    {.kind = MS_OVERLAY_ELLIPSE,
-     .colour = MS_OVERLAY_GREEN,
-     .show = "ShowBlurAmount2",
-     .size = "blur_amount2",
-     .rel_x = "blur_rel_x",
-     .rel_y = "blur_rel_y"},
-    {.kind = MS_OVERLAY_ARROW_X,
-     .colour = MS_OVERLAY_GREEN,
-     .show = "ShowBlurAmount2",
-     .size = "blur_amount2",
-     .rel_x = "blur_rel_x",
-     .rel_y = "blur_rel_y"},
-    {.kind = MS_OVERLAY_ARROW_Y,
-     .colour = MS_OVERLAY_GREEN,
-     .show = "ShowBlurAmount2",
-     .size = "blur_amount2",
-     .rel_x = "blur_rel_x",
-     .rel_y = "blur_rel_y"},
+    MS_OVERLAY_SIZED(MS_OVERLAY_ELLIPSE, "ShowBlurAmount1", "blur_amount1", NULL, "blur_rel_x",
+                     "blur_rel_y", 0.0, MS_OVERLAY_RED),
+    MS_OVERLAY_SIZED(MS_OVERLAY_ELLIPSE, "ShowBlurAmount2", "blur_amount2", NULL, "blur_rel_x",
+                     "blur_rel_y", 0.0, MS_OVERLAY_GREEN),
+    MS_OVERLAY_ARROWS("ShowBlurAmount2", "blur_amount2", "blur_rel_x", "blur_rel_y", 0.0,
+                      MS_OVERLAY_GREEN),
 };
 
 const MsEffect ms_bandpass_effect = {

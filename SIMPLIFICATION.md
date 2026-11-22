@@ -63,7 +63,7 @@ Order: batch 1, then 2, 3, 4, 5. Tick what is done.
   `MS_PARAM_BLUR_MASK`, and the Atmosphere's; every effect's description dumped and compared
   field by field: only LensFlare's Seed and Speed limits, 0 / 0 instead of +-MS_UNBOUNDED,
   the same for both hosts.)
-- [ ] **Overlays**: ellipse + arrow X + arrow Y repeated (bandpass:176-201,
+- [x] **Overlays**: ellipse + arrow X + arrow Y repeated (bandpass:176-201,
   edgeawareblur:459-478, glow:347-390, glare:397-408, rackdefocus:443-454,
   lensflare:1000-1012): one `MS_OVERLAY_ELLIPSE_ARROWS(...)`. About 70 lines.
 - [ ] **"An input plugged into the Source stands for it"**, 9 times (glow:279-284, glint:273-275,

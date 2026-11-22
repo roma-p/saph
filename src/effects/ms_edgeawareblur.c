@@ -420,24 +420,10 @@ static int identity(const double *v, const int *connected) {
 
 // The viewer: the Blur Amount, Blur Rel X and Y (the arrows).
 static const MsOverlay overlay[] = {
-    {.kind = MS_OVERLAY_ELLIPSE,
-     .colour = MS_OVERLAY_ORANGE,
-     .show = "ShowBlurAmount",
-     .size = "blur_amount",
-     .rel_x = "blur_rel_x",
-     .rel_y = "blur_rel_y"},
-    {.kind = MS_OVERLAY_ARROW_X,
-     .colour = MS_OVERLAY_ORANGE,
-     .show = "ShowBlurAmount",
-     .size = "blur_amount",
-     .rel_x = "blur_rel_x",
-     .rel_y = "blur_rel_y"},
-    {.kind = MS_OVERLAY_ARROW_Y,
-     .colour = MS_OVERLAY_ORANGE,
-     .show = "ShowBlurAmount",
-     .size = "blur_amount",
-     .rel_x = "blur_rel_x",
-     .rel_y = "blur_rel_y"},
+    MS_OVERLAY_SIZED(MS_OVERLAY_ELLIPSE, "ShowBlurAmount", "blur_amount", NULL, "blur_rel_x",
+                     "blur_rel_y", 0.0, MS_OVERLAY_ORANGE),
+    MS_OVERLAY_ARROWS("ShowBlurAmount", "blur_amount", "blur_rel_x", "blur_rel_y", 0.0,
+                      MS_OVERLAY_ORANGE),
 };
 
 const MsEffect ms_edgeawareblur_effect = {
