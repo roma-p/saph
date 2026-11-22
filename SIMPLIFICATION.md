@@ -167,8 +167,8 @@ is already well factored.
   `ofx/plugin.c:51-52`, 74, 259-261, `bench.c:207-213`) and widths / points to pixels
   (`ofx/plugin.c:265-275`, `ae/plugin.c:383-391`, `bench.c:99-104`, 248-252): inline helpers
   in `common/effect.h`. About 25 lines.
-- [ ] **OFX entry points** (`ofx/plugin.c:542-576`): 32 by hand twice, and their names: one
-  `MS_REPEAT32()`. About 15 lines.
+- [x] **OFX entry points** (`ofx/plugin.c:542-576`): 32 by hand twice, and their names: one
+  `MS_REPEAT32()`. About 15 lines. (Done from `effects/list.def`: one per effect, no limit of 32.)
 - [x] **CMake**: the editor and browser targets (355-386) repeat ImGui's sources, folders and
   signing: `millsaph_bundle_tool()`; `${bundle}` instead of the path (359-360, 375-376);
   `find_package(OpenGL)` twice (322, 362), `enable_language(CXX)` twice (57, 347); the
