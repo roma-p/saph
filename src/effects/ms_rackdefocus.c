@@ -394,40 +394,32 @@ static int render(const MsRender *r) {
     const int nx = ms_fft_length(w + 2 * j.pad), ny = ms_fft_length(h + 2 * j.pad);
     j.scale = (float)(1.0 / ((double)nx * ny));
 
+    // The three transforms' buffers and the mask value.
     const size_t size = (size_t)nx * ny * 4;
-    float *buffers[3] = {malloc(size * sizeof(float)), malloc(size * sizeof(float)),
-                         malloc(size * sizeof(float))};
-    MsImage source;
+    const size_t floats[] = {size, size, size, ms_mask_floats(r, MASK)};
+    float *block = malloc(ms_parts_size(floats, ARRAY_SIZE(floats))), *part[ARRAY_SIZE(floats)];
+    if (!block)
+        return ms_out_of_memory(r);
+    ms_parts(block, floats, ARRAY_SIZE(floats), part);
+    MsImage source, output, images[3];
     ms_image_rgba(&source, r->inputs[SOURCE].pixels, r->inputs[SOURCE].row, r->half, w, h);
-    MsMask mask = {0};
-    int ok = buffers[0] && buffers[1] && buffers[2];
-    if (!ok)
-        snprintf(r->err, r->err_size, "not enough memory");
-    else
-        ok = ms_mask_init(&mask, r, MASK, SOURCE, &source, v[MASK_USE], v[INVERT_MASK],
-                          v[BLUR_MASK]);
-    if (ok) {
-        MsImage output, images[3];
-        ms_image_rgba(&output, r->output, r->output_row, r->half, w, h);
-        for (int i = 0; i < 3; ++i) {
-            ms_image(&images[i], buffers[i], (ptrdiff_t)nx * 4, nx, ny, 4);
-            j.buffers[i] = &images[i];
-        }
-        j.source = &source;
-        j.mask = &mask;
-        j.output = &output;
-        // Inputs uploaded to the GPU: the Source, and the Mask or the one mask value.
-        MsImage *const inputs[] = {&source, mask.input};
-        MsImage *between[4] = {&images[0], &images[1], &images[2]};
-        int between_count = 3;
-        if (mask.has_mask)
-            between[between_count++] = &mask.value;
-        ok = ms_run(run, &j, inputs, 2, between, between_count, &output, r->info, r->err,
-                    r->err_size);
+    ms_image_rgba(&output, r->output, r->output_row, r->half, w, h);
+    for (int i = 0; i < 3; ++i) {
+        ms_image(&images[i], part[i], (ptrdiff_t)nx * 4, nx, ny, 4);
+        j.buffers[i] = &images[i];
     }
-    ms_mask_free(&mask);
-    for (int i = 0; i < 3; ++i)
-        free(buffers[i]);
+    MsMask mask;
+    ms_mask_init(&mask, r, MASK, SOURCE, &source, part[3], v[MASK_USE], v[INVERT_MASK],
+                 v[BLUR_MASK]);
+    j.source = &source;
+    j.mask = &mask;
+    j.output = &output;
+    // Inputs uploaded to the GPU: the Source, and the Mask or the one mask value.
+    MsImage *const inputs[] = {&source, mask.input};
+    MsImage *const between[] = {&images[0], &images[1], &images[2], ms_mask_between(&mask)};
+    const int ok = ms_run(run, &j, inputs, ARRAY_SIZE(inputs), between, ARRAY_SIZE(between),
+                          &output, r->info, r->err, r->err_size);
+    free(block);
     return ok;
 }
 

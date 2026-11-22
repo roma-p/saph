@@ -38,7 +38,7 @@ Order: batch 1, then 2, 3, 4, 5. Tick what is done.
 
 ## Batch 3: the effects' render code (C)
 
-- [ ] **Scratch images.** Nine renders do N mallocs, a long out-of-memory test, `ms_image` per
+- [x] **Scratch images.** Nine renders do N mallocs, a long out-of-memory test, `ms_image` per
   buffer, `between[]` built with `if (...) between[n++] = ...`, then N frees:
   `ms_tvdamage.c:486-564`, `ms_glare.c:320-391`, `ms_glint.c:257-290`,
   `ms_pixelsort.c:400-445`, `ms_rackdefocus.c:397-432`, `ms_mosaic.c:177-209`,
@@ -47,6 +47,8 @@ Order: batch 1, then 2, 3, 4, 5. Tick what is done.
   (b) a layout helper (`size_t ms_layout(const size_t *floats, int n, size_t *offsets)`): one
   malloc and one free per render, as `ms_edgeawareblur.c:288-312` already does by hand.
   Distort's `between` (`ms_distort.c:344`) then stops passing unused images. About 130 lines.
+  (Done: `ms_parts_size` / `ms_parts`, `ms_mask_between`, `ms_out_of_memory`; the mask value's
+  memory is a part too, `ms_mask_free` is gone. Fewer error paths, about 25 lines net.)
 - [ ] **Parameter macros.**
   - BandPass, EdgeAwareBlur, Distort spell out Rel X / Rel Y (`ms_bandpass.c:59-74`,
     `ms_edgeawareblur.c:59-74`, `ms_distort.c:101-116`): `MS_RELATIVE(..., 1.0)`.

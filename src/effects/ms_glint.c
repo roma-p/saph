@@ -252,22 +252,18 @@ static int render(const MsRender *r) {
         rays += j.used[d];
     }
     // The glints' source and two totals, between the kernels.
-    const size_t bytes = (size_t)w * h * 4 * sizeof(float);
-    float *glints = rays ? malloc(bytes) : NULL;
-    float *totals[2] = {rays ? malloc(bytes) : NULL, rays > 1 ? malloc(bytes) : NULL};
-    if (rays && (!glints || !totals[0] || (rays > 1 && !totals[1]))) {
-        free(glints);
-        free(totals[0]);
-        free(totals[1]);
-        snprintf(r->err, r->err_size, "not enough memory");
-        return 0;
-    }
+    const size_t image = (size_t)w * h * 4;
+    const size_t floats[] = {rays ? image : 0, rays ? image : 0, rays > 1 ? image : 0};
+    float *block = malloc(ms_parts_size(floats, ARRAY_SIZE(floats))), *part[ARRAY_SIZE(floats)];
+    if (!block)
+        return ms_out_of_memory(r);
+    ms_parts(block, floats, ARRAY_SIZE(floats), part);
     MsImage source, mask, glints_image, total_images[2], output;
     ms_image_rgba(&source, r->inputs[SOURCE].pixels, r->inputs[SOURCE].row, r->half, w, h);
     ms_image_rgba(&mask, r->inputs[MASK].pixels, r->inputs[MASK].row, r->half, w, h);
-    ms_image(&glints_image, glints, (ptrdiff_t)w * 4, w, h, 4);
-    ms_image(&total_images[0], totals[0], (ptrdiff_t)w * 4, w, h, 4);
-    ms_image(&total_images[1], totals[1] ? totals[1] : totals[0], (ptrdiff_t)w * 4, w, h, 4);
+    ms_image(&glints_image, part[0], (ptrdiff_t)w * 4, w, h, 4);
+    ms_image(&total_images[0], part[1], (ptrdiff_t)w * 4, w, h, 4);
+    ms_image(&total_images[1], part[rays > 1 ? 2 : 1], (ptrdiff_t)w * 4, w, h, 4);
     ms_image_rgba(&output, r->output, r->output_row, r->half, w, h);
     // Without a Mask, or one that is the Source's image in the host: the Source stands in
     // (uploaded once).
@@ -280,12 +276,11 @@ static int render(const MsRender *r) {
     j.output = &output;
     // Inputs uploaded to the GPU: the Source, and the Mask.
     MsImage *const inputs[] = {&source, j.mask};
-    MsImage *const between[] = {&glints_image, &total_images[0], &total_images[1]};
-    const int ok = ms_run(run, &j, inputs, 2, between, rays ? (rays > 1 ? 3 : 2) : 0, &output,
-                          r->info, r->err, r->err_size);
-    free(glints);
-    free(totals[0]);
-    free(totals[1]);
+    MsImage *const between[] = {rays ? &glints_image : NULL, rays ? &total_images[0] : NULL,
+                                rays > 1 ? &total_images[1] : NULL};
+    const int ok = ms_run(run, &j, inputs, ARRAY_SIZE(inputs), between, ARRAY_SIZE(between),
+                          &output, r->info, r->err, r->err_size);
+    free(block);
     return ok;
 }
 

@@ -395,48 +395,38 @@ static int render(const MsRender *r) {
     for (int k = 0; k < 3; ++k)
         j.soften[k] = (soften + k) / 3;
 
+    // The downsampled Source, the softened sort values, the lines' two buffers (integers), the
+    // mask value.
     const size_t pixels = (size_t)sw * sh, samples = (size_t)2 * j.samples * j.count;
-    float *small = j.downsample ? malloc(pixels * 4 * sizeof(float)) : NULL;
-    float *soft = malloc(pixels * sizeof(float));
-    uint32_t *buffers[2] = {malloc(samples * sizeof(uint32_t)), malloc(samples * sizeof(uint32_t))};
-    MsImage source;
+    const size_t floats[] = {j.downsample ? pixels * 4 : 0, pixels, samples, samples,
+                             ms_mask_floats(r, MASK)};
+    float *block = malloc(ms_parts_size(floats, ARRAY_SIZE(floats))), *part[ARRAY_SIZE(floats)];
+    if (!block)
+        return ms_out_of_memory(r);
+    ms_parts(block, floats, ARRAY_SIZE(floats), part);
+    MsImage source, image, soft_image, line_images[2], output;
     ms_image_rgba(&source, r->inputs[SOURCE].pixels, r->inputs[SOURCE].row, r->half, w, h);
-    MsMask mask = {0};
-    int ok = soft && buffers[0] && buffers[1] && (small || !j.downsample);
-    if (!ok)
-        snprintf(r->err, r->err_size, "not enough memory");
-    else // (the reference reads the Mask's luma whatever Mask Use says)
-        ok = ms_mask_init(&mask, r, MASK, SOURCE, &source, 0.0, v[INVERT_MASK], v[BLUR_MASK]);
-    if (ok) {
-        MsImage image, soft_image, line_images[2], output;
-        ms_image(&image, small, (ptrdiff_t)sw * 4, sw, sh, 4);
-        ms_image(&soft_image, soft, sw, sw, sh, 1);
-        for (int k = 0; k < 2; ++k) {
-            ms_image_uint(&line_images[k], buffers[k], 2 * j.samples, 2 * j.samples, j.count);
-            j.lines[k] = &line_images[k];
-        }
-        ms_image_rgba(&output, r->output, r->output_row, r->half, w, h);
-        j.source = &source;
-        j.mask = &mask;
-        j.image = j.downsample ? &image : &source;
-        j.soft = &soft_image;
-        j.output = &output;
-        // Inputs uploaded to the GPU: the Source, the Mask or the one mask value.
-        MsImage *const inputs[] = {&source, mask.input};
-        MsImage *between[5] = {&soft_image, &line_images[0], &line_images[1]};
-        int between_count = 3;
-        if (mask.has_mask)
-            between[between_count++] = &mask.value;
-        if (j.downsample)
-            between[between_count++] = &image;
-        ok = ms_run(run, &j, inputs, 2, between, between_count, &output, r->info, r->err,
-                    r->err_size);
+    ms_image(&image, part[0], (ptrdiff_t)sw * 4, sw, sh, 4);
+    ms_image(&soft_image, part[1], sw, sw, sh, 1);
+    for (int k = 0; k < 2; ++k) {
+        ms_image_uint(&line_images[k], part[2 + k], 2 * j.samples, 2 * j.samples, j.count);
+        j.lines[k] = &line_images[k];
     }
-    ms_mask_free(&mask);
-    free(small);
-    free(soft);
-    free(buffers[0]);
-    free(buffers[1]);
+    ms_image_rgba(&output, r->output, r->output_row, r->half, w, h);
+    MsMask mask; // (the reference reads the Mask's luma whatever Mask Use says)
+    ms_mask_init(&mask, r, MASK, SOURCE, &source, part[4], 0.0, v[INVERT_MASK], v[BLUR_MASK]);
+    j.source = &source;
+    j.mask = &mask;
+    j.image = j.downsample ? &image : &source;
+    j.soft = &soft_image;
+    j.output = &output;
+    // Inputs uploaded to the GPU: the Source, the Mask or the one mask value.
+    MsImage *const inputs[] = {&source, mask.input};
+    MsImage *const between[] = {&soft_image, &line_images[0], &line_images[1],
+                                ms_mask_between(&mask), j.downsample ? &image : NULL};
+    const int ok = ms_run(run, &j, inputs, ARRAY_SIZE(inputs), between, ARRAY_SIZE(between),
+                          &output, r->info, r->err, r->err_size);
+    free(block);
     return ok;
 }
 

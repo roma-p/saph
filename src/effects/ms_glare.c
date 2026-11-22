@@ -325,62 +325,62 @@ static int render(const MsRender *r) {
     const int nx = ms_fft_length(w2 + margin), ny = ms_fft_length(h2 + margin);
     j.scale = (float)(1.0 / ((double)nx * ny));
 
-    const size_t pixels = (size_t)w2 * h2, floats = (size_t)nx * ny * 4;
-    float *small[2] = {res == 2 ? malloc(pixels * 4 * sizeof(float)) : NULL,
-                       res == 2 && has_mask ? malloc(pixels * 4 * sizeof(float)) : NULL};
-    float *glints = malloc(pixels * 4 * sizeof(float));
-    uint32_t *labels[2] = {malloc(pixels * sizeof(uint32_t)), malloc(pixels * sizeof(uint32_t))};
-    float *buffers[3] = {malloc(floats * sizeof(float)), malloc(floats * sizeof(float)),
-                         malloc(floats * sizeof(float))};
-    int ok = glints && labels[0] && labels[1] && buffers[0] && buffers[1] && buffers[2] &&
-             (res == 1 || (small[0] && (small[1] || !has_mask)));
-    if (ok) {
-        MsImage source, mask, small_images[2], glints_image, label_images[2], rows_image, images[3],
-            output;
-        ms_image_rgba(&source, r->inputs[SOURCE].pixels, r->inputs[SOURCE].row, r->half, w, h);
-        ms_image_rgba(&mask, r->inputs[MASK].pixels, r->inputs[MASK].row, r->half, w, h);
-        for (int i = 0; i < 2; ++i) {
-            ms_image(&small_images[i], small[i], (ptrdiff_t)w2 * 4, w2, h2, 4);
-            j.small[i] = &small_images[i];
-        }
-        ms_image(&glints_image, glints, (ptrdiff_t)w2 * 4, w2, h2, 4);
-        for (int i = 0; i < 2; ++i) {
-            ms_image_uint(&label_images[i], labels[i], w2, w2, h2);
-            j.labels[i] = &label_images[i];
-        }
-        ms_image(&rows_image, &rows[0][0], GLARE_FIELDS, GLARE_FIELDS, GLARE_MAX_ELEMENTS, 1);
-        for (int i = 0; i < 3; ++i) {
-            ms_image(&images[i], buffers[i], (ptrdiff_t)nx * 4, nx, ny, 4);
-            j.buffers[i] = &images[i];
-        }
-        ms_image_rgba(&output, r->output, r->output_row, r->half, w, h);
-        // Without a Mask, or one that is the Source's image in the host: the Source stands in.
-        const int mask_is_source = has_mask && ms_same_input(&r->inputs[MASK], &r->inputs[SOURCE]);
-        j.source = &source;
-        j.mask = has_mask && !mask_is_source ? &mask : &source;
-        j.glints = &glints_image;
-        j.rows = &rows_image;
-        j.output = &output;
-        // Inputs uploaded to the GPU: the Source, the Mask, the style's rows.
-        MsImage *const inputs[] = {&source, j.mask, &rows_image};
-        MsImage *between[8] = {&glints_image, &label_images[0], &label_images[1],
-                               &images[0],    &images[1],       &images[2]};
-        int between_count = 6;
-        for (int i = 0; i < 2; ++i)
-            if (small[i])
-                between[between_count++] = &small_images[i];
-        ok = ms_run(run, &j, inputs, 3, between, between_count, &output, r->info, r->err,
-                    r->err_size);
-    } else {
-        snprintf(r->err, r->err_size, "not enough memory");
+    // Between the kernels: the half-size Source and Mask, the glints, the regions' labels
+    // (integers), the transforms.
+    const size_t pixels = (size_t)w2 * h2, transform = (size_t)nx * ny * 4;
+    const size_t floats[] = {res == 2 ? pixels * 4 : 0,
+                             res == 2 && has_mask ? pixels * 4 : 0,
+                             pixels * 4,
+                             pixels,
+                             pixels,
+                             transform,
+                             transform,
+                             transform};
+    float *block = malloc(ms_parts_size(floats, ARRAY_SIZE(floats))), *part[ARRAY_SIZE(floats)];
+    if (!block) {
+        free(rows);
+        return ms_out_of_memory(r);
     }
-    free(small[0]);
-    free(small[1]);
-    free(glints);
-    free(labels[0]);
-    free(labels[1]);
-    for (int i = 0; i < 3; ++i)
-        free(buffers[i]);
+    ms_parts(block, floats, ARRAY_SIZE(floats), part);
+    MsImage source, mask, small_images[2], glints_image, label_images[2], rows_image, images[3],
+        output;
+    ms_image_rgba(&source, r->inputs[SOURCE].pixels, r->inputs[SOURCE].row, r->half, w, h);
+    ms_image_rgba(&mask, r->inputs[MASK].pixels, r->inputs[MASK].row, r->half, w, h);
+    for (int i = 0; i < 2; ++i) {
+        ms_image(&small_images[i], part[i], (ptrdiff_t)w2 * 4, w2, h2, 4);
+        j.small[i] = &small_images[i];
+    }
+    ms_image(&glints_image, part[2], (ptrdiff_t)w2 * 4, w2, h2, 4);
+    for (int i = 0; i < 2; ++i) {
+        ms_image_uint(&label_images[i], part[3 + i], w2, w2, h2);
+        j.labels[i] = &label_images[i];
+    }
+    ms_image(&rows_image, &rows[0][0], GLARE_FIELDS, GLARE_FIELDS, GLARE_MAX_ELEMENTS, 1);
+    for (int i = 0; i < 3; ++i) {
+        ms_image(&images[i], part[5 + i], (ptrdiff_t)nx * 4, nx, ny, 4);
+        j.buffers[i] = &images[i];
+    }
+    ms_image_rgba(&output, r->output, r->output_row, r->half, w, h);
+    // Without a Mask, or one that is the Source's image in the host: the Source stands in.
+    const int mask_is_source = has_mask && ms_same_input(&r->inputs[MASK], &r->inputs[SOURCE]);
+    j.source = &source;
+    j.mask = has_mask && !mask_is_source ? &mask : &source;
+    j.glints = &glints_image;
+    j.rows = &rows_image;
+    j.output = &output;
+    // Inputs uploaded to the GPU: the Source, the Mask, the style's rows.
+    MsImage *const inputs[] = {&source, j.mask, &rows_image};
+    MsImage *const between[] = {&glints_image,
+                                &label_images[0],
+                                &label_images[1],
+                                &images[0],
+                                &images[1],
+                                &images[2],
+                                part[0] ? &small_images[0] : NULL,
+                                part[1] ? &small_images[1] : NULL};
+    const int ok = ms_run(run, &j, inputs, ARRAY_SIZE(inputs), between, ARRAY_SIZE(between),
+                          &output, r->info, r->err, r->err_size);
+    free(block);
     free(rows);
     return ok;
 }

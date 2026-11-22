@@ -899,49 +899,45 @@ static int glow_settings(const double *v, Job *j) {
 static int draw(const MsRender *r, Job *j, float (*rows)[GLARE_FIELDS],
                 float (*noise_rows)[GLARE_FIELDS], float *texels, int texel_rows, int glow) {
     const int w = r->width, h = r->height;
-    float *flare = malloc((size_t)w * h * 4 * sizeof(float));
-    float *glowed = glow ? malloc((size_t)w * h * 4 * sizeof(float)) : NULL;
+    // The flare and the glowed flare, between the kernels.
+    const size_t floats[] = {(size_t)w * h * 4, glow ? (size_t)w * h * 4 : 0};
+    float *block = malloc(ms_parts_size(floats, ARRAY_SIZE(floats))), *part[ARRAY_SIZE(floats)];
+    if (!block)
+        return ms_out_of_memory(r);
+    ms_parts(block, floats, ARRAY_SIZE(floats), part);
     float visible[4] = {1, 1, 1, 1};
-    int ok = flare != NULL && (!glow || glowed != NULL);
-    if (ok) {
-        MsImage source, occluder, rows_image, noise_image, texels_image, visible_image, flare_image,
-            glowed_image, output;
-        ms_image_rgba(&source, r->inputs[SOURCE].pixels, r->inputs[SOURCE].row, r->half, w, h);
-        ms_image_rgba(&occluder, r->inputs[OCCLUSION].pixels, r->inputs[OCCLUSION].row, r->half, w,
-                      h);
-        ms_image(&rows_image, &rows[0][0], GLARE_FIELDS, GLARE_FIELDS, GLARE_MAX_ROWS, 1);
-        ms_image(&noise_image, &noise_rows[0][0], GLARE_FIELDS, GLARE_FIELDS, GLARE_MAX_ELEMENTS,
-                 1);
-        ms_image(&texels_image, texels, GLARE_TEXEL_ROW, GLARE_TEXEL_ROW,
-                 texel_rows > 0 ? texel_rows : 1, 1);
-        ms_image(&visible_image, visible, 4, 1, 1, 4);
-        ms_image(&flare_image, flare, (ptrdiff_t)w * 4, w, h, 4);
-        if (glow)
-            ms_image(&glowed_image, glowed, (ptrdiff_t)w * 4, w, h, 4);
-        ms_image_rgba(&output, r->output, r->output_row, r->half, w, h);
-        // Without an Occlusion input, or one that is the Source's image in the host: the
-        // Source stands in (not read without one).
-        const int same = j->from && ms_same_input(&r->inputs[OCCLUSION], &r->inputs[SOURCE]);
-        j->source = &source;
-        j->occluder = j->from && !same ? &occluder : &source;
-        j->rows = &rows_image;
-        j->noise_rows = &noise_image;
-        j->texels = &texels_image;
-        j->visible = &visible_image;
-        j->flare = &flare_image;
-        j->glowed = glow ? &glowed_image : NULL;
-        j->output = &output;
-        // Inputs uploaded to the GPU: the Source, the style's rows and noise rows, the lens's
-        // texels, the Occlusion input.
-        MsImage *inputs[] = {&source, &rows_image, &noise_image, &texels_image, j->occluder};
-        MsImage *between[] = {&visible_image, &flare_image, &glowed_image};
-        ok = ms_run(run, j, inputs, j->occluder == &source ? 4 : 5, between, glow ? 3 : 2, &output,
-                    r->info, r->err, r->err_size);
-    } else {
-        snprintf(r->err, r->err_size, "not enough memory");
-    }
-    free(glowed);
-    free(flare);
+    MsImage source, occluder, rows_image, noise_image, texels_image, visible_image, flare_image,
+        glowed_image, output;
+    ms_image_rgba(&source, r->inputs[SOURCE].pixels, r->inputs[SOURCE].row, r->half, w, h);
+    ms_image_rgba(&occluder, r->inputs[OCCLUSION].pixels, r->inputs[OCCLUSION].row, r->half, w, h);
+    ms_image(&rows_image, &rows[0][0], GLARE_FIELDS, GLARE_FIELDS, GLARE_MAX_ROWS, 1);
+    ms_image(&noise_image, &noise_rows[0][0], GLARE_FIELDS, GLARE_FIELDS, GLARE_MAX_ELEMENTS, 1);
+    ms_image(&texels_image, texels, GLARE_TEXEL_ROW, GLARE_TEXEL_ROW,
+             texel_rows > 0 ? texel_rows : 1, 1);
+    ms_image(&visible_image, visible, 4, 1, 1, 4);
+    ms_image(&flare_image, part[0], (ptrdiff_t)w * 4, w, h, 4);
+    if (glow)
+        ms_image(&glowed_image, part[1], (ptrdiff_t)w * 4, w, h, 4);
+    ms_image_rgba(&output, r->output, r->output_row, r->half, w, h);
+    // Without an Occlusion input, or one that is the Source's image in the host: the Source
+    // stands in (not read without one).
+    const int same = j->from && ms_same_input(&r->inputs[OCCLUSION], &r->inputs[SOURCE]);
+    j->source = &source;
+    j->occluder = j->from && !same ? &occluder : &source;
+    j->rows = &rows_image;
+    j->noise_rows = &noise_image;
+    j->texels = &texels_image;
+    j->visible = &visible_image;
+    j->flare = &flare_image;
+    j->glowed = glow ? &glowed_image : NULL;
+    j->output = &output;
+    // Inputs uploaded to the GPU: the Source, the style's rows and noise rows, the lens's
+    // texels, the Occlusion input.
+    MsImage *const inputs[] = {&source, &rows_image, &noise_image, &texels_image, j->occluder};
+    MsImage *const between[] = {&visible_image, &flare_image, j->glowed};
+    const int ok = ms_run(run, j, inputs, ARRAY_SIZE(inputs), between, ARRAY_SIZE(between), &output,
+                          r->info, r->err, r->err_size);
+    free(block);
     return ok;
 }
 

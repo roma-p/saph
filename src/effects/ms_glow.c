@@ -263,10 +263,8 @@ static int render(const MsRender *r) {
     const int show_threshold = (int)v[SHOW] == 1;
     // The glow, between the two kernels.
     float *glow = show_threshold ? NULL : malloc((size_t)w * h * 4 * sizeof(float));
-    if (!show_threshold && !glow) {
-        snprintf(r->err, r->err_size, "not enough memory");
-        return 0;
-    }
+    if (!show_threshold && !glow)
+        return ms_out_of_memory(r);
     MsImage source, mask, back, glow_image, output;
     ms_image_rgba(&source, r->inputs[SOURCE].pixels, r->inputs[SOURCE].row, r->half, w, h);
     ms_image_rgba(&back, r->inputs[BACK].pixels, r->inputs[BACK].row, r->half, w, h);
@@ -315,15 +313,10 @@ static int render(const MsRender *r) {
         j.gain[c] = (float)(v[BRIGHTNESS] * v[COLOR + c]);
     }
     // Inputs uploaded to the GPU: the Source, the Mask and the Back (each once).
-    MsImage *inputs[3] = {&source, j.mask, j.back};
-    int count = 1;
-    if (j.mask != &source)
-        inputs[count++] = j.mask;
-    if (j.back != &source)
-        inputs[count++] = j.back;
-    MsImage *const between[] = {&glow_image};
-    const int ok = ms_run(run, &j, inputs, count, between, show_threshold ? 0 : 1, &output, r->info,
-                          r->err, r->err_size);
+    MsImage *const inputs[] = {&source, j.mask, j.back};
+    MsImage *const between[] = {show_threshold ? NULL : &glow_image};
+    const int ok = ms_run(run, &j, inputs, ARRAY_SIZE(inputs), between, ARRAY_SIZE(between),
+                          &output, r->info, r->err, r->err_size);
     free(glow);
     return ok;
 }

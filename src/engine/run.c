@@ -180,7 +180,8 @@ static int attempt(MsRun run, void *user, MsApi api, MsImage *const *inputs, int
         }
     }
     for (int k = 0; k < between_count && status == 0; ++k)
-        status = prepare(between[k], api);
+        if (between[k])
+            status = prepare(between[k], api);
     if (status == 0)
         status = prepare(output, api);
     // CUDA: the host's images page-locked for the copies (pin.c), in the context of the
@@ -231,7 +232,8 @@ static int attempt(MsRun run, void *user, MsApi api, MsImage *const *inputs, int
         }
     }
     for (int k = 0; k < between_count; ++k)
-        ms_pool_park(&between[k]->b, keep);
+        if (between[k])
+            ms_pool_park(&between[k]->b, keep);
     return status;
 }
 

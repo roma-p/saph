@@ -256,6 +256,9 @@ extern const int ms_effect_count;
 // Calls every effect's release (the plugin is unloaded).
 void ms_effects_release(void);
 
+// "not enough memory" in r->err; returns 0 (a render's failure).
+int ms_out_of_memory(const MsRender *r);
+
 // The effects.
 extern const MsEffect ms_test_effect;
 #define MS_EFFECT(Name, name, pipl_id, varies) extern const MsEffect ms_##name##_effect;

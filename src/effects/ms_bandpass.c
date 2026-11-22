@@ -149,9 +149,14 @@ static int render(const MsRender *r) {
     MsImage source, output;
     ms_image_rgba(&source, r->inputs[SOURCE].pixels, r->inputs[SOURCE].row, r->half, w, h);
     ms_image_rgba(&output, r->output, r->output_row, r->half, w, h);
+    const size_t floats[] = {ms_mask_floats(r, MASK)};
+    float *block = malloc(ms_parts_size(floats, ARRAY_SIZE(floats))), *part[ARRAY_SIZE(floats)];
+    if (!block)
+        return ms_out_of_memory(r);
+    ms_parts(block, floats, ARRAY_SIZE(floats), part);
     MsMask mask;
-    if (!ms_mask_init(&mask, r, MASK, SOURCE, &source, v[MASK_USE], v[INVERT_MASK], v[BLUR_MASK]))
-        return 0;
+    ms_mask_init(&mask, r, MASK, SOURCE, &source, part[0], v[MASK_USE], v[INVERT_MASK],
+                 v[BLUR_MASK]);
     // Total blur radii, rounded as the blur does (src/halide/blur.h).
     Job j = {&source,
              &output,
@@ -165,10 +170,10 @@ static int render(const MsRender *r) {
              (float)v[OFFSET_DARKS]};
     // Inputs uploaded to the GPU: the Source, and the Mask or the one mask value.
     MsImage *const inputs[] = {&source, mask.input};
-    MsImage *const between[] = {&mask.value}; // made on the GPU from the Mask
-    const int ok =
-        ms_run(run, &j, inputs, 2, between, mask.has_mask, &output, r->info, r->err, r->err_size);
-    ms_mask_free(&mask);
+    MsImage *const between[] = {ms_mask_between(&mask)}; // made on the GPU from the Mask
+    const int ok = ms_run(run, &j, inputs, ARRAY_SIZE(inputs), between, ARRAY_SIZE(between),
+                          &output, r->info, r->err, r->err_size);
+    free(block);
     return ok;
 }
 

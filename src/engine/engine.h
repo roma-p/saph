@@ -58,6 +58,15 @@ void ms_image_uint(MsImage *image, const void *pixels, ptrdiff_t row, int width,
 // conversion kernels' images).
 void ms_image_half(MsImage *image, const void *pixels, ptrdiff_t row, int width, int height);
 
+// Several images' host memory in one allocation: part i holds `floats[i]` values of 4 bytes
+// (floats, or ms_image_uint's integers), 0 for none. ms_parts_size: the allocation's size in
+// bytes (never 0, for malloc); ms_parts: where each part starts (each on 64 bytes; NULL for
+// none):
+//   float *block = malloc(ms_parts_size(floats, N)), *part[N]; ... ms_parts(block, floats, N,
+//   part);
+size_t ms_parts_size(const size_t *floats, int count);
+void ms_parts(float *block, const size_t *floats, int count, float **part);
+
 // A one-channel image holding `*value` at every pixel (strides 0), e.g. the mask value
 // without a Mask.
 void ms_image_constant(MsImage *image, const float *value, int width, int height);
@@ -118,8 +127,9 @@ typedef int (*MsRun)(MsApi api, void *user);
 // uploaded once); after it the `output` is copied back and the
 // GPU memory of all the images is kept for the next renders (where images of the same size
 // get it: a new allocation is slow to write the first time), up to 1/16 of the machine's
-// memory (at most 2 GB). `between`: the images `run` uses between its kernels; they stay on
-// the GPU (those without host memory get GPU memory before `run`, if their size is set).
+// memory (at most 2 GB). `between`: the images `run` uses between its kernels (NULL ones are
+// skipped); they stay on the GPU (those without host memory get GPU memory before `run`, if
+// their size is set).
 // An API that does not work here (no driver, no device) is not tried again in this session.
 // Returns 1 on success, or 0 with the reason in err; `info` (or NULL) says what it did.
 typedef struct MsRunInfo {

@@ -1,6 +1,8 @@
 // The list of effects (effects/list.def). Each host adapter (ofx/plugin.c) makes a plugin of each
 // one.
 
+#include <stdio.h>
+
 #include "common/defines.h"
 #include "common/effect.h"
 
@@ -17,4 +19,9 @@ void ms_effects_release(void) {
     for (int i = 0; i < ms_effect_count; ++i)
         if (ms_effects[i]->release)
             ms_effects[i]->release();
+}
+
+int ms_out_of_memory(const MsRender *r) {
+    snprintf(r->err, r->err_size, "not enough memory");
+    return 0;
 }

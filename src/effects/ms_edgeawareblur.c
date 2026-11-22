@@ -294,20 +294,10 @@ static int process(const MsRender *r, const Settings *s) {
                               dt->passes > 1 ? pixels * 4 : 0,
                               soft ? pixels : 0,
                               soft ? pixels : 0};
-    size_t total = 0;
-    for (int i = 0; i < 6; ++i)
-        total += (floats[i] + 15) / 16 * 16;
-    float *block = malloc(total * sizeof(float));
-    if (!block) {
-        snprintf(r->err, r->err_size, "not enough memory");
-        return 0;
-    }
-    float *part[6];
-    size_t at = 0;
-    for (int i = 0; i < 6; ++i) {
-        part[i] = floats[i] ? block + at : NULL;
-        at += (floats[i] + 15) / 16 * 16;
-    }
+    float *block = malloc(ms_parts_size(floats, ARRAY_SIZE(floats))), *part[ARRAY_SIZE(floats)];
+    if (!block)
+        return ms_out_of_memory(r);
+    ms_parts(block, floats, ARRAY_SIZE(floats), part);
     float *dx = part[0], *dy = part[1], *smooth = part[2], *scratch = part[3], *wx = part[4],
           *wy = part[5];
     const MsInput *source_in = &r->inputs[SOURCE];
@@ -396,14 +386,14 @@ static int process(const MsRender *r, const Settings *s) {
         MsImage *const inputs[] = {&source, edges, masks};
         // Between the kernels: those of the preparation, of the passes, and of the GPU's
         // directions (Sharp, Softer) or Soft's weights.
-        MsImage *between[8] = {&idx, &idy, &iscratch};
-        int between_count = 3;
-        if (smooth_radius > 0)
-            between[between_count++] = &ismooth;
-        between[between_count++] = soft ? &iwx : &dy_turned;
-        between[between_count++] = soft ? &iwy : &turned;
-        ok = ms_run(run_passes, &p, inputs, ARRAY_SIZE(inputs), between, between_count, &output,
-                    r->info, r->err, r->err_size);
+        MsImage *const between[] = {&idx,
+                                    &idy,
+                                    &iscratch,
+                                    smooth_radius > 0 ? &ismooth : NULL,
+                                    soft ? &iwx : &dy_turned,
+                                    soft ? &iwy : &turned};
+        ok = ms_run(run_passes, &p, inputs, ARRAY_SIZE(inputs), between, ARRAY_SIZE(between),
+                    &output, r->info, r->err, r->err_size);
     }
     free(block);
     return ok;

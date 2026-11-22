@@ -125,10 +125,8 @@ static int render(const MsRender *r) {
     const int w = r->width, h = r->height, has_matte = r->connected[MATTE];
     const int subpixel = v[SUBPIXEL] != 0, show_edges = (int)v[SHOW] == 1;
     float *edges = malloc((size_t)w * h * sizeof(float));
-    if (!edges) {
-        snprintf(r->err, r->err_size, "not enough memory");
-        return 0;
-    }
+    if (!edges)
+        return ms_out_of_memory(r);
     MsImage source, matte, edge_image, output;
     ms_image_rgba(&source, r->inputs[SOURCE].pixels, r->inputs[SOURCE].row, r->half, w, h);
     ms_image_rgba(&matte, r->inputs[MATTE].pixels, r->inputs[MATTE].row, r->half, w, h);
@@ -152,7 +150,8 @@ static int render(const MsRender *r) {
     // Inputs uploaded to the GPU: the Source, and the Matte.
     MsImage *const inputs[] = {&source, j.matte};
     MsImage *const between[] = {&edge_image};
-    const int ok = ms_run(run, &j, inputs, 2, between, 1, &output, r->info, r->err, r->err_size);
+    const int ok = ms_run(run, &j, inputs, ARRAY_SIZE(inputs), between, ARRAY_SIZE(between),
+                          &output, r->info, r->err, r->err_size);
     free(edges);
     return ok;
 }

@@ -493,75 +493,64 @@ static int render(const MsRender *r) {
     const int narrow = (int)fmax(floor(3.0 * (2.0 * k - 0.5) + 0.5), 1.0);
     const int wide = (int)fmax(floor(3.0 * (13.5 * v[DARKS_WIDTH] * k - 0.5) + 0.5), narrow + 3);
 
-    const size_t pixels = (size_t)w * h;
-    float *picture = malloc(pixels * 4 * sizeof(float));
-    float *screen = malloc(pixels * 4 * sizeof(float));
-    float *bright = orthicon ? malloc(pixels * 4 * sizeof(float)) : NULL;
-    float *narrowed = orthicon ? malloc(pixels * 4 * sizeof(float)) : NULL;
-    float *widened = orthicon ? malloc(pixels * 4 * sizeof(float)) : NULL;
-    float *small = cells_on ? malloc((size_t)sw * sh * 4 * sizeof(float)) : NULL;
-    MsImage source;
+    // The picture and the screen; the Orthicon's bright parts and their two blurs; the TV
+    // pixels' cells; the mask value.
+    const size_t image = (size_t)w * h * 4, ortho = orthicon ? image : 0;
+    const size_t floats[] = {image,
+                             image,
+                             ortho,
+                             ortho,
+                             ortho,
+                             cells_on ? (size_t)sw * sh * 4 : 0,
+                             ms_mask_floats(r, MASK)};
+    float *block = malloc(ms_parts_size(floats, ARRAY_SIZE(floats))), *part[ARRAY_SIZE(floats)];
+    if (!block)
+        return ms_out_of_memory(r);
+    ms_parts(block, floats, ARRAY_SIZE(floats), part);
+    MsImage source, settings_image, picture_image, screen_image, bright_image, narrow_image,
+        wide_image, cells_image, output;
     ms_image_rgba(&source, r->inputs[SOURCE].pixels, r->inputs[SOURCE].row, r->half, w, h);
-    MsMask mask = {0};
-    int ok =
-        picture && screen && (!orthicon || (bright && narrowed && widened)) && (small || !cells_on);
-    if (!ok)
-        snprintf(r->err, r->err_size, "not enough memory");
-    else
-        ok = ms_mask_init(&mask, r, MASK, SOURCE, &source, v[MASK_USE], v[INVERT_MASK],
-                          v[BLUR_MASK]);
-    if (ok) {
-        MsImage settings_image, picture_image, bright_image, narrow_image, wide_image, screen_image,
-            cells_image, output;
-        ms_image(&settings_image, row, TV_FIELDS, TV_FIELDS, 1, 1);
-        ms_image(&picture_image, picture, (ptrdiff_t)w * 4, w, h, 4);
-        ms_image(&bright_image, bright, (ptrdiff_t)w * 4, w, h, 4);
-        ms_image(&narrow_image, narrowed, (ptrdiff_t)w * 4, w, h, 4);
-        ms_image(&wide_image, widened, (ptrdiff_t)w * 4, w, h, 4);
-        ms_image(&screen_image, screen, (ptrdiff_t)w * 4, w, h, 4);
-        ms_image(&cells_image, small, (ptrdiff_t)sw * 4, sw, sh, 4);
-        ms_image_rgba(&output, r->output, r->output_row, r->half, w, h);
-        Job j = {.source = &source,
-                 .mask = &mask,
-                 .settings = &settings_image,
-                 .picture = &picture_image,
-                 .bright = &bright_image,
-                 .narrow = &narrow_image,
-                 .wide = &wide_image,
-                 .screen = &screen_image,
-                 .cells = &cells_image,
-                 .output = &output,
-                 .orthicon = orthicon,
-                 .cells_on = cells_on,
-                 .narrow_radius = narrow,
-                 .wide_radius = wide,
-                 .reach_x = (int)ceil((double)w / sw) + 1,
-                 .reach_y = (int)ceil((double)h / sh) + 1,
-                 .ghosts = (int)row[TV_GHOSTS],
-                 .octaves = (int)row[TV_HHOLD_OCTAVES]};
-        // Inputs uploaded to the GPU: the Source, the Mask or the one mask value, the settings.
-        MsImage *const inputs[] = {&source, mask.input, &settings_image};
-        MsImage *between[7] = {&picture_image, &screen_image};
-        int between_count = 2;
-        if (mask.has_mask)
-            between[between_count++] = &mask.value;
-        if (orthicon) {
-            between[between_count++] = &bright_image;
-            between[between_count++] = &narrow_image;
-            between[between_count++] = &wide_image;
-        }
-        if (cells_on)
-            between[between_count++] = &cells_image;
-        ok = ms_run(run, &j, inputs, 3, between, between_count, &output, r->info, r->err,
-                    r->err_size);
-    }
-    ms_mask_free(&mask);
-    free(picture);
-    free(screen);
-    free(bright);
-    free(narrowed);
-    free(widened);
-    free(small);
+    ms_image(&settings_image, row, TV_FIELDS, TV_FIELDS, 1, 1);
+    ms_image(&picture_image, part[0], (ptrdiff_t)w * 4, w, h, 4);
+    ms_image(&screen_image, part[1], (ptrdiff_t)w * 4, w, h, 4);
+    ms_image(&bright_image, part[2], (ptrdiff_t)w * 4, w, h, 4);
+    ms_image(&narrow_image, part[3], (ptrdiff_t)w * 4, w, h, 4);
+    ms_image(&wide_image, part[4], (ptrdiff_t)w * 4, w, h, 4);
+    ms_image(&cells_image, part[5], (ptrdiff_t)sw * 4, sw, sh, 4);
+    ms_image_rgba(&output, r->output, r->output_row, r->half, w, h);
+    MsMask mask;
+    ms_mask_init(&mask, r, MASK, SOURCE, &source, part[6], v[MASK_USE], v[INVERT_MASK],
+                 v[BLUR_MASK]);
+    Job j = {.source = &source,
+             .mask = &mask,
+             .settings = &settings_image,
+             .picture = &picture_image,
+             .bright = &bright_image,
+             .narrow = &narrow_image,
+             .wide = &wide_image,
+             .screen = &screen_image,
+             .cells = &cells_image,
+             .output = &output,
+             .orthicon = orthicon,
+             .cells_on = cells_on,
+             .narrow_radius = narrow,
+             .wide_radius = wide,
+             .reach_x = (int)ceil((double)w / sw) + 1,
+             .reach_y = (int)ceil((double)h / sh) + 1,
+             .ghosts = (int)row[TV_GHOSTS],
+             .octaves = (int)row[TV_HHOLD_OCTAVES]};
+    // Inputs uploaded to the GPU: the Source, the Mask or the one mask value, the settings.
+    MsImage *const inputs[] = {&source, mask.input, &settings_image};
+    MsImage *const between[] = {&picture_image,
+                                &screen_image,
+                                ms_mask_between(&mask),
+                                orthicon ? &bright_image : NULL,
+                                orthicon ? &narrow_image : NULL,
+                                orthicon ? &wide_image : NULL,
+                                cells_on ? &cells_image : NULL};
+    const int ok = ms_run(run, &j, inputs, ARRAY_SIZE(inputs), between, ARRAY_SIZE(between),
+                          &output, r->info, r->err, r->err_size);
+    free(block);
     return ok;
 }
 

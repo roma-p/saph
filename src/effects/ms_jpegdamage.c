@@ -278,9 +278,14 @@ static int render(const MsRender *r) {
     const int w = r->width, h = r->height;
     MsImage source, steps_image, decoder_image, output;
     ms_image_rgba(&source, r->inputs[SOURCE].pixels, r->inputs[SOURCE].row, r->half, w, h);
+    const size_t floats[] = {ms_mask_floats(r, MASK)};
+    float *block = malloc(ms_parts_size(floats, ARRAY_SIZE(floats))), *part[ARRAY_SIZE(floats)];
+    if (!block)
+        return ms_out_of_memory(r);
+    ms_parts(block, floats, ARRAY_SIZE(floats), part);
     MsMask mask;
-    if (!ms_mask_init(&mask, r, MASK, SOURCE, &source, v[MASK_USE], v[INVERT_MASK], v[BLUR_MASK]))
-        return 0;
+    ms_mask_init(&mask, r, MASK, SOURCE, &source, part[0], v[MASK_USE], v[INVERT_MASK],
+                 v[BLUR_MASK]);
     float steps[8][8][2], decoder[8][8][2];
     tables(v, steps, decoder);
     ms_image(&steps_image, &steps[0][0][0], 16, 8, 8, 2);
@@ -313,10 +318,10 @@ static int render(const MsRender *r) {
     j.flip = (int)v[FLIP_NOISE];
     // Inputs uploaded to the GPU: the Source, the Mask or the one mask value, the tables.
     MsImage *const inputs[] = {&source, mask.input, &steps_image, &decoder_image};
-    MsImage *between[] = {&mask.value}; // made on the GPU from the Mask
-    const int ok =
-        ms_run(run, &j, inputs, 4, between, mask.has_mask, &output, r->info, r->err, r->err_size);
-    ms_mask_free(&mask);
+    MsImage *const between[] = {ms_mask_between(&mask)}; // made on the GPU from the Mask
+    const int ok = ms_run(run, &j, inputs, ARRAY_SIZE(inputs), between, ARRAY_SIZE(between),
+                          &output, r->info, r->err, r->err_size);
+    free(block);
     return ok;
 }
 
