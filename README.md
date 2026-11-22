@@ -96,7 +96,8 @@ defaults below unless they are already set (in production they come from rez).
 
 ## Install
 
-Copy the whole `MillSaph.ofx.bundle` folder to the OFX plugin folder, then restart the host:
+Copy the whole `MillSaph.ofx.bundle` folder to the OFX plugin folder (`./install.sh` does it on
+macOS and Linux), then restart the host:
 
 | System | Folder |
 |---|---|

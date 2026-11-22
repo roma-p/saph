@@ -191,9 +191,11 @@ is already well factored.
 - [ ] **`tools/measure/*.py`**: one `load_jobs()` (ms_render:66-70, scores:41, sheet:52,
   report:26, nuke_measure:326), `frame_pairs()` (scores:45-50, sheet:58-61), `argparse`
   instead of `argv.index("--x")` and the `print(open(__file__))` help (5 copies). About 40 lines.
-- [ ] Small: `install_mac.sh` / `install_linux.sh` into one; typo "pacakge.py" in `build.sh:6`;
+- [x] Small: `install_mac.sh` / `install_linux.sh` into one; typo "pacakge.py" in `build.sh:6`;
   `sanitize.sh:13` passes `-D` to cmake (a separate build folder, but outside "build.sh only").
   Local, ignored files to delete: `build_log.txt`, `millsaph_perf.zip`, `build-sanitize/`.
+  (Done: `install.sh`, the typo; `sanitize.sh`'s -D kept (its own build folder); the local files
+  left to the user.)
 
 ## To decide (not factoring)
 

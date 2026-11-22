@@ -1,10 +1,14 @@
 #!/bin/sh
-# Installs build/MillSaph.ofx.bundle into /usr/OFX/Plugins
+# Installs build/MillSaph.ofx.bundle into the OFX plugin folder: /Library/OFX/Plugins on
+# macOS, /usr/OFX/Plugins on Linux.
 set -e
 cd "$(dirname "$0")"
 
 bundle=build/MillSaph.ofx.bundle
-dest=/usr/OFX/Plugins
+case "$(uname)" in
+Darwin) dest=/Library/OFX/Plugins ;;
+*)      dest=/usr/OFX/Plugins ;;
+esac
 
 [ -d "$bundle" ] || { echo "$bundle not found: run ./build.sh first"; exit 1; }
 
