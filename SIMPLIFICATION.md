@@ -154,7 +154,7 @@ is already well factored.
   `open_file_dialog(app, 1|2|3)`: an enum; `load_presets` (1260-1263) re-reads a file
   inline instead of `read_file`. About 40 lines. (Done: `app.h` (App and what the files share),
   `changes.cpp`, `properties.cpp`, main.cpp 934 lines; the same screenshots with four
-  selections. The repeated actions and the enum left.)
+  selections. Then `new_lens`, `save_lens`, `FileAction`; Ctrl+N, shown in the menu, now does it.)
 - [x] **`test_host` built three ways**: CMake (`CMakeLists.txt:408-413`), and by hand with `cc`
   in `tools/perf/perf.sh:23-24` and `tools/sanitize.sh:19-23`: use `build/test_host`
   (CMake's sanitizer flags already apply to it).

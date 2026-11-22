@@ -34,6 +34,9 @@ struct LensPreset {
     std::string name, text;
 };
 
+// The file dialog's action.
+enum FileAction { FILE_NONE, FILE_OPEN, FILE_INSERT, FILE_SAVE_AS };
+
 struct App {
     std::vector<LensPreset> presets;
     lens::Lens lens;
@@ -55,8 +58,7 @@ struct App {
     // the thumbnails (elements, palette, presets), by the text they were rendered from
     std::map<std::string, Thumb> thumbs;
     int thumbs_budget = 2;
-    // file dialog: 1 open, 2 insert, 3 save as
-    int file_action = 0;
+    FileAction file_action = FILE_NONE;
     char file_path[1024] = "lens.json";
     std::string lens_path;
     char search[128] = "";

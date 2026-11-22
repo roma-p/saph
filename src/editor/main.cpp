@@ -555,31 +555,38 @@ void save(App &app, const std::string &path) {
         app.lens_path = path;
 }
 
-void open_file_dialog(App &app, int action) {
+void open_file_dialog(App &app, FileAction action) {
     app.file_action = action;
     std::snprintf(app.file_path, sizeof app.file_path, "%s", app.lens_path.empty() ? "lens.json" : app.lens_path.c_str());
+}
+
+void new_lens(App &app) {
+    load_lens(app, "{\"elements\": []}", false);
+    app.lens_path.clear();
+}
+
+// Save: to the lens's file, or Save As when it has none (or `as`).
+void save_lens(App &app, bool as) {
+    if (as || app.lens_path.empty())
+        open_file_dialog(app, FILE_SAVE_AS);
+    else
+        save(app, app.lens_path);
 }
 
 void menus(App &app) {
     if (!ImGui::BeginMenuBar())
         return;
     if (ImGui::BeginMenu("File")) {
-        if (ImGui::MenuItem("New Lens", "Ctrl+N")) {
-            load_lens(app, "{\"elements\": []}", false);
-            app.lens_path.clear();
-        }
+        if (ImGui::MenuItem("New Lens", "Ctrl+N"))
+            new_lens(app);
         if (ImGui::MenuItem("Open Lens...", "Ctrl+O"))
-            open_file_dialog(app, 1);
+            open_file_dialog(app, FILE_OPEN);
         if (ImGui::MenuItem("Insert Lens...", "Ctrl+Shift+O"))
-            open_file_dialog(app, 2);
-        if (ImGui::MenuItem("Save Lens", "Ctrl+S")) {
-            if (app.lens_path.empty())
-                open_file_dialog(app, 3);
-            else
-                save(app, app.lens_path);
-        }
+            open_file_dialog(app, FILE_INSERT);
+        if (ImGui::MenuItem("Save Lens", "Ctrl+S"))
+            save_lens(app, false);
         if (ImGui::MenuItem("Save Lens As...", "Ctrl+Shift+S"))
-            open_file_dialog(app, 3);
+            save_lens(app, true);
         ImGui::Separator();
         if (ImGui::MenuItem("Quit (Cancel)"))
             app.quit = true;
@@ -622,26 +629,20 @@ void menus(App &app) {
 
 void toolbar(App &app) {
     ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
-    if (ImGui::Button("New")) {
-        load_lens(app, "{\"elements\": []}", false);
-        app.lens_path.clear();
-    }
+    if (ImGui::Button("New"))
+        new_lens(app);
     ImGui::SameLine();
     if (ImGui::Button("Load"))
-        open_file_dialog(app, 1);
+        open_file_dialog(app, FILE_OPEN);
     ImGui::SameLine();
     if (ImGui::Button("Insert"))
-        open_file_dialog(app, 2);
+        open_file_dialog(app, FILE_INSERT);
     ImGui::SameLine();
-    if (ImGui::Button("Save")) {
-        if (app.lens_path.empty())
-            open_file_dialog(app, 3);
-        else
-            save(app, app.lens_path);
-    }
+    if (ImGui::Button("Save"))
+        save_lens(app, false);
     ImGui::SameLine();
     if (ImGui::Button("Save As"))
-        open_file_dialog(app, 3);
+        save_lens(app, true);
     ImGui::SameLine(0, 20);
     ImGui::BeginDisabled(app.undo.empty());
     if (ImGui::ArrowButton("undo", ImGuiDir_Left))
@@ -697,36 +698,36 @@ void palette(App &app) {
 }
 
 void file_dialog(App &app) {
-    if (app.file_action) {
+    if (app.file_action != FILE_NONE) {
         ImGui::OpenPopup("Lens file");
     }
     if (ImGui::BeginPopupModal("Lens file", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
         static const char *const titles[] = {"", "Open a lens", "Insert a lens's elements", "Save the lens as"};
-        ImGui::TextUnformatted(titles[std::clamp(app.file_action, 0, 3)]);
+        ImGui::TextUnformatted(titles[app.file_action]);
         ImGui::SetNextItemWidth(520);
         if (ImGui::IsWindowAppearing())
             ImGui::SetKeyboardFocusHere();
         const bool enter = ImGui::InputText("##path", app.file_path, sizeof app.file_path,
                                             ImGuiInputTextFlags_EnterReturnsTrue);
         if (ImGui::Button("OK", ImVec2(100, 0)) || enter) {
-            if (app.file_action == 3) {
+            if (app.file_action == FILE_SAVE_AS) {
                 save(app, app.file_path);
             } else {
                 const std::string text = window::read_file(app.file_path);
                 if (text.empty())
                     app.status = std::string("Cannot open ") + app.file_path;
                 else {
-                    load_lens(app, text, app.file_action == 2);
-                    if (app.file_action == 1)
+                    load_lens(app, text, app.file_action == FILE_INSERT);
+                    if (app.file_action == FILE_OPEN)
                         app.lens_path = app.file_path;
                 }
             }
-            app.file_action = 0;
+            app.file_action = FILE_NONE;
             ImGui::CloseCurrentPopup();
         }
         ImGui::SameLine();
         if (ImGui::Button("Cancel", ImVec2(100, 0))) {
-            app.file_action = 0;
+            app.file_action = FILE_NONE;
             ImGui::CloseCurrentPopup();
         }
         ImGui::EndPopup();
@@ -749,9 +750,11 @@ void shortcuts(App &app) {
     else if (ctrl && ImGui::IsKeyPressed(ImGuiKey_I, false))
         app.identify_until = now() + 0.6;
     else if (ctrl && ImGui::IsKeyPressed(ImGuiKey_S, false))
-        shift || app.lens_path.empty() ? open_file_dialog(app, 3) : save(app, app.lens_path);
+        save_lens(app, shift);
+    else if (ctrl && ImGui::IsKeyPressed(ImGuiKey_N, false))
+        new_lens(app);
     else if (ctrl && ImGui::IsKeyPressed(ImGuiKey_O, false))
-        open_file_dialog(app, shift ? 2 : 1);
+        open_file_dialog(app, shift ? FILE_INSERT : FILE_OPEN);
     else if (!ctrl && ImGui::IsKeyPressed(ImGuiKey_Delete, false) && !ImGui::IsAnyItemActive() &&
              app.tree_focused)
         remove_selected(app);
