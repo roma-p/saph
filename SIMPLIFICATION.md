@@ -92,7 +92,8 @@ Order: batch 1, then 2, 3, 4, 5. Tick what is done.
   LensFlare's Job copies `MsAtmosphere`'s fields one by one (425-427, 723-730), Glow embeds it.
   (Done: `ms_out_of_memory`, LensFlare's `MsAtmosphere`; the text-or-default (2) and the hue
   (3 one-liners) left: a helper would not be shorter.)
-- [ ] Glare's `render()` (124 lines, glare:259-382): split as LensFlare's `build_rows`.
+- [x] Glare's `render()` (124 lines, glare:259-382): split as LensFlare's `build_rows`. (Done: `settings`, `style_rows`, `draw`;
+  render 25 lines.)
 
 ## Batch 4: Halide kernels
 

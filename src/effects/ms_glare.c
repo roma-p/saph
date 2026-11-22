@@ -220,16 +220,12 @@ static int run(MsApi api, void *user) {
                      MS_FLOAT("affect_alpha", j->affect_alpha), MS_IMAGE("output", j->output));
 }
 
-static int render(const MsRender *r) {
+// The settings of the kernels at Glare Res `res` (1, or 2: half size, w2 x h2).
+static Job settings(const MsRender *r, int res, int w2, int h2) {
     const double *v = r->values;
-    const int w = r->width, h = r->height, has_mask = r->connected[MASK];
-    // Glare Res Half: the spots and the glare at half size (w2 x h2), the widths halved.
-    const int res = (int)v[GLARE_RES] == 1 ? 2 : 1;
-    const int w2 = (w + res - 1) / res, h2 = (h + res - 1) / res;
-    const char *style = r->texts && r->texts[STYLE] ? r->texts[STYLE] : params[STYLE].def_text;
-    Job j = {.glint_source =
-                 ms_glint_source_of(v[THRESHOLD], &v[ADD_COLOR], v[THRESHOLD_BLUR] / res,
-                                    v[FROM_ALPHA], v[MASK_TYPE], v[INVERT_MASK], has_mask),
+    Job j = {.glint_source = ms_glint_source_of(v[THRESHOLD], &v[ADD_COLOR],
+                                                v[THRESHOLD_BLUR] / res, v[FROM_ALPHA],
+                                                v[MASK_TYPE], v[INVERT_MASK], r->connected[MASK]),
              .hue = (float)(v[HUE_SHIFT] - floor(v[HUE_SHIFT])),
              .saturation = (float)v[SATURATION],
              .source_opacity = (float)v[SOURCE_OPACITY],
@@ -248,45 +244,51 @@ static int render(const MsRender *r) {
     j.rounds = 4;
     for (int n = w2 > h2 ? w2 : h2; n > 1; n /= 2)
         j.rounds += 2;
+    return j;
+}
 
-    // The style's rows; the drawing's reach gives the transforms' margin (nothing wraps around).
+// The Style's rows (GLARE_MAX_ELEMENTS of them) at Glare Res `res`, and the drawing's reach in
+// pixels. Returns how many, or -1 with the reason in r->err.
+static int style_rows(const MsRender *r, int res, float (*rows)[GLARE_FIELDS], double *reach) {
+    const double *v = r->values;
+    const char *style = r->texts && r->texts[STYLE] ? r->texts[STYLE] : params[STYLE].def_text;
     const size_t text_length = strlen(style);
     MsJson *nodes = malloc((text_length + 1) * sizeof(MsJson));
-    float (*rows)[GLARE_FIELDS] = calloc(GLARE_MAX_ELEMENTS, sizeof *rows);
-    const MsGlareGlobals globals = {.size = size,
+    const MsGlareGlobals globals = {.size = fmax(v[SIZE], 0.0) / res,
                                     .rel_height = v[REL_HEIGHT],
                                     .rotate = v[ROTATE],
                                     .rays_num_scale = v[RAYS_NUM_SCALE],
                                     .rays_length = v[RAYS_LENGTH],
                                     .rays_thickness = v[RAYS_THICKNESS]};
-    const int allocated = nodes && rows;
-    j.count = allocated ? ms_glare_style(style, nodes, (int)text_length + 1, &globals, rows,
-                                         GLARE_MAX_ELEMENTS, NULL)
-                        : -1;
+    if (!nodes) {
+        ms_out_of_memory(r);
+        return -1;
+    }
+    const int count = ms_glare_style(style, nodes, (int)text_length + 1, &globals, rows,
+                                     GLARE_MAX_ELEMENTS, NULL);
     free(nodes);
-    if (j.count < 0) {
-        snprintf(r->err, r->err_size,
-                 allocated ? "the Style is not a glare style (JSON)" : "not enough memory");
-        free(rows);
-        return 0;
+    if (count < 0) {
+        snprintf(r->err, r->err_size, "the Style is not a glare style (JSON)");
+        return -1;
     }
-    double reach = 0;
-    for (int i = 0; i < j.count; ++i) {
+    *reach = 0;
+    for (int i = 0; i < count; ++i) {
         const double s = fmax(rows[i][GLARE_SCALE_X], rows[i][GLARE_SCALE_Y]);
-        reach = fmax(reach, rows[i][GLARE_R] * 1.6 * s + 4 * rows[i][GLARE_SIGMA] + 4);
+        *reach = fmax(*reach, rows[i][GLARE_R] * 1.6 * s + 4 * rows[i][GLARE_SIGMA] + 4);
     }
-    // The image at (0, 0) of the transforms: the circular convolution does not wrap into it
-    // while their size is at least the image's plus the drawing's reach (one side).
-    const int longest = w2 > h2 ? w2 : h2;
-    const int margin = (int)ceil(fmin(reach, (double)longest));
-    const int nx = ms_fft_length(w2 + margin), ny = ms_fft_length(h2 + margin);
-    j.scale = (float)(1.0 / ((double)nx * ny));
+    return count;
+}
 
+// The images of `j` (the spots at w2 x h2, the transforms nx x ny, the style's `rows`), then
+// the kernels. Returns 1 on success, or 0 with the reason in r->err.
+static int draw(const MsRender *r, Job *j, float (*rows)[GLARE_FIELDS], int w2, int h2, int nx,
+                int ny) {
+    const int has_mask = r->connected[MASK];
     // Between the kernels: the half-size Source and Mask, the glints, the regions' labels
     // (integers), the transforms.
     const size_t pixels = (size_t)w2 * h2, transform = (size_t)nx * ny * 4;
-    const size_t floats[] = {res == 2 ? pixels * 4 : 0,
-                             res == 2 && has_mask ? pixels * 4 : 0,
+    const size_t floats[] = {j->res == 2 ? pixels * 4 : 0,
+                             j->res == 2 && has_mask ? pixels * 4 : 0,
                              pixels * 4,
                              pixels,
                              pixels,
@@ -294,37 +296,35 @@ static int render(const MsRender *r) {
                              transform,
                              transform};
     float *block = malloc(ms_parts_size(floats, ARRAY_SIZE(floats))), *part[ARRAY_SIZE(floats)];
-    if (!block) {
-        free(rows);
+    if (!block)
         return ms_out_of_memory(r);
-    }
     ms_parts(block, floats, ARRAY_SIZE(floats), part);
     MsImage source, mask, small_images[2], glints_image, label_images[2], rows_image, images[3],
         output;
     ms_input_image(&source, r, SOURCE);
     for (int i = 0; i < 2; ++i) {
         ms_image(&small_images[i], part[i], (ptrdiff_t)w2 * 4, w2, h2, 4);
-        j.small[i] = &small_images[i];
+        j->small[i] = &small_images[i];
     }
     ms_image(&glints_image, part[2], (ptrdiff_t)w2 * 4, w2, h2, 4);
     for (int i = 0; i < 2; ++i) {
         ms_image_uint(&label_images[i], part[3 + i], w2, w2, h2);
-        j.labels[i] = &label_images[i];
+        j->labels[i] = &label_images[i];
     }
     ms_image(&rows_image, &rows[0][0], GLARE_FIELDS, GLARE_FIELDS, GLARE_MAX_ELEMENTS, 1);
     for (int i = 0; i < 3; ++i) {
         ms_image(&images[i], part[5 + i], (ptrdiff_t)nx * 4, nx, ny, 4);
-        j.buffers[i] = &images[i];
+        j->buffers[i] = &images[i];
     }
     ms_output_image(&output, r);
     // Without a Mask, or one that is the Source's image in the host: the Source stands in.
-    j.source = &source;
-    j.mask = ms_input_or(&mask, r, MASK, has_mask, &source, SOURCE);
-    j.glints = &glints_image;
-    j.rows = &rows_image;
-    j.output = &output;
+    j->source = &source;
+    j->mask = ms_input_or(&mask, r, MASK, has_mask, &source, SOURCE);
+    j->glints = &glints_image;
+    j->rows = &rows_image;
+    j->output = &output;
     // Inputs uploaded to the GPU: the Source, the Mask, the style's rows.
-    MsImage *const inputs[] = {&source, j.mask, &rows_image};
+    MsImage *const inputs[] = {&source, j->mask, &rows_image};
     MsImage *const between[] = {&glints_image,
                                 &label_images[0],
                                 &label_images[1],
@@ -333,9 +333,34 @@ static int render(const MsRender *r) {
                                 &images[2],
                                 part[0] ? &small_images[0] : NULL,
                                 part[1] ? &small_images[1] : NULL};
-    const int ok = ms_run(run, &j, inputs, ARRAY_SIZE(inputs), between, ARRAY_SIZE(between),
-                          &output, r->info, r->err, r->err_size);
+    const int ok = ms_run(run, j, inputs, ARRAY_SIZE(inputs), between, ARRAY_SIZE(between), &output,
+                          r->info, r->err, r->err_size);
     free(block);
+    return ok;
+}
+
+static int render(const MsRender *r) {
+    // Glare Res Half: the spots and the glare at half size (w2 x h2), the widths halved.
+    const int res = (int)r->values[GLARE_RES] == 1 ? 2 : 1;
+    const int w2 = (r->width + res - 1) / res, h2 = (r->height + res - 1) / res;
+    Job j = settings(r, res, w2, h2);
+    // The style's rows; the drawing's reach gives the transforms' margin (nothing wraps around).
+    float (*rows)[GLARE_FIELDS] = calloc(GLARE_MAX_ELEMENTS, sizeof *rows);
+    if (!rows)
+        return ms_out_of_memory(r);
+    double reach = 0;
+    j.count = style_rows(r, res, rows, &reach);
+    if (j.count < 0) {
+        free(rows);
+        return 0;
+    }
+    // The image at (0, 0) of the transforms: the circular convolution does not wrap into it
+    // while their size is at least the image's plus the drawing's reach (one side).
+    const int longest = w2 > h2 ? w2 : h2;
+    const int margin = (int)ceil(fmin(reach, (double)longest));
+    const int nx = ms_fft_length(w2 + margin), ny = ms_fft_length(h2 + margin);
+    j.scale = (float)(1.0 / ((double)nx * ny));
+    const int ok = draw(r, &j, rows, w2, h2, nx, ny);
     free(rows);
     return ok;
 }
