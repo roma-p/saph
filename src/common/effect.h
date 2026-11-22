@@ -101,8 +101,8 @@ typedef struct {
             .min = 0.0,                                                                            \
             .max = 1.0,                                                                            \
             .display_max = 1.0}
-// a distance (a fraction of the frame's width, 0 and up, slider to 1):
-#define MS_DISTANCE(id, n, l, h, d)                                                                \
+// A width (a fraction of the frame width) from 0, without an upper limit, its slider to `dm`.
+#define MS_WIDTH(id, n, l, h, d, dm)                                                               \
     [id] = {.type = MS_PARAM_WIDTH,                                                                \
             .name = (n),                                                                           \
             .label = (l),                                                                          \
@@ -110,13 +110,14 @@ typedef struct {
             .def = (d),                                                                            \
             .min = 0.0,                                                                            \
             .max = MS_UNBOUNDED,                                                                   \
-            .display_max = 1.0}
-// a colour, white by default (its green and blue: entries id + 1 and id + 2, n "_green" and
-// n "_blue"):
-#define MS_COLOUR(id, n, l, h)                                                                     \
-    [id] = {.type = MS_PARAM_RGB, .name = (n), .label = (l), .hint = (h), .def = 1.0},             \
-    [id + 1] = {.type = MS_PARAM_RGB_PART, .name = n "_green", .def = 1.0},                        \
-    [id + 2] = {.type = MS_PARAM_RGB_PART, .name = n "_blue", .def = 1.0}
+            .display_max = (dm)}
+#define MS_DISTANCE(id, n, l, h, d) MS_WIDTH(id, n, l, h, d, 1.0)
+// A colour (three entries: id, id + 1, id + 2), each channel `d` by default.
+#define MS_COLOUR_OF(id, n, l, h, d)                                                               \
+    [id] = {.type = MS_PARAM_RGB, .name = (n), .label = (l), .hint = (h), .def = (d)},             \
+    [id + 1] = {.type = MS_PARAM_RGB_PART, .name = n "_green", .def = (d)},                        \
+    [id + 2] = {.type = MS_PARAM_RGB_PART, .name = n "_blue", .def = (d)}
+#define MS_COLOUR(id, n, l, h) MS_COLOUR_OF(id, n, l, h, 1.0)
 
 // The most inputs and parameters of an effect (the hosts' code sizes arrays by them).
 #define MS_MAX_CLIPS 8

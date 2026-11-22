@@ -178,14 +178,8 @@ static const MsParam params[] = {
                       "spot, ring, rays, polar_flare or fancy_spot at `center` along the axis "
                       "(1: the hotspot, 0: the pivot).",
               .def_text = default_lens},
-    [SCALE_WIDTHS] = {.type = MS_PARAM_WIDTH,
-                      .name = "scale_widths",
-                      .label = "Scale Widths",
-                      .hint = "The size of the flare's elements.",
-                      .def = 0.21,
-                      .min = 0.0,
-                      .max = MS_UNBOUNDED,
-                      .display_max = 1.0},
+    MS_WIDTH(SCALE_WIDTHS, "scale_widths", "Scale Widths", "The size of the flare's elements.",
+             0.21, 1.0),
     [REL_HEIGHTS] = {.type = MS_PARAM_DOUBLE,
                      .name = "rel_heights",
                      .label = "Rel Heights",
@@ -195,13 +189,7 @@ static const MsParam params[] = {
                      .max = 10.0,
                      .display_min = 0.1,
                      .display_max = 10.0},
-    [BLUR_FLARE] = {.type = MS_PARAM_WIDTH,
-                    .name = "blur_flare",
-                    .label = "Blur Flare",
-                    .hint = "Blurs the flare.",
-                    .min = 0.0,
-                    .max = MS_UNBOUNDED,
-                    .display_max = 0.1},
+    MS_WIDTH(BLUR_FLARE, "blur_flare", "Blur Flare", "Blurs the flare.", 0.0, 0.1),
     [HOTSPOT] = {.type = MS_PARAM_POINT,
                  .name = "hotspot",
                  .label = "Hotspot",
@@ -305,15 +293,10 @@ static const MsParam params[] = {
                 "Scales the flare's brightness near the pivot.", 1.5),
     MS_RELATIVE(CENTER_SCALE_WIDTHS, "center_scale_widths", "Center Scale Widths",
                 "Scales the flare's size near the pivot.", 1.2),
-    [OCCLUSION_SOFTNESS] = {.type = MS_PARAM_WIDTH,
-                            .name = "occlusion_softness",
-                            .label = "Occlusion Softness",
-                            .hint = "The size of the area around the hotspot the Occlusion "
-                                    "input covers to hide the flare.",
-                            .def = 0.0028,
-                            .min = 0.0,
-                            .max = MS_UNBOUNDED,
-                            .display_max = 0.25},
+    MS_WIDTH(OCCLUSION_SOFTNESS, "occlusion_softness", "Occlusion Softness",
+             "The size of the area around the hotspot the Occlusion "
+             "input covers to hide the flare.",
+             0.0028, 0.25),
     [OCCLUSION_FROM] = {.type = MS_PARAM_CHOICE,
                         .name = "occlusion_from",
                         .label = "Occlusion From",
@@ -338,42 +321,9 @@ static const MsParam params[] = {
     MS_DISTANCE(GLOW_RADIUS, "glow_radius", "Glow Radius",
                 "How far from the hotspot the Occlusion input's edges glow.", 0.025),
     MS_COLOUR(GLOW_COLOR, "glow_color", "Glow Color", "The color of the Diffraction Glow."),
-    [ATMOSPHERE_AMP] = {.type = MS_PARAM_DOUBLE,
-                        .name = "atmosphere_amp",
-                        .label = "Atmosphere Amp",
-                        .hint = "How much a cloudy noise over the frame varies the flare's "
-                                "brightness (0: none).",
-                        .min = 0.0,
-                        .max = MS_UNBOUNDED,
-                        .display_max = 5.0},
-    [ATMOSPHERE_FREQ] = {.type = MS_PARAM_DOUBLE,
-                         .name = "atmosphere_freq",
-                         .label = "Atmosphere Freq",
-                         .hint = "The size of the Atmosphere's clouds (higher: smaller).",
-                         .def = 1.0,
-                         .min = 0.01,
-                         .max = MS_UNBOUNDED,
-                         .display_min = 0.1,
-                         .display_max = 20.0},
-    MS_FRACTION(ATMOSPHERE_DETAIL, "atmosphere_detail", "Atmosphere Detail",
-                "How much fine detail the Atmosphere has.", 0.6),
-    [ATMOSPHERE_SEED] = {.type = MS_PARAM_DOUBLE,
-                         .name = "atmosphere_seed",
-                         .label = "Atmosphere Seed",
-                         .hint = "Another Atmosphere for each value.",
-                         .def = 0.123,
-                         .min = -MS_UNBOUNDED,
-                         .max = MS_UNBOUNDED,
-                         .display_max = 5.0},
-    [ATMOSPHERE_SPEED] = {.type = MS_PARAM_DOUBLE,
-                          .name = "atmosphere_speed",
-                          .label = "Atmosphere Speed",
-                          .hint = "How fast the Atmosphere changes over time.",
-                          .def = 1.0,
-                          .min = -MS_UNBOUNDED,
-                          .max = MS_UNBOUNDED,
-                          .display_min = -5.0,
-                          .display_max = 5.0},
+    MS_ATMOSPHERE_PARAMS(ATMOSPHERE_AMP,
+                         "How much a cloudy noise over the frame varies the flare's "
+                         "brightness (0: none)."),
     [FLICKER_AMP] = {.type = MS_PARAM_DOUBLE,
                      .name = "flicker_amp",
                      .label = "Flicker Amp",
@@ -381,14 +331,8 @@ static const MsParam params[] = {
                      .min = 0.0,
                      .max = MS_UNBOUNDED,
                      .display_max = 2.0},
-    [FLICKER_SPEED] = {.type = MS_PARAM_DOUBLE,
-                       .name = "flicker_speed",
-                       .label = "Flicker Speed",
-                       .hint = "How fast it flickers (0: still).",
-                       .def = 1.0,
-                       .min = 0.0,
-                       .max = MS_UNBOUNDED,
-                       .display_max = 5.0},
+    MS_RELATIVE(FLICKER_SPEED, "flicker_speed", "Flicker Speed", "How fast it flickers (0: still).",
+                1.0),
     MS_FRACTION(FLICKER_RANDOMNESS, "flicker_randomness", "Flicker Randomness",
                 "How rarely it flickers: 0 all the time, 1 never; between, only the strongest "
                 "flickers.",
@@ -822,7 +766,7 @@ static float *lens_texels(const MsRender *r, const MsJson *nodes, MsLensTextures
     *rows = (int)((count + GLARE_TEXEL_ROW - 1) / GLARE_TEXEL_ROW);
     float *texels = calloc((size_t)(*rows > 0 ? *rows : 1) * GLARE_TEXEL_ROW, sizeof(float));
     if (!texels) {
-        snprintf(r->err, r->err_size, "not enough memory");
+        ms_out_of_memory(r);
         return NULL;
     }
     if (count > 0)
@@ -962,14 +906,14 @@ static int render(const MsRender *r) {
     MsLensTextures textures = {.count = 0};
     int texel_rows = 0, ok = 0;
     if (!nodes || !rows || !noise_rows) {
-        snprintf(r->err, r->err_size, "not enough memory");
+        ms_out_of_memory(r);
     } else if ((j.count = build_rows(r, lens, nodes, (int)text_length + 1, rows, &textures)) < 0) {
         snprintf(r->err, r->err_size, "the Lens is not a lens (JSON)");
     } else {
         share_noises(rows, j.count, noise_rows);
         texels = lens_texels(r, nodes, &textures, &texel_rows);
         if (texels && !sort_rows(rows, j.count, j.sizes))
-            snprintf(r->err, r->err_size, "not enough memory");
+            ms_out_of_memory(r);
         else if (texels)
             ok = draw(r, &j, rows, noise_rows, texels, texel_rows, glow);
     }

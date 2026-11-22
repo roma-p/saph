@@ -12,5 +12,15 @@ extern const char *const ms_mask_use_entries[2];
      .hint = "How the Mask input channels make a monochrome mask.",                                \
      .entries = ms_mask_use_entries,                                                               \
      .entry_count = 2}
+// Blur Mask: a width, `d` by default, its slider to `dm` (an MsParam initializer, see effect.h).
+#define MS_PARAM_BLUR_MASK(d, dm)                                                                  \
+    {.type = MS_PARAM_WIDTH,                                                                       \
+     .name = "blur_mask",                                                                          \
+     .label = "Blur Mask",                                                                         \
+     .hint = "Blurs the Mask input by this amount before using.",                                  \
+     .def = (d),                                                                                   \
+     .min = 0.0,                                                                                   \
+     .max = MS_UNBOUNDED,                                                                          \
+     .display_max = (dm)}
 #define MS_PARAM_INVERT_MASK(hint_text)                                                            \
     {.type = MS_PARAM_BOOL, .name = "invert_mask", .label = "Invert Mask", .hint = (hint_text)}

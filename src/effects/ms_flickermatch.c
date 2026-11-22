@@ -59,14 +59,10 @@ static const MsParam level_params[] = {
 
 static const MsParam color_params[] = {
     CORNERS,
-    [TARGET] = {.type = MS_PARAM_RGB,
-                .name = "match_color",
-                .label = "Match Color",
-                .hint = "The Match input's colour (mean in the rectangle) that leaves the Source "
-                        "as it is: each channel is scaled by the mean over this.",
-                .def = 0.5},
-    [TARGET_G] = {.type = MS_PARAM_RGB_PART, .name = "match_color_green", .def = 0.5},
-    [TARGET_B] = {.type = MS_PARAM_RGB_PART, .name = "match_color_blue", .def = 0.5},
+    MS_COLOUR_OF(TARGET, "match_color", "Match Color",
+                 "The Match input's colour (mean in the rectangle) that leaves the Source "
+                 "as it is: each channel is scaled by the mean over this.",
+                 0.5),
     SHOW_RECT(COLOR_SHOW_RECT),
 };
 

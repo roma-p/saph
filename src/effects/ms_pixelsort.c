@@ -204,14 +204,7 @@ static const MsParam params[] = {
               .entries = shows,
               .entry_count = 5},
     [MASK_USE] = MS_PARAM_MASK_USE,
-    [BLUR_MASK] = {.type = MS_PARAM_WIDTH,
-                   .name = "blur_mask",
-                   .label = "Blur Mask",
-                   .hint = "Blurs the Mask input by this amount before using.",
-                   .def = 0.00625,
-                   .min = 0.0,
-                   .max = MS_UNBOUNDED,
-                   .display_max = 0.2},
+    [BLUR_MASK] = MS_PARAM_BLUR_MASK(0.00625, 0.2),
     [INVERT_MASK] = MS_PARAM_INVERT_MASK("Sorts the black areas of the Mask."),
 };
 

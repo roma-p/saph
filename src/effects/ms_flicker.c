@@ -92,14 +92,7 @@ static const MsParam params[] = {
                     .min = 0.0,
                     .max = MS_UNBOUNDED,
                     .display_max = 5.0},
-    [SEED] = {.type = MS_PARAM_DOUBLE,
-              .name = "seed",
-              .label = "Seed",
-              .hint = "Another random flicker.",
-              .def = 0.123,
-              .min = 0.0,
-              .max = MS_UNBOUNDED,
-              .display_max = 5.0},
+    MS_RELATIVE(SEED, "seed", "Seed", "Another random flicker.", 0.123),
 };
 
 // The noise's lattice points per unit of Rand Freq x t / 24 (sets how fast it changes, as

@@ -49,7 +49,7 @@ Order: batch 1, then 2, 3, 4, 5. Tick what is done.
   Distort's `between` (`ms_distort.c:344`) then stops passing unused images. About 130 lines.
   (Done: `ms_parts_size` / `ms_parts`, `ms_mask_between`, `ms_out_of_memory`; the mask value's
   memory is a part too, `ms_mask_free` is gone. Fewer error paths, about 25 lines net.)
-- [ ] **Parameter macros.**
+- [x] **Parameter macros.**
   - BandPass, EdgeAwareBlur, Distort spell out Rel X / Rel Y (`ms_bandpass.c:59-74`,
     `ms_edgeawareblur.c:59-74`, `ms_distort.c:101-116`): `MS_RELATIVE(..., 1.0)`.
   - Blur Mask copied 7 times (bandpass:95, distort:136, mosaic:91, rackdefocus:245,
@@ -59,7 +59,10 @@ Order: batch 1, then 2, 3, 4, 5. Tick what is done.
   - Widths from 0, unbounded, about 25 times: `MS_WIDTH(id, n, l, h, d, dmax)`.
   - Atmosphere's 5 parameters in glow.c:179-208 and lensflare.c:337-371:
     `MS_ATMOSPHERE_PARAMS(first, amp_hint)` in `atmosphere.h`.
-  About 200 lines.
+  About 200 lines. (Done: 65 entries by `MS_WIDTH`, `MS_RELATIVE`, `MS_FRACTION`, `MS_COLOUR(_OF)`,
+  `MS_PARAM_BLUR_MASK`, and the Atmosphere's; every effect's description dumped and compared
+  field by field: only LensFlare's Seed and Speed limits, 0 / 0 instead of +-MS_UNBOUNDED,
+  the same for both hosts.)
 - [ ] **Overlays**: ellipse + arrow X + arrow Y repeated (bandpass:176-201,
   edgeawareblur:459-478, glow:347-390, glare:397-408, rackdefocus:443-454,
   lensflare:1000-1012): one `MS_OVERLAY_ELLIPSE_ARROWS(...)`. About 70 lines.
