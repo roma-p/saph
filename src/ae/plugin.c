@@ -76,9 +76,7 @@ enum { // their slots
 
 // 1 when parameter type `t` has an After Effects parameter (TEXT ones are left out, and the
 // green and blue of an RGB are in its colour).
-static int in_ae(MsParamType t) {
-    return t != MS_PARAM_TEXT && t != MS_PARAM_RGB_PART && t != MS_PARAM_POINT_Y;
-}
+static int in_ae(MsParamType t) { return t != MS_PARAM_TEXT && !ms_param_part(t); }
 
 // The effect parameter of After Effects index `index` (-1: none).
 static int param_at(const MsEffect *e, int index) {
@@ -348,7 +346,7 @@ static PF_Err read_values(const MsEffect *e, PF_InData *in_data, double frame, d
     const A_u_long scale = in_data->time_scale * TIME_STEPS;
     for (int i = 0; i < e->param_count; ++i) {
         const MsParam *p = &e->params[i];
-        if (p->type != MS_PARAM_RGB_PART && p->type != MS_PARAM_POINT_Y) // with the one before
+        if (!ms_param_part(p->type)) // with the one before
             values[i] = 0.0;
         if (texts)
             texts[i] = NULL;

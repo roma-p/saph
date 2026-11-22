@@ -165,14 +165,18 @@ is already well factored.
   "same pixels as an earlier input" loop (252-255) is `ms_same_input()`. About 20 lines. (Done: `fetch_inputs`, `log_render`, `ms_same_input`; the
   copies of the inputs stay in it (malloc and free in one function); the label is still the
   host's (a host may name the instance).)
-- [ ] **`src/ofx/plugin.c` parameters**: `host_get_value` (386-410) and `host_set_value`
+- [x] **`src/ofx/plugin.c` parameters**: `host_get_value` (386-410) and `host_set_value`
   (419-458) each parse `_y`, `_green`, `_blue`; the Choice/Boolean/Integer test twice there
   and in `test_host.c:186-189`; `get_rgb/point/double/int/text` (177-235) near copies:
-  `split_part()`, `is_int_type()`, `param_handle()`. About 35 lines.
-- [ ] **Rules shared by OFX and AE**: which types have a control (`ae/plugin.c:80-82`,
+  `split_part()`, `is_int_type()`, `param_handle()`. About 35 lines. (Done: `param_part`,
+  `int_type`; fill_values gets each parameter once. Get and set now read the same parts (get
+  had only "_y", and took a name ending in "_y" for a part first). test_host's own copy left:
+  another host. To check in Nuke: Load Preset, Edit Lens.)
+- [x] **Rules shared by OFX and AE**: which types have a control (`ae/plugin.c:80-82`,
   `ofx/plugin.c:51-52`, 74, 259-261, `bench.c:207-213`) and widths / points to pixels
   (`ofx/plugin.c:265-275`, `ae/plugin.c:383-391`, `bench.c:99-104`, 248-252): inline helpers
-  in `common/effect.h`. About 25 lines.
+  in `common/effect.h`. About 25 lines. (Done: `ms_param_part`; the units differ per host (AE
+  percent, OFX fractions): left in each.)
 - [x] **OFX entry points** (`ofx/plugin.c:542-576`): 32 by hand twice, and their names: one
   `MS_REPEAT32()`. About 15 lines. (Done from `effects/list.def`: one per effect, no limit of 32.)
 - [x] **CMake**: the editor and browser targets (355-386) repeat ImGui's sources, folders and

@@ -82,6 +82,12 @@ typedef struct {
 
 // Common kinds of parameter, as table entries ([id] = ...): name n, label l, hint h, default d.
 // A scale (0 and up, slider to 5):
+// 1 for the entries that are a part of the parameter before (an RGB's green and blue, a
+// POINT's y): the hosts read and show them with it.
+static inline int ms_param_part(MsParamType t) {
+    return t == MS_PARAM_RGB_PART || t == MS_PARAM_POINT_Y;
+}
+
 #define MS_RELATIVE(id, n, l, h, d)                                                                \
     [id] = {.type = MS_PARAM_DOUBLE,                                                               \
             .name = (n),                                                                           \
