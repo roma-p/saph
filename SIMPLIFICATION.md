@@ -116,11 +116,13 @@ Order: batch 1, then 2, 3, 4, 5. Tick what is done.
   (edge_blur:42, 78; glare:305; glint:61, 187; lensflare:349, 361, 541; rack_defocus:222).
 - [ ] **Glow / Glint pre-threshold source** (glow:31-37, glint:53-58):
   `ms::from_alpha_masked()` in `threshold.h`. About 12 lines.
-- [ ] **Mask input**: `mask_value.dim(0).set_stride(Expr())` 9 times, the mix
+- [x] **Mask input**: `mask_value.dim(0).set_stride(Expr())` 9 times, the mix
   `s + (e - s) * m` 5 times: `ms::optional_mask()`, `ms::masked()` in `mask.h` (BandPass's
-  `s*(1-m) + e*m` rounds differently: leave it).
-- [ ] **Layout**: `ms::interleaved(b, n = 4)` for fft:57-60, rack_defocus:259-260, 296-301,
-  338, 366, convert:15-18; `u32()` once in `shared.h` (convert:20, noise.h:17).
+  `s*(1-m) + e*m` rounds differently: leave it). (Left: each site is one line with its
+  comment, a helper would not be shorter.)
+- [x] **Layout**: `ms::interleaved(b, n = 4)` for fft:57-60, rack_defocus:259-260, 296-301,
+  338, 366, convert:15-18; `u32()` once in `shared.h` (convert:20, noise.h:17). (Done: `ms::interleaved(b, n)`; `u32` left,
+  two one-liners.)
 - [ ] **Luma and bilinear** (luma in bandpass:55, edge_blur:40, flicker_match:55, glare:302,
   glint:54, jpeg:297, rack_defocus:109, hue.h:27-28, lensflare:46, tv_damage:44, mask.h:12;
   bilinear in tv_damage:55-67, glare:287-294, rack_defocus:90-96, lensflare:231-232,

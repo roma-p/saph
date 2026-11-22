@@ -10,10 +10,10 @@ namespace ms {
 
 using namespace Halide;
 
-// Interleaved RGBA: channels next to each other.
-template <typename B> void interleaved(B &&b) {
-    b.dim(0).set_stride(4);
-    b.dim(2).set_stride(1).set_bounds(0, 4);
+// Interleaved RGBA: channels (`values` of them) next to each other.
+template <typename B> void interleaved(B &&b, int values = 4) {
+    b.dim(0).set_stride(values);
+    b.dim(2).set_stride(1).set_bounds(0, values);
 }
 
 // An RGBA output (x, y, c) computed per pixel, its `channels` channels unrolled: 16 x 16 GPU

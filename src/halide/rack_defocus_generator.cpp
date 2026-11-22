@@ -227,8 +227,7 @@ class RackDefocusKernel : public Generator<RackDefocusKernel> {
         Expr value = blurred(clamp(dx + half, 0, size - 1), clamp(dy + half, 0, size - 1), ch);
         kernel(x, y, c) = select(inside, value / sum, 0.0f);
 
-        kernel.dim(0).set_stride(4);
-        kernel.dim(2).set_stride(1).set_bounds(0, 4);
+        ms::interleaved(kernel);
         Var xo("xo"), yo("yo"), xi("xi"), yi("yi");
         cover.bound(c, 0, 4).compute_root(); // R, G, B (and G again: whole float4)
         noisy.bound(c, 0, 4).compute_root();
@@ -293,11 +292,9 @@ class RackDefocusMultiply : public Generator<RackDefocusMultiply> {
         product(x, y, c) = mux(c, out);
 
         for (auto *b : {&image, &lens}) {
-            (*b).dim(0).set_stride(4);
-            (*b).dim(2).set_stride(1).set_bounds(0, 4);
+            ms::interleaved(*b);
         }
-        product.dim(0).set_stride(4);
-        product.dim(2).set_stride(1).set_bounds(0, 4);
+        ms::interleaved(product);
         ms::schedule_float4(product, gpu, 32, 8);
     }
 };
@@ -323,8 +320,7 @@ class RackDefocusFinish : public Generator<RackDefocusFinish> {
         Expr mixed = blurred + (s - blurred) * mix;
         output(x, y, c) = s + (mixed - s) * mask_value(x, y);
 
-        data.dim(0).set_stride(4);
-        data.dim(2).set_stride(1).set_bounds(0, 4);
+        ms::interleaved(data);
         ms::interleaved(source);
         ms::interleaved(output);
         mask_value.dim(0).set_stride(Expr()); // without a mask: one value (stride 0)
@@ -350,8 +346,7 @@ class RackDefocusShow : public Generator<RackDefocusShow> {
         Expr dx = ((x - cx) % nx + nx) % nx, dy = ((y - cy) % ny + ny) % ny;
         output(x, y, c) = lens(dx, dy, c) / max(largest(c), 1e-30f);
 
-        lens.dim(0).set_stride(4);
-        lens.dim(2).set_stride(1).set_bounds(0, 4);
+        ms::interleaved(lens);
         ms::interleaved(output);
         largest.bound(c, 0, 4).compute_root();
         if (gpu) {
