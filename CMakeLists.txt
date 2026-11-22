@@ -438,7 +438,7 @@ if(APPLE AND EXISTS ${ae_sdk}/Headers/AE_Effect.h)
     COMMAND xcrun Rez -d __MACH__ -useDF -i ${ae_sdk}/Headers -i ${ae_sdk}/Resources
             -o ${ae_bundle}/Contents/Resources/MillSaph.rsrc ${ae_sdk}/Resources/AE_General.r
             ${CMAKE_BINARY_DIR}/ae/pipl.rr
-    DEPENDS src/ae/pipl.r
+    DEPENDS src/ae/pipl.r src/effects/list.def
     VERBATIM)
   add_library(MillSaphAE MODULE src/ae/plugin.c ${ae_bundle}/Contents/Resources/MillSaph.rsrc)
   target_include_directories(MillSaphAE PRIVATE ${ae_sdk}/Headers ${ae_sdk}/Headers/SP)
@@ -468,7 +468,7 @@ elseif(WIN32 AND MSVC AND EXISTS ${ae_sdk}/Headers/AE_Effect.h)
             /I${ae_sdk}/Resources /Tc${CMAKE_SOURCE_DIR}/src/ae/pipl.r
     COMMAND ${ae_sdk}/Resources/PiPLtool.exe ${pipl}/pipl.rr ${pipl}/pipl.rrc
     COMMAND ${CMAKE_C_COMPILER} /nologo /EP /P /Fi${pipl}/pipl.rc /DMSWindows /Tc${pipl}/pipl.rrc
-    DEPENDS src/ae/pipl.r
+    DEPENDS src/ae/pipl.r src/effects/list.def
     WORKING_DIRECTORY ${pipl}
     VERBATIM)
 

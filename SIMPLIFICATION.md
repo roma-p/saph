@@ -22,12 +22,13 @@ Order: batch 1, then 2, 3, 4, 5. Tick what is done.
 
 ## Batch 2: one list of effects, named fields (C)
 
-- [ ] **One effect list.** The 16 effects are listed by hand in 7 places: `src/common/effect.h:254-270`
+- [x] **One effect list.** The 16 effects are listed by hand in 7 places: `src/common/effect.h:254-270`
   (externs), `src/effects/effects.c:6-24`, `src/ae/plugin.c:63-70` (`effects[]`), `:71-74`
   (enum), `:751-766` (`ENTRY`), `:790-807` (registration), `src/ae/pipl.r:36-51`. One X-macro
   file (`src/effects/effects.def`, `MS_EFFECT(Name, lower, ...)`), included by all of them
   (`pipl.r` already goes through the C preprocessor, `CMakeLists.txt:436`, `:467`); MS_Test
-  left out of AE by a column. A new effect: one line instead of six edits. About 70 lines.
+  left out of AE by a column. A new effect: one line instead of six edits. About 70 lines. (Done: `src/effects/list.def`;
+  it also fixed the PiPL flags of Glow, JpegDamage, Flicker and TVDamage, which vary over time.)
 - [ ] **`MsEffect` by field name.** The 17 descriptors are positional
   (`render, NULL, 0, NULL, overlay, ARRAY_SIZE(overlay), "bandpass", NULL`, e.g.
   `ms_bandpass.c:203-219`): designated initialisers plus `MS_CLIPS()`, `MS_PARAMS()`,

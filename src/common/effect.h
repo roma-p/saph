@@ -252,22 +252,9 @@ void ms_effects_release(void);
 
 // The effects.
 extern const MsEffect ms_test_effect;
-extern const MsEffect ms_bandpass_effect;
-extern const MsEffect ms_edgeawareblur_effect;
-extern const MsEffect ms_distort_effect;
-extern const MsEffect ms_mosaic_effect;
-extern const MsEffect ms_glow_effect;
-extern const MsEffect ms_edgeblur_effect;
-extern const MsEffect ms_rackdefocus_effect;
-extern const MsEffect ms_glint_effect;
-extern const MsEffect ms_glare_effect;
-extern const MsEffect ms_lensflare_effect;
-extern const MsEffect ms_jpegdamage_effect;
-extern const MsEffect ms_pixelsort_effect;
-extern const MsEffect ms_flickermatch_effect;
-extern const MsEffect ms_flickermatchcolor_effect;
-extern const MsEffect ms_flicker_effect;
-extern const MsEffect ms_tvdamage_effect;
+#define MS_EFFECT(Name, name, pipl_id, varies) extern const MsEffect ms_##name##_effect;
+#include "effects/list.def"
+#undef MS_EFFECT
 
 #ifdef __cplusplus
 }

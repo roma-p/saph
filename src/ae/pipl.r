@@ -1,9 +1,9 @@
 // PiPL resources: how After Effects finds and lists each effect (see plugin.c). Built by
 // CMakeLists.txt, through the C preprocessor first (MS_EFFECT), then on Windows Adobe's
 // PiPLtool, on macOS Apple's Rez (after the SDK's AE_General.r, which defines the PiPL
-// type). One resource per effect; the version and the flags must equal VERSION, OUT_FLAGS
-// (FLAGS: with PF_OutFlag_NON_PARAM_VARY, 0x4, for the effects that change over time by
-// themselves) and OUT_FLAGS_2 in plugin.c.
+// type). One resource per effect of effects/list.def; the version and the flags must equal
+// VERSION, OUT_FLAGS (with PF_OutFlag_NON_PARAM_VARY, 0x4, for the effects that change over
+// time by themselves: list.def's varies) and OUT_FLAGS_2 in plugin.c.
 
 #include "AEConfig.h"
 #include "AE_EffectVers.h"
@@ -14,38 +14,30 @@
 #define MS_CODE(ENTRY) CodeWin64X86 { ENTRY },
 #endif
 
-#define MS_EFFECT(ID, NAME, MATCH_NAME, ENTRY, FLAGS)                                              \
+// (one string from tokens: "MS_BandPass", "MillSaph BandPass")
+#define MS_STR(...) #__VA_ARGS__
+#define MS_STRING(...) MS_STR(__VA_ARGS__)
+// global flags without and with PF_OutFlag_NON_PARAM_VARY
+#define MS_FLAGS_0 0x02000000
+#define MS_FLAGS_1 0x02000004
+
+#define MS_EFFECT(NAME, LOWER, ID, VARIES)                                                         \
 resource 'PiPL' (ID) {                                                                             \
     {                                                                                              \
         Kind { AEEffect },                                                                         \
-        Name { NAME },                                                                             \
+        Name { MS_STRING(MS_##NAME) },                                                             \
         Category { "MillSaph" },                                                                   \
-        MS_CODE(ENTRY)                                                                             \
+        MS_CODE(MS_STRING(EffectMain_##NAME))                                                      \
         AE_PiPL_Version { 2, 0 },                                                                  \
         AE_Effect_Spec_Version { PF_PLUG_IN_VERSION, PF_PLUG_IN_SUBVERS },                         \
         AE_Effect_Version { 524289 },                                                              \
         AE_Effect_Info_Flags { 0 },                                                                \
-        AE_Effect_Global_OutFlags { FLAGS },                                                       \
+        AE_Effect_Global_OutFlags { MS_FLAGS_##VARIES },                                           \
         AE_Effect_Global_OutFlags_2 { 0x08001400 },                                                \
-        AE_Effect_Match_Name { MATCH_NAME },                                                       \
+        AE_Effect_Match_Name { MS_STRING(MillSaph NAME) },                                         \
         AE_Reserved_Info { 0 },                                                                    \
         AE_Effect_Support_URL { "" }                                                               \
     }                                                                                              \
 };
 
-MS_EFFECT(16000, "MS_BandPass", "MillSaph BandPass", "EffectMain_BandPass", 0x02000000)
-MS_EFFECT(16001, "MS_EdgeAwareBlur", "MillSaph EdgeAwareBlur", "EffectMain_EdgeAwareBlur", 0x02000000)
-MS_EFFECT(16002, "MS_Distort", "MillSaph Distort", "EffectMain_Distort", 0x02000000)
-MS_EFFECT(16003, "MS_Mosaic", "MillSaph Mosaic", "EffectMain_Mosaic", 0x02000000)
-MS_EFFECT(16004, "MS_Glow", "MillSaph Glow", "EffectMain_Glow", 0x02000000)
-MS_EFFECT(16005, "MS_EdgeBlur", "MillSaph EdgeBlur", "EffectMain_EdgeBlur", 0x02000000)
-MS_EFFECT(16006, "MS_RackDefocus", "MillSaph RackDefocus", "EffectMain_RackDefocus", 0x02000000)
-MS_EFFECT(16007, "MS_Glint", "MillSaph Glint", "EffectMain_Glint", 0x02000000)
-MS_EFFECT(16008, "MS_Glare", "MillSaph Glare", "EffectMain_Glare", 0x02000000)
-MS_EFFECT(16009, "MS_LensFlare", "MillSaph LensFlare", "EffectMain_LensFlare", 0x02000004)
-MS_EFFECT(16010, "MS_JpegDamage", "MillSaph JpegDamage", "EffectMain_JpegDamage", 0x02000000)
-MS_EFFECT(16011, "MS_PixelSort", "MillSaph PixelSort", "EffectMain_PixelSort", 0x02000000)
-MS_EFFECT(16012, "MS_FlickerMatch", "MillSaph FlickerMatch", "EffectMain_FlickerMatch", 0x02000000)
-MS_EFFECT(16013, "MS_FlickerMatchColor", "MillSaph FlickerMatchColor", "EffectMain_FlickerMatchColor", 0x02000000)
-MS_EFFECT(16014, "MS_Flicker", "MillSaph Flicker", "EffectMain_Flicker", 0x02000000)
-MS_EFFECT(16015, "MS_TVDamage", "MillSaph TVDamage", "EffectMain_TVDamage", 0x02000000)
+#include "../effects/list.def"

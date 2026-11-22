@@ -60,33 +60,16 @@ typedef struct {
     char popups[MS_MAX_PARAMS][256]; // CHOICE entries as After Effects wants them: "A|B|C"
 } AeEffect;
 
+// every effect of effects/list.def (not MS_Test)
 static AeEffect effects[] = {
-    {&ms_bandpass_effect, {{0}}},     {&ms_edgeawareblur_effect, {{0}}},
-    {&ms_distort_effect, {{0}}},      {&ms_mosaic_effect, {{0}}},
-    {&ms_glow_effect, {{0}}},         {&ms_edgeblur_effect, {{0}}},
-    {&ms_rackdefocus_effect, {{0}}},  {&ms_glint_effect, {{0}}},
-    {&ms_glare_effect, {{0}}},        {&ms_lensflare_effect, {{0}}},
-    {&ms_jpegdamage_effect, {{0}}},   {&ms_pixelsort_effect, {{0}}},
-    {&ms_flickermatch_effect, {{0}}}, {&ms_flickermatchcolor_effect, {{0}}},
-    {&ms_flicker_effect, {{0}}},      {&ms_tvdamage_effect, {{0}}},
+#define MS_EFFECT(Name, name, pipl_id, varies) {&ms_##name##_effect, {{0}}},
+#include "effects/list.def"
+#undef MS_EFFECT
 };
-enum {
-    BANDPASS,
-    EDGEAWAREBLUR,
-    DISTORT,
-    MOSAIC,
-    GLOW,
-    EDGEBLUR,
-    RACKDEFOCUS,
-    GLINT,
-    GLARE,
-    LENSFLARE,
-    JPEGDAMAGE,
-    PIXELSORT,
-    FLICKERMATCH,
-    FLICKERMATCHCOLOR,
-    FLICKER,
-    TVDAMAGE
+enum { // their slots
+#define MS_EFFECT(Name, name, pipl_id, varies) SLOT_##Name,
+#include "effects/list.def"
+#undef MS_EFFECT
 };
 
 // ---------------------------------------------------------------- parameters
@@ -773,22 +756,9 @@ static PF_Err main_entry(AeEffect *ae, PF_Cmd cmd, PF_InData *in_data, PF_OutDat
         (void)output;                                                                              \
         return main_entry(&effects[slot], cmd, in_data, out_data, params, extra);                  \
     }
-ENTRY(BandPass, BANDPASS)
-ENTRY(EdgeAwareBlur, EDGEAWAREBLUR)
-ENTRY(Distort, DISTORT)
-ENTRY(Mosaic, MOSAIC)
-ENTRY(Glow, GLOW)
-ENTRY(EdgeBlur, EDGEBLUR)
-ENTRY(RackDefocus, RACKDEFOCUS)
-ENTRY(Glint, GLINT)
-ENTRY(Glare, GLARE)
-ENTRY(LensFlare, LENSFLARE)
-ENTRY(JpegDamage, JPEGDAMAGE)
-ENTRY(PixelSort, PIXELSORT)
-ENTRY(FlickerMatch, FLICKERMATCH)
-ENTRY(FlickerMatchColor, FLICKERMATCHCOLOR)
-ENTRY(Flicker, FLICKER)
-ENTRY(TVDamage, TVDAMAGE)
+#define MS_EFFECT(Name, name, pipl_id, varies) ENTRY(Name, SLOT_##Name)
+#include "effects/list.def"
+#undef MS_EFFECT
 
 // One effect for PluginDataEntryFunction2: what the SDK's PF_REGISTER_EFFECT_EXT2 does
 // (Util/entry.h, C++ only), as an effect plug-in ('eFKT') with the reserved info it gives.
@@ -813,22 +783,10 @@ EXPORT PF_Err PluginDataEntryFunction2(PF_PluginDataPtr in_ptr, PF_PluginDataCB2
     (void)host_version;
     // name, match name (saved in projects: keep them), entry point; as in pipl.r
     static const char *const list[][3] = {
-        {"MS_BandPass", "MillSaph BandPass", "EffectMain_BandPass"},
-        {"MS_EdgeAwareBlur", "MillSaph EdgeAwareBlur", "EffectMain_EdgeAwareBlur"},
-        {"MS_Distort", "MillSaph Distort", "EffectMain_Distort"},
-        {"MS_Mosaic", "MillSaph Mosaic", "EffectMain_Mosaic"},
-        {"MS_Glow", "MillSaph Glow", "EffectMain_Glow"},
-        {"MS_EdgeBlur", "MillSaph EdgeBlur", "EffectMain_EdgeBlur"},
-        {"MS_RackDefocus", "MillSaph RackDefocus", "EffectMain_RackDefocus"},
-        {"MS_Glint", "MillSaph Glint", "EffectMain_Glint"},
-        {"MS_Glare", "MillSaph Glare", "EffectMain_Glare"},
-        {"MS_LensFlare", "MillSaph LensFlare", "EffectMain_LensFlare"},
-        {"MS_JpegDamage", "MillSaph JpegDamage", "EffectMain_JpegDamage"},
-        {"MS_PixelSort", "MillSaph PixelSort", "EffectMain_PixelSort"},
-        {"MS_FlickerMatch", "MillSaph FlickerMatch", "EffectMain_FlickerMatch"},
-        {"MS_FlickerMatchColor", "MillSaph FlickerMatchColor", "EffectMain_FlickerMatchColor"},
-        {"MS_Flicker", "MillSaph Flicker", "EffectMain_Flicker"},
-        {"MS_TVDamage", "MillSaph TVDamage", "EffectMain_TVDamage"},
+#define MS_EFFECT(Name, name, pipl_id, varies)                                                     \
+    {"MS_" #Name, "MillSaph " #Name, "EffectMain_" #Name},
+#include "effects/list.def"
+#undef MS_EFFECT
     };
     PF_Err err = PF_Err_NONE;
     for (size_t i = 0; i < ARRAY_SIZE(list) && !err; ++i)
