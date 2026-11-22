@@ -172,9 +172,19 @@ static double run_case(const Case *c, MsApi api, const float *source, float **bl
     }
     char err[256] = "";
     MsRunInfo info;
-    MsRender r = {values, connected, inputs,   width,      height,
-                  width,  height,    half ? (void *)result : (void *)output,
-                  (ptrdiff_t)width * 4, err, sizeof err, half, &info, NULL, 0, NULL, NULL};
+    MsRender r = {.values = values,
+                  .connected = connected,
+                  .inputs = inputs,
+                  .width = width,
+                  .height = height,
+                  .frame_width = width,
+                  .frame_height = height,
+                  .output = half ? (void *)result : (void *)output,
+                  .output_row = (ptrdiff_t)width * 4,
+                  .err = err,
+                  .err_size = sizeof err,
+                  .half = half,
+                  .info = &info};
     MsProfile profile = defaults[api];
     if (c->tweak)
         c->tweak(&profile);
@@ -258,8 +268,18 @@ static double timed(const MsEffect *e, const double *values, const int *connecte
                     const MsInput *inputs, float *output, MsApi api, double *first, MsApi *used,
                     char *err, size_t err_size) {
     MsRunInfo info;
-    MsRender r = {values, connected, inputs,   width, height, width, height, output,
-                  (ptrdiff_t)width * 4, err, err_size, 0, &info, NULL, 0, NULL, NULL};
+    MsRender r = {.values = values,
+                  .connected = connected,
+                  .inputs = inputs,
+                  .width = width,
+                  .height = height,
+                  .frame_width = width,
+                  .frame_height = height,
+                  .output = output,
+                  .output_row = (ptrdiff_t)width * 4,
+                  .err = err,
+                  .err_size = err_size,
+                  .info = &info};
     ms_api_only(api);
     const double best = time_renders(e, &r, first);
     *used = info.api;

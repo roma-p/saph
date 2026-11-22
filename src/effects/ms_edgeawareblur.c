@@ -478,19 +478,14 @@ static const MsOverlay overlay[] = {
 };
 
 const MsEffect ms_edgeawareblur_effect = {
-    MS_ID("EdgeAwareBlur"),
-    "MS_EdgeAwareBlur",
-    "Blurs regions of similar color while preserving edges between regions of different colors.",
-    clips,
-    ARRAY_SIZE(clips),
-    params,
-    ARRAY_SIZE(params),
-    render,
-    identity,
-    0,
-    NULL,
-    overlay,
-    ARRAY_SIZE(overlay),
-    "edgeawareblur", // presets (common/preset.h)
-    NULL,            // not varying with its settings
+    .id = MS_ID("EdgeAwareBlur"),
+    .label = "MS_EdgeAwareBlur",
+    .description = "Blurs regions of similar color while preserving edges between regions of "
+                   "different colors.",
+    MS_CLIPS(clips),
+    MS_PARAMS(params),
+    .render = render,
+    .identity = identity,
+    MS_OVERLAYS(overlay),
+    .presets = "edgeawareblur",
 };

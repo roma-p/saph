@@ -389,19 +389,14 @@ static const MsOverlay overlay[] = {
 };
 
 const MsEffect ms_glow_effect = {
-    MS_ID("Glow"),
-    "MS_Glow",
-    "Glows from the parts of the image brighter than a threshold.",
-    clips,
-    ARRAY_SIZE(clips),
-    params,
-    ARRAY_SIZE(params),
-    render,
-    identity,
-    0,
-    NULL,
-    overlay,
-    ARRAY_SIZE(overlay),
-    "glow", // presets (common/preset.h)
-    varying,
+    .id = MS_ID("Glow"),
+    .label = "MS_Glow",
+    .description = "Glows from the parts of the image brighter than a threshold.",
+    MS_CLIPS(clips),
+    MS_PARAMS(params),
+    .render = render,
+    .identity = identity,
+    MS_OVERLAYS(overlay),
+    .presets = "glow",
+    .varying = varying,
 };

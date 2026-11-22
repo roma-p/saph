@@ -217,19 +217,13 @@ static int identity(const double *v, const int *connected) {
 }
 
 const MsEffect ms_mosaic_effect = {
-    MS_ID("Mosaic"),
-    "MS_Mosaic",
-    "Turns the image into a grid of flat cells, each the colour of the image at its centre.",
-    clips,
-    ARRAY_SIZE(clips),
-    params,
-    ARRAY_SIZE(params),
-    render,
-    identity,
-    0,
-    NULL,
-    NULL,
-    0,
-    "mosaic", // presets (common/preset.h)
-    NULL,     // not varying with its settings
+    .id = MS_ID("Mosaic"),
+    .label = "MS_Mosaic",
+    .description =
+        "Turns the image into a grid of flat cells, each the colour of the image at its centre.",
+    MS_CLIPS(clips),
+    MS_PARAMS(params),
+    .render = render,
+    .identity = identity,
+    .presets = "mosaic",
 };

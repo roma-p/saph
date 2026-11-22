@@ -147,39 +147,29 @@ static const MsOverlay overlay[] = {
 };
 
 const MsEffect ms_flickermatch_effect = {
-    MS_ID("FlickerMatch"),
-    "MS_FlickerMatch",
-    "Gives the Source the flicker of the Match input: scales it by the Match input's level in "
-    "a rectangle over Match Level, frame by frame.",
-    clips,
-    ARRAY_SIZE(clips),
-    level_params,
-    ARRAY_SIZE(level_params),
-    render_level,
-    identity,
-    0,
-    NULL,
-    overlay,
-    ARRAY_SIZE(overlay),
-    "flickermatch", // presets (common/preset.h)
-    NULL,           // not varying with its settings
+    .id = MS_ID("FlickerMatch"),
+    .label = "MS_FlickerMatch",
+    .description =
+        "Gives the Source the flicker of the Match input: scales it by the Match input's level in "
+        "a rectangle over Match Level, frame by frame.",
+    MS_CLIPS(clips),
+    MS_PARAMS(level_params),
+    .render = render_level,
+    .identity = identity,
+    MS_OVERLAYS(overlay),
+    .presets = "flickermatch",
 };
 
 const MsEffect ms_flickermatchcolor_effect = {
-    MS_ID("FlickerMatchColor"),
-    "MS_FlickerMatchColor",
-    "Gives the Source the colour flicker of the Match input: scales each channel by the Match "
-    "input's mean in a rectangle over Match Color, frame by frame.",
-    clips,
-    ARRAY_SIZE(clips),
-    color_params,
-    ARRAY_SIZE(color_params),
-    render_color,
-    identity,
-    0,
-    NULL,
-    overlay,
-    ARRAY_SIZE(overlay),
-    "flickermatchcolor", // presets (common/preset.h)
-    NULL,                // not varying with its settings
+    .id = MS_ID("FlickerMatchColor"),
+    .label = "MS_FlickerMatchColor",
+    .description =
+        "Gives the Source the colour flicker of the Match input: scales each channel by the Match "
+        "input's mean in a rectangle over Match Color, frame by frame.",
+    MS_CLIPS(clips),
+    MS_PARAMS(color_params),
+    .render = render_color,
+    .identity = identity,
+    MS_OVERLAYS(overlay),
+    .presets = "flickermatchcolor",
 };

@@ -410,19 +410,13 @@ static const MsOverlay overlay[] = {
 };
 
 const MsEffect ms_glare_effect = {
-    MS_ID("Glare"),
-    "MS_Glare",
-    "A glare (glows, rays, sectors, rings) on each bright spot of the image.",
-    clips,
-    ARRAY_SIZE(clips),
-    params,
-    ARRAY_SIZE(params),
-    render,
-    identity,
-    0,
-    NULL,
-    overlay,
-    ARRAY_SIZE(overlay),
-    "glare", // presets (common/preset.h)
-    NULL,    // not varying with its settings
+    .id = MS_ID("Glare"),
+    .label = "MS_Glare",
+    .description = "A glare (glows, rays, sectors, rings) on each bright spot of the image.",
+    MS_CLIPS(clips),
+    MS_PARAMS(params),
+    .render = render,
+    .identity = identity,
+    MS_OVERLAYS(overlay),
+    .presets = "glare",
 };

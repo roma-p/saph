@@ -340,19 +340,12 @@ static const MsOverlay overlay[] = {
 };
 
 const MsEffect ms_glint_effect = {
-    MS_ID("Glint"),
-    "MS_Glint",
-    "Star-shaped rays from the parts of the image brighter than a threshold.",
-    clips,
-    ARRAY_SIZE(clips),
-    params,
-    ARRAY_SIZE(params),
-    render,
-    NULL,
-    0,
-    NULL,
-    overlay,
-    ARRAY_SIZE(overlay),
-    "glint", // presets (common/preset.h)
-    NULL,    // not varying with its settings
+    .id = MS_ID("Glint"),
+    .label = "MS_Glint",
+    .description = "Star-shaped rays from the parts of the image brighter than a threshold.",
+    MS_CLIPS(clips),
+    MS_PARAMS(params),
+    .render = render,
+    MS_OVERLAYS(overlay),
+    .presets = "glint",
 };

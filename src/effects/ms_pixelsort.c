@@ -447,20 +447,14 @@ static int identity(const double *values, const int *connected) {
 }
 
 const MsEffect ms_pixelsort_effect = {
-    MS_ID("PixelSort"),
-    "MS_PixelSort",
-    "Sorts the pixels by brightness (or hue, a channel...) along lines, rays or rings, in the "
-    "runs a threshold leaves.",
-    clips,
-    ARRAY_SIZE(clips),
-    params,
-    ARRAY_SIZE(params),
-    render,
-    identity,
-    0,
-    NULL,
-    NULL,
-    0,
-    "pixelsort", // presets (common/preset.h)
-    NULL,        // not varying with its settings
+    .id = MS_ID("PixelSort"),
+    .label = "MS_PixelSort",
+    .description =
+        "Sorts the pixels by brightness (or hue, a channel...) along lines, rays or rings, in the "
+        "runs a threshold leaves.",
+    MS_CLIPS(clips),
+    MS_PARAMS(params),
+    .render = render,
+    .identity = identity,
+    .presets = "pixelsort",
 };

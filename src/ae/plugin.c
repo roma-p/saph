@@ -556,23 +556,21 @@ static PF_Err render(const MsEffect *e, PF_InData *in_data, PF_OutData *out_data
         err = read_values(e, in_data, frame, frame_width, frame_height, values, texts);
     if (ok && !err) {
         RenderCaller caller = {e, in_data, frame_width, frame_height};
-        const MsRender r = {values,
-                            connected,
-                            inputs,
-                            area.width,
-                            area.height,
-                            frame_width,
-                            frame_height,
-                            result,
-                            (ptrdiff_t)area.width * 4,
-                            message,
-                            sizeof message,
-                            0,
-                            NULL,
-                            (const char *const *)texts,
-                            frame,
-                            values_at,
-                            &caller};
+        const MsRender r = {.values = values,
+                            .connected = connected,
+                            .inputs = inputs,
+                            .width = area.width,
+                            .height = area.height,
+                            .frame_width = frame_width,
+                            .frame_height = frame_height,
+                            .output = result,
+                            .output_row = (ptrdiff_t)area.width * 4,
+                            .err = message,
+                            .err_size = sizeof message,
+                            .texts = (const char *const *)texts,
+                            .time = frame,
+                            .values_at = values_at,
+                            .caller = &caller};
         if (e->render(&r)) {
             unpack(result, area, output, depth);
         } else {

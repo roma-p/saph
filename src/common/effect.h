@@ -228,6 +228,12 @@ typedef struct {
     int (*varying)(const double *values);
 } MsEffect;
 
+// An MsEffect's tables with their counts (ARRAY_SIZE: common/defines.h), by field name with the
+// others: {.id = MS_ID("X"), .label = "MS_X", MS_CLIPS(clips), MS_PARAMS(params), ...}.
+#define MS_CLIPS(a) .clips = (a), .clip_count = ARRAY_SIZE(a)
+#define MS_PARAMS(a) .params = (a), .param_count = ARRAY_SIZE(a)
+#define MS_OVERLAYS(a) .overlay = (a), .overlay_count = ARRAY_SIZE(a)
+
 // Shape colours of the viewer overlays.
 #define MS_OVERLAY_ORANGE {0.9f, 0.4f, 0.1f}
 #define MS_OVERLAY_WHITE {1.0f, 1.0f, 1.0f}

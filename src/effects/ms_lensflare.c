@@ -1021,20 +1021,17 @@ static const MsOverlay overlay[] = {
 };
 
 const MsEffect ms_lensflare_effect = {
-    MS_ID("LensFlare"),
-    "MS_LensFlare",
-    "A lens flare: glows, rays, rings and ghosts along the line from the pivot through the "
-    "hotspot.",
-    clips,
-    ARRAY_SIZE(clips),
-    params,
-    ARRAY_SIZE(params),
-    render,
-    identity,
-    1, // the Atmosphere changes over time
-    release,
-    overlay,
-    ARRAY_SIZE(overlay),
-    "lensflare", // presets (common/preset.h)
-    NULL,        // not varying with its settings
+    .id = MS_ID("LensFlare"),
+    .label = "MS_LensFlare",
+    .description =
+        "A lens flare: glows, rays, rings and ghosts along the line from the pivot through the "
+        "hotspot.",
+    MS_CLIPS(clips),
+    MS_PARAMS(params),
+    .render = render,
+    .identity = identity,
+    .frame_varying = 1, // the Atmosphere changes over time
+    .release = release,
+    MS_OVERLAYS(overlay),
+    .presets = "lensflare",
 };

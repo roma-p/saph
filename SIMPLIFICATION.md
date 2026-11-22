@@ -29,11 +29,11 @@ Order: batch 1, then 2, 3, 4, 5. Tick what is done.
   (`pipl.r` already goes through the C preprocessor, `CMakeLists.txt:436`, `:467`); MS_Test
   left out of AE by a column. A new effect: one line instead of six edits. About 70 lines. (Done: `src/effects/list.def`;
   it also fixed the PiPL flags of Glow, JpegDamage, Flicker and TVDamage, which vary over time.)
-- [ ] **`MsEffect` by field name.** The 17 descriptors are positional
+- [x] **`MsEffect` by field name.** The 17 descriptors are positional
   (`render, NULL, 0, NULL, overlay, ARRAY_SIZE(overlay), "bandpass", NULL`, e.g.
   `ms_bandpass.c:203-219`): designated initialisers plus `MS_CLIPS()`, `MS_PARAMS()`,
   `MS_OVERLAYS()` (pointer and count). About 110 lines.
-- [ ] **`MsRender` by field name** in `src/ae/plugin.c:562-567` and `tools/perf/bench.c:175-177`,
+- [x] **`MsRender` by field name** in `src/ae/plugin.c:562-567` and `tools/perf/bench.c:175-177`,
   `:261-262` (18 fields by position; `src/ofx/plugin.c:333-340` already names them). Safety only.
 
 ## Batch 3: the effects' render code (C)

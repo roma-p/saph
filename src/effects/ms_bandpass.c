@@ -201,19 +201,13 @@ static const MsOverlay overlay[] = {
 };
 
 const MsEffect ms_bandpass_effect = {
-    MS_ID("BandPass"),
-    "MS_BandPass",
-    "Band-pass filter: the difference of two blurs, scaled and offset by a gray value.",
-    clips,
-    ARRAY_SIZE(clips),
-    params,
-    ARRAY_SIZE(params),
-    render,
-    NULL,
-    0,
-    NULL,
-    overlay,
-    ARRAY_SIZE(overlay),
-    "bandpass", // presets (common/preset.h)
-    NULL,       // not varying with its settings
+    .id = MS_ID("BandPass"),
+    .label = "MS_BandPass",
+    .description =
+        "Band-pass filter: the difference of two blurs, scaled and offset by a gray value.",
+    MS_CLIPS(clips),
+    MS_PARAMS(params),
+    .render = render,
+    MS_OVERLAYS(overlay),
+    .presets = "bandpass",
 };

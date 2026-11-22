@@ -163,20 +163,15 @@ static int identity(const double *v, const int *connected) {
 }
 
 const MsEffect ms_flicker_effect = {
-    MS_ID("Flicker"),
-    "MS_Flicker",
-    "Makes the image flicker over time: its brightness and colours change randomly, or as a "
-    "wave, from frame to frame.",
-    clips,
-    ARRAY_SIZE(clips),
-    params,
-    ARRAY_SIZE(params),
-    render,
-    identity,
-    1,
-    NULL,
-    NULL,
-    0,
-    "flicker", // presets (common/preset.h)
-    NULL,      // not varying with its settings
+    .id = MS_ID("Flicker"),
+    .label = "MS_Flicker",
+    .description =
+        "Makes the image flicker over time: its brightness and colours change randomly, or as a "
+        "wave, from frame to frame.",
+    MS_CLIPS(clips),
+    MS_PARAMS(params),
+    .render = render,
+    .identity = identity,
+    .frame_varying = 1,
+    .presets = "flicker",
 };

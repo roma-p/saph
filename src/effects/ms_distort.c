@@ -389,19 +389,12 @@ static int render(const MsRender *r) {
 }
 
 const MsEffect ms_distort_effect = {
-    MS_ID("Distort"),
-    "MS_Distort",
-    "Warps the Source by the slopes of the Lens input, like looking through textured glass.",
-    clips,
-    ARRAY_SIZE(clips),
-    params,
-    ARRAY_SIZE(params),
-    render,
-    NULL,
-    0,
-    NULL,
-    NULL,
-    0,
-    "distort", // presets (common/preset.h)
-    NULL,      // not varying with its settings
+    .id = MS_ID("Distort"),
+    .label = "MS_Distort",
+    .description =
+        "Warps the Source by the slopes of the Lens input, like looking through textured glass.",
+    MS_CLIPS(clips),
+    MS_PARAMS(params),
+    .render = render,
+    .presets = "distort",
 };

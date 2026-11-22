@@ -175,19 +175,13 @@ static const MsOverlay overlay[] = {
 };
 
 const MsEffect ms_edgeblur_effect = {
-    MS_ID("EdgeBlur"),
-    "MS_EdgeBlur",
-    "Blurs the image along its edges.",
-    clips,
-    ARRAY_SIZE(clips),
-    params,
-    ARRAY_SIZE(params),
-    render,
-    identity,
-    0,
-    NULL,
-    overlay,
-    ARRAY_SIZE(overlay),
-    "edgeblur", // presets (common/preset.h)
-    NULL,       // not varying with its settings
+    .id = MS_ID("EdgeBlur"),
+    .label = "MS_EdgeBlur",
+    .description = "Blurs the image along its edges.",
+    MS_CLIPS(clips),
+    MS_PARAMS(params),
+    .render = render,
+    .identity = identity,
+    MS_OVERLAYS(overlay),
+    .presets = "edgeblur",
 };

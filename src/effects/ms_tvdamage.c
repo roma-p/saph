@@ -566,20 +566,14 @@ static int render(const MsRender *r) {
 }
 
 const MsEffect ms_tvdamage_effect = {
-    MS_ID("TVDamage"),
-    "MS_TVDamage",
-    "A damaged TV picture: static, interference, ghosts, rolling and sliding holds, bars, "
-    "stripes, scanlines, vignette, colour, fish eye and turning off.",
-    clips,
-    ARRAY_SIZE(clips),
-    params,
-    ARRAY_SIZE(params),
-    render,
-    NULL,
-    1,
-    NULL,
-    NULL,
-    0,
-    "tvdamage", // presets (common/preset.h)
-    NULL,       // not varying with its settings
+    .id = MS_ID("TVDamage"),
+    .label = "MS_TVDamage",
+    .description =
+        "A damaged TV picture: static, interference, ghosts, rolling and sliding holds, bars, "
+        "stripes, scanlines, vignette, colour, fish eye and turning off.",
+    MS_CLIPS(clips),
+    MS_PARAMS(params),
+    .render = render,
+    .frame_varying = 1,
+    .presets = "tvdamage",
 };

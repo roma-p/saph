@@ -321,19 +321,13 @@ static int render(const MsRender *r) {
 }
 
 const MsEffect ms_jpegdamage_effect = {
-    MS_ID("JpegDamage"),
-    "MS_JpegDamage",
-    "Damages the image as a low-quality JPEG file does: blocks, lost detail, blurred colours.",
-    clips,
-    ARRAY_SIZE(clips),
-    params,
-    ARRAY_SIZE(params),
-    render,
-    NULL,
-    1, // the errors change over time (Jitter Frames)
-    NULL,
-    NULL,
-    0,
-    "jpegdamage", // presets (common/preset.h)
-    NULL,         // not varying with its settings
+    .id = MS_ID("JpegDamage"),
+    .label = "MS_JpegDamage",
+    .description =
+        "Damages the image as a low-quality JPEG file does: blocks, lost detail, blurred colours.",
+    MS_CLIPS(clips),
+    MS_PARAMS(params),
+    .render = render,
+    .frame_varying = 1, // the errors change over time (Jitter Frames)
+    .presets = "jpegdamage",
 };
