@@ -337,14 +337,12 @@ if(APPLE)
   add_custom_command(TARGET MillSaph POST_BUILD COMMAND codesign --force --sign - ${bundle})
 endif()
 
-# ---------------------------------------------------------------- benchmark
+# ---------------------------------------------------------------- editor
 
-# Every effect on every API of this machine (tools/perf/bench.c, run by tools/perf/collect.sh).
 # MillSaph's lens editor (src/editor): MS_LensFlare's Edit Lens runs it, so it is built next
 # to the plugin's binary in the bundle. Dear ImGui with its GLFW and OpenGL 3 backends, GLFW
 # built here (X11 on Linux).
 if(MILLSAPH_EDITOR)
-  enable_language(CXX)
   set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
   set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
   set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
@@ -352,37 +350,32 @@ if(MILLSAPH_EDITOR)
   set(GLFW_BUILD_WAYLAND OFF CACHE BOOL "" FORCE)
   add_subdirectory(${third_party}/glfw ${CMAKE_BINARY_DIR}/glfw EXCLUDE_FROM_ALL)
   set(imgui ${third_party}/imgui)
-  add_executable(millsaph_lens_editor src/editor/main.cpp src/editor/lens.cpp src/editor/gradient.cpp src/editor/preview.cpp src/editor/window.cpp
-    ${imgui}/imgui.cpp ${imgui}/imgui_draw.cpp ${imgui}/imgui_tables.cpp ${imgui}/imgui_widgets.cpp
-    ${imgui}/backends/imgui_impl_glfw.cpp ${imgui}/backends/imgui_impl_opengl3.cpp)
-  set_target_properties(millsaph_lens_editor PROPERTIES CXX_STANDARD 17
-    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/MillSaph.ofx.bundle/Contents/${platform}
-    RUNTIME_OUTPUT_DIRECTORY_RELEASE ${CMAKE_BINARY_DIR}/MillSaph.ofx.bundle/Contents/${platform})
-  target_include_directories(millsaph_lens_editor PRIVATE ${imgui} ${imgui}/backends ${third_party}/json)
-  find_package(OpenGL REQUIRED)
-  target_link_libraries(millsaph_lens_editor PRIVATE millsaph_core glfw OpenGL::GL)
+  # A window program of src/editor (window.cpp) in the bundle, next to the plugin; signed on
+  # macOS, as the bundle it is in (codesign refuses a bundle with unsigned code).
+  function(millsaph_bundle_tool name)
+    add_executable(${name} ${ARGN} src/editor/window.cpp
+      ${imgui}/imgui.cpp ${imgui}/imgui_draw.cpp ${imgui}/imgui_tables.cpp ${imgui}/imgui_widgets.cpp
+      ${imgui}/backends/imgui_impl_glfw.cpp ${imgui}/backends/imgui_impl_opengl3.cpp)
+    set_target_properties(${name} PROPERTIES CXX_STANDARD 17
+      RUNTIME_OUTPUT_DIRECTORY ${bundle}/Contents/${platform}
+      RUNTIME_OUTPUT_DIRECTORY_RELEASE ${bundle}/Contents/${platform})
+    target_include_directories(${name} PRIVATE ${imgui} ${imgui}/backends ${third_party}/json)
+    target_link_libraries(${name} PRIVATE glfw OpenGL::GL)
+    add_dependencies(MillSaph ${name})
+    if(APPLE)
+      add_custom_command(TARGET ${name} POST_BUILD COMMAND codesign --force --sign - $<TARGET_FILE:${name}>)
+    endif()
+  endfunction()
+  millsaph_bundle_tool(millsaph_lens_editor src/editor/main.cpp src/editor/lens.cpp
+    src/editor/gradient.cpp src/editor/preview.cpp)
+  target_link_libraries(millsaph_lens_editor PRIVATE millsaph_core)
   if(NOT WIN32 AND NOT APPLE)
     target_link_libraries(millsaph_lens_editor PRIVATE m)
   endif()
-  add_dependencies(MillSaph millsaph_lens_editor)
-
   # The preset window (src/editor/browser_main.cpp): every effect's Load Preset runs it
-  # (common/preset.h), next to the plugin. stb_image reads the thumbnails.
-  add_executable(millsaph_preset_browser src/editor/browser_main.cpp src/editor/window.cpp
-    ${imgui}/imgui.cpp ${imgui}/imgui_draw.cpp ${imgui}/imgui_tables.cpp ${imgui}/imgui_widgets.cpp
-    ${imgui}/backends/imgui_impl_glfw.cpp ${imgui}/backends/imgui_impl_opengl3.cpp)
-  set_target_properties(millsaph_preset_browser PROPERTIES CXX_STANDARD 17
-    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/MillSaph.ofx.bundle/Contents/${platform}
-    RUNTIME_OUTPUT_DIRECTORY_RELEASE ${CMAKE_BINARY_DIR}/MillSaph.ofx.bundle/Contents/${platform})
-  target_include_directories(millsaph_preset_browser PRIVATE ${imgui} ${imgui}/backends
-    ${third_party}/json ${third_party}/stb)
-  target_link_libraries(millsaph_preset_browser PRIVATE glfw OpenGL::GL)
-  add_dependencies(MillSaph millsaph_preset_browser)
-  if(APPLE) # signed, as the bundle they are in (codesign refuses a bundle with unsigned code)
-    foreach(tool millsaph_lens_editor millsaph_preset_browser)
-      add_custom_command(TARGET ${tool} POST_BUILD COMMAND codesign --force --sign - $<TARGET_FILE:${tool}>)
-    endforeach()
-  endif()
+  # (common/preset.h). stb_image reads the thumbnails.
+  millsaph_bundle_tool(millsaph_preset_browser src/editor/browser_main.cpp)
+  target_include_directories(millsaph_preset_browser PRIVATE ${third_party}/stb)
 endif()
 
 # The presets (presets/<effect>/*.json, common/preset.h) in the bundle's Contents/Resources,
@@ -412,6 +405,9 @@ if(NOT WIN32)
   set_target_properties(test_host PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 endif()
 
+# ---------------------------------------------------------------- benchmark
+
+# Every effect on every API of this machine (tools/perf/bench.c, run by tools/perf/collect.sh).
 add_executable(millsaph_bench tools/perf/bench.c tools/perf/images.c tools/perf/transfer.c)
 target_link_libraries(millsaph_bench PRIVATE millsaph_core)
 if(NOT WIN32)

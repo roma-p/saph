@@ -169,11 +169,11 @@ is already well factored.
   in `common/effect.h`. About 25 lines.
 - [ ] **OFX entry points** (`ofx/plugin.c:542-576`): 32 by hand twice, and their names: one
   `MS_REPEAT32()`. About 15 lines.
-- [ ] **CMake**: the editor and browser targets (355-386) repeat ImGui's sources, folders and
+- [x] **CMake**: the editor and browser targets (355-386) repeat ImGui's sources, folders and
   signing: `millsaph_bundle_tool()`; `${bundle}` instead of the path (359-360, 375-376);
   `find_package(OpenGL)` twice (322, 362), `enable_language(CXX)` twice (57, 347); the
   "benchmark" heading (340-342) is above the editor; AE's "copy the editor" block twice
-  (454-458, 487-491). About 25 lines.
+  (454-458, 487-491). About 25 lines. (Done but AE's two copies: other folder, other system.)
 - [ ] **`tools/perf/bench.c`**: the 145 cases (619-763) in a text file like `test_cases.txt`;
   worst / mean difference twice (297-300, 798-803); size arguments parsed twice (510-515,
   598-603).
