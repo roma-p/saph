@@ -166,7 +166,12 @@ class GlareSpots : public Generator<GlareSpots> {
     Output<Buffer<float, 3>> impulses{"impulses"};
 
     void generate() {
-        const bool gpu = get_target().has_gpu_feature();
+        // Halide has no atomic updates in Metal and Direct3D 12 code: there the sums and
+        // impulses run on the CPU (Halide copies the images to and from the GPU around this
+        // kernel).
+        const Target t = get_target();
+        const bool gpu = t.has_gpu_feature() && !t.has_feature(Target::Metal) &&
+                         !t.has_feature(Target::D3D12Compute);
         Expr w = labels.width(), h = labels.height();
         // Each region's sums, at its first pixel: colour (0..2), weight (3), weighted offsets
         // from that pixel (4, 5: kept small for the floats). First summed along each row's

@@ -693,7 +693,8 @@ static PF_Err user_changed_param(const MsEffect *e, PF_InData *in_data, PF_OutDa
     if (i < 0 || e->params[i].type != MS_PARAM_BUTTON || !e->params[i].press || !params)
         return PF_Err_NONE;
     AeHost data = {e, in_data, params, NULL};
-    MsHost host = {host_get_text, host_set_text, host_get_value, host_set_value, &data};
+    MsHost host = {host_get_text, host_set_text, host_get_value, host_set_value, &data,
+                   NULL}; // (the frame's size: unknown)
     char message[256] = "";
     if (!e->params[i].press(&host, message, sizeof message)) {
         snprintf(out_data->return_msg, sizeof out_data->return_msg, "%s: %s", e->label, message);

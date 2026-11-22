@@ -49,7 +49,10 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   # statically (with gcc-toolset-12 or newer), the generator runs there.
   find_package(Halide 21 REQUIRED CONFIG COMPONENTS static PATHS ${third_party}/halide NO_DEFAULT_PATH)
 else()
-  find_package(Halide 21 REQUIRED CONFIG PATHS ${third_party}/halide NO_DEFAULT_PATH)
+  # The shared library (it carries LLVM's own dependencies), named: without a component Halide
+  # follows BUILD_SHARED_LIBS, which GLFW (src/editor) leaves OFF in the cache after the first
+  # configure, and the static library would then need zlib.
+  find_package(Halide 21 REQUIRED CONFIG COMPONENTS shared PATHS ${third_party}/halide NO_DEFAULT_PATH)
 endif()
 enable_language(CXX)
 set(CMAKE_CXX_STANDARD 17)
@@ -375,6 +378,11 @@ if(MILLSAPH_EDITOR)
     ${third_party}/json ${third_party}/stb)
   target_link_libraries(millsaph_preset_browser PRIVATE glfw OpenGL::GL)
   add_dependencies(MillSaph millsaph_preset_browser)
+  if(APPLE) # signed, as the bundle they are in (codesign refuses a bundle with unsigned code)
+    foreach(tool millsaph_lens_editor millsaph_preset_browser)
+      add_custom_command(TARGET ${tool} POST_BUILD COMMAND codesign --force --sign - $<TARGET_FILE:${tool}>)
+    endforeach()
+  endif()
 endif()
 
 # The presets (presets/<effect>/*.json, common/preset.h) in the bundle's Contents/Resources,
