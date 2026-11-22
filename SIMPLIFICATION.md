@@ -146,11 +146,13 @@ is already well factored.
   `editor/window.{h,cpp}` (`run_window`, `screenshot`, `read_file`, `style`, `fonts`). About 90 lines.
   (Done: `window::run` with the programs' hooks, `screenshot`, `read_file`; each keeps its look
   (the browser ImGui's dark one). Both programs' --screenshot the same pixel for pixel.)
-- [ ] **`editor/main.cpp` (1787 lines)**: tree and selection (118-352) to `tree.cpp`, properties
+- [x] **`editor/main.cpp` (1787 lines)**: tree and selection (118-352) to `tree.cpp`, properties
   (654-1156) to `properties.cpp`; "New lens" twice (1373-1376, 1431-1434), "Save or Save As"
   three times (1381-1385, 1443-1447, 1557): `new_lens()`, `save_or_ask()`;
   `open_file_dialog(app, 1|2|3)`: an enum; `load_presets` (1260-1263) re-reads a file
-  inline instead of `read_file`. About 40 lines.
+  inline instead of `read_file`. About 40 lines. (Done: `app.h` (App and what the files share),
+  `changes.cpp`, `properties.cpp`, main.cpp 934 lines; the same screenshots with four
+  selections. The repeated actions and the enum left.)
 - [x] **`test_host` built three ways**: CMake (`CMakeLists.txt:408-413`), and by hand with `cc`
   in `tools/perf/perf.sh:23-24` and `tools/sanitize.sh:19-23`: use `build/test_host`
   (CMake's sanitizer flags already apply to it).

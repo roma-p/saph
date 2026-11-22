@@ -366,8 +366,8 @@ if(MILLSAPH_EDITOR)
       add_custom_command(TARGET ${name} POST_BUILD COMMAND codesign --force --sign - $<TARGET_FILE:${name}>)
     endif()
   endfunction()
-  millsaph_bundle_tool(millsaph_lens_editor src/editor/main.cpp src/editor/lens.cpp
-    src/editor/gradient.cpp src/editor/preview.cpp)
+  millsaph_bundle_tool(millsaph_lens_editor src/editor/main.cpp src/editor/changes.cpp
+    src/editor/properties.cpp src/editor/lens.cpp src/editor/gradient.cpp src/editor/preview.cpp)
   target_link_libraries(millsaph_lens_editor PRIVATE millsaph_core)
   if(NOT WIN32 AND NOT APPLE)
     target_link_libraries(millsaph_lens_editor PRIVATE m)
