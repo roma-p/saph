@@ -570,7 +570,9 @@ static void sweep_images(Sweep *s, const char *only, float *source, float *other
                 char setting[256], what[64];
                 if (i >= 0) {
                     int connected[MS_MAX_CLIPS] = {1};
-                    snprintf(setting, sizeof setting, "%s%simage=%s", mode_setting, space, name);
+                    // (the names: at most 63 characters, source_images)
+                    snprintf(setting, sizeof setting, "%s%simage=%.63s", mode_setting, space,
+                             name);
                     sweep_one(s, base, connected, mode, "image", name, setting);
                     continue;
                 }
