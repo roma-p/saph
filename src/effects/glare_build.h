@@ -24,7 +24,7 @@ typedef struct GlareBuilder {
     double last_r;
     int as_shadow;
     double shadow_r, shadow_x, shadow_y;
-    int images; // Lens Flare: the lens's "images" (-1: none)
+    int images;               // Lens Flare: the lens's "images" (-1: none)
     MsLensTextures *textures; // Lens Flare: the generated textures (NULL: none)
     // Glare: a style of the reference's renderer 8 or later ("renderer_version"): the elements'
     // stretch (but the rays') along their rotation (GLARE_TURNED_FRAME 2)
@@ -76,8 +76,7 @@ void ms_lens_texture_noise(const GlareBuilder *b, int e, float *row, double radi
 void ms_lens_streaks(const GlareBuilder *b, int e, float *row);
 // shift_edge (`stop`: the last stop's radius, a fraction of `R`) and, for a polar flare, its
 // radius noise and noise_brightness;
-void ms_lens_shift_edge(const GlareBuilder *b, int e, float *row, double stop, double R,
-                        int polar);
+void ms_lens_shift_edge(const GlareBuilder *b, int e, float *row, double stop, double R, int polar);
 void ms_lens_polar_noises(const GlareBuilder *b, int e, float *row);
 // its image and its shadow, once its row (`owner`) is added;
 void ms_lens_image(GlareBuilder *b, int e, float *row);

@@ -12,6 +12,7 @@
 
 #include "common/defines.h"
 #include "common/effect.h"
+#include "effects/input.h"
 #include "engine/engine.h"
 
 // Inputs: clip, label in the host, value where there is no image, optional, mask.
@@ -92,14 +93,7 @@ static const MsParam params[] = {
                     .min = 0.0,
                     .max = MS_UNBOUNDED,
                     .display_max = 5.0},
-    [SEED] = {.type = MS_PARAM_DOUBLE,
-              .name = "seed",
-              .label = "Seed",
-              .hint = "Another random flicker.",
-              .def = 0.123,
-              .min = 0.0,
-              .max = MS_UNBOUNDED,
-              .display_max = 5.0},
+    MS_RELATIVE(SEED, "seed", "Seed", "Another random flicker.", 0.123),
 };
 
 // The noise's lattice points per unit of Rand Freq x t / 24 (sets how fast it changes, as
@@ -128,10 +122,9 @@ static int run(MsApi api, void *user) {
 
 static int render(const MsRender *r) {
     const double *v = r->values;
-    const int w = r->width, h = r->height;
     MsImage source, output;
-    ms_image_rgba(&source, r->inputs[SOURCE].pixels, r->inputs[SOURCE].row, r->half, w, h);
-    ms_image_rgba(&output, r->output, r->output_row, r->half, w, h);
+    ms_input_image(&source, r, SOURCE);
+    ms_output_image(&output, r);
     // Where the noise and the wave are at this frame, in double (long sequences); the cell
     // kept in the hash's range.
     const double at = fmax(v[RAND_FREQ], 0.0) * r->time / 24.0 * NOISE_LATTICE;
@@ -163,20 +156,15 @@ static int identity(const double *v, const int *connected) {
 }
 
 const MsEffect ms_flicker_effect = {
-    MS_ID("Flicker"),
-    "MS_Flicker",
-    "Makes the image flicker over time: its brightness and colours change randomly, or as a "
-    "wave, from frame to frame.",
-    clips,
-    ARRAY_SIZE(clips),
-    params,
-    ARRAY_SIZE(params),
-    render,
-    identity,
-    1,
-    NULL,
-    NULL,
-    0,
-    "flicker", // presets (common/preset.h)
-    NULL, // not varying with its settings
+    .id = MS_ID("Flicker"),
+    .label = "MS_Flicker",
+    .description =
+        "Makes the image flicker over time: its brightness and colours change randomly, or as a "
+        "wave, from frame to frame.",
+    MS_CLIPS(clips),
+    MS_PARAMS(params),
+    .render = render,
+    .identity = identity,
+    .frame_varying = 1,
+    .presets = "flicker",
 };

@@ -21,8 +21,10 @@ import sys
 
 import numpy as np
 
+sys.dont_write_bytecode = True  # (no __pycache__ in the repo)
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import exr  # noqa: E402
+import jobfile  # noqa: E402
 
 
 def probes(w, h):
@@ -59,13 +61,12 @@ def probes(w, h):
 
 
 def main():
-    args = sys.argv[1:]
-    w, h = 256, 128
-    if "--size" in args:
-        i = args.index("--size")
-        w, h = (int(v) for v in args[i + 1].lower().split("x"))
-        del args[i:i + 2]
-    folder = os.path.expanduser(args[0] if args else "~/millsaph_measure/probes")
+    p = jobfile.parser(__file__)
+    p.add_argument("folder", nargs="?", default="~/millsaph_measure/probes")
+    p.add_argument("--size", default="256x128")
+    args = p.parse_args()
+    w, h = (int(v) for v in args.size.lower().split("x"))
+    folder = os.path.expanduser(args.folder)
     os.makedirs(folder, exist_ok=True)
     images = probes(w, h)
     for name, image in images.items():

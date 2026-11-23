@@ -1,0 +1,25 @@
+// Every effect but MS_Test, in menu order, for the lists made from it (included again by each:
+// no #pragma once): common/effect.h, effects/effects.c, ae/plugin.c, ae/pipl.r.
+//
+//   MS_EFFECT(Name, name, pipl_id, varies)
+//
+// Name: as in MS_ID("Name") and "MS_Name"; name: its ms_<name>_effect; pipl_id: the id of its
+// After Effects PiPL resource; varies: 1 when its MsEffect has frame_varying or varying (After
+// Effects reads that flag in the PiPL too, and wants it the same as the plugin's).
+
+MS_EFFECT(BandPass, bandpass, 16000, 0)
+MS_EFFECT(EdgeAwareBlur, edgeawareblur, 16001, 0)
+MS_EFFECT(Distort, distort, 16002, 0)
+MS_EFFECT(Mosaic, mosaic, 16003, 0)
+MS_EFFECT(Glow, glow, 16004, 1)
+MS_EFFECT(EdgeBlur, edgeblur, 16005, 0)
+MS_EFFECT(RackDefocus, rackdefocus, 16006, 0)
+MS_EFFECT(Glint, glint, 16007, 0)
+MS_EFFECT(Glare, glare, 16008, 0)
+MS_EFFECT(LensFlare, lensflare, 16009, 1)
+MS_EFFECT(JpegDamage, jpegdamage, 16010, 1)
+MS_EFFECT(PixelSort, pixelsort, 16011, 0)
+MS_EFFECT(FlickerMatch, flickermatch, 16012, 0)
+MS_EFFECT(FlickerMatchColor, flickermatchcolor, 16013, 0)
+MS_EFFECT(Flicker, flicker, 16014, 1)
+MS_EFFECT(TVDamage, tvdamage, 16015, 1)

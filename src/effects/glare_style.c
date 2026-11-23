@@ -107,7 +107,8 @@ static void add_waves(const GlareBuilder *b, int e, float *row) {
     // (Lens Flare: with noise_brightness too, the waves and the noise added, or with
     // mult_brightness_p the waves x (1 + nb (noise - 0.5)): Reflective's rings, 3 noise widths,
     // nb 0.4 / 1, wave_brightness 0.5-2, within a few %)
-    row[GLARE_WAVE_NOISE] = (float)(g->lens ? (get(b, e, "mult_brightness_p", 0.0) != 0.0 ? 2 : 1) : 0);
+    row[GLARE_WAVE_NOISE] =
+        (float)(g->lens ? (get(b, e, "mult_brightness_p", 0.0) != 0.0 ? 2 : 1) : 0);
     row[GLARE_WAVE_SOFT] = (float)get(b, e, "wave_softness", 1.0);
     row[GLARE_WAVE_PHASE] = (float)(g->lens ? get(b, e, "wave_phase", 0.0) : 0.0);
     row[GLARE_RW_MIN] = (float)get(b, e, "r_wave_min", 1.0);
@@ -177,7 +178,9 @@ static void add_stops(GlareBuilder *b, int e, float *row, double size, double st
             t = radii[stops - 1] - radii[0] > 0.0
                     ? (radii[k] - radii[0]) / (radii[stops - 1] - radii[0])
                     : 1.0;
-        const double scale = !stop_fade ? 1.0 : fade > 0.0 ? 1.0 - fade * t : 1.0 + fade * (1.0 - t);
+        const double scale = !stop_fade   ? 1.0
+                             : fade > 0.0 ? 1.0 - fade * t
+                                          : 1.0 + fade * (1.0 - t);
         row[GLARE_STOP_RADII + k] = (float)radii[k];
         for (int c = 0; c < 3; ++c)
             row[GLARE_STOP_COLORS + 3 * k + c] = (float)(colors[3 * k + c] * fmax(scale, 0.0));
@@ -210,8 +213,7 @@ void ms_style_add_element(GlareBuilder *b, int e) {
     if (g->lens && !b->as_shadow)
         ms_lens_place(b, e, row, &size_k, stretch_add, lens_gain);
     const double S = g->size;
-    const double size =
-        b->as_shadow ? b->shadow_r / (2.0 * S) : get(b, e, "size", 1.0) * size_k;
+    const double size = b->as_shadow ? b->shadow_r / (2.0 * S) : get(b, e, "size", 1.0) * size_k;
     if (b->as_shadow) {
         row[GLARE_POS_X] = (float)b->shadow_x;
         row[GLARE_POS_Y] = (float)b->shadow_y;

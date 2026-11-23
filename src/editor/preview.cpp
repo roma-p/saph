@@ -76,10 +76,20 @@ bool Preview::render(const std::string &text, const PreviewSettings &s, int widt
     inputs[0] = MsInput{source_.data(), (ptrdiff_t)width * 4};
     char message[512] = "";
     MsRunInfo info;
-    const MsRender r = {values,  connected, inputs,  width,          height, (double)width,
-                        (double)height, output_.data(), (ptrdiff_t)width * 4, message,
-                        sizeof message, 0,  &info,   texts,          0.0,
-                        nullptr,        nullptr};
+    MsRender r{}; // (by field: C++17 has no designated initialisers)
+    r.values = values;
+    r.connected = connected;
+    r.inputs = inputs;
+    r.width = width;
+    r.height = height;
+    r.frame_width = width;
+    r.frame_height = height;
+    r.output = output_.data();
+    r.output_row = (ptrdiff_t)width * 4;
+    r.err = message;
+    r.err_size = sizeof message;
+    r.info = &info;
+    r.texts = texts;
     if (!e->render(&r)) {
         err = message;
         return false;

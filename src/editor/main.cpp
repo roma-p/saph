@@ -37,318 +37,21 @@
 #include "gradient.h"
 #include "lens.h"
 #include "preview.h"
+#include "app.h"
+#include "window.h"
 #include "lensflare_presets.h" // (generated from presets/lensflare)
 
-using lens::Json;
-
-namespace {
-
-// An element's place: indices from the elements' array down through containers' children; a
-// first index -1: the lens shadow's array instead.
-using Path = std::vector<int>;
-
-struct Thumb {
-    GLuint texture = 0;
-    int w = 0, h = 0;
-    bool used = false;
-};
-
-// A lens preset of the dock: MillSaph's own (compiled in), then the bundle's preset files
-// (presets/lensflare/*.json: the converted lenses too), by name.
-struct LensPreset {
-    std::string name, text;
-};
-
-struct App {
-    std::vector<LensPreset> presets;
-    lens::Lens lens;
-    std::string out_path, status, hint;
-    std::vector<Path> selected; // the last one: the one the properties show
-    PreviewSettings settings;
-    Preview preview;
-    std::vector<uint8_t> pixels;
-    GLuint texture = 0;
-    int tex_w = 0, tex_h = 0;
-    bool dirty = true, saved = false, quit = false, busy = false;
-    // undo: the lens's texts before each change; `committed`: the lens as last recorded
-    std::vector<std::string> undo, redo;
-    std::string committed;
-    bool changed = false;
-    // the preview's own switches
-    bool solo = false, preview_shadow = false, show_presets = true;
-    double identify_until = 0;
-    // the thumbnails (elements, palette, presets), by the text they were rendered from
-    std::map<std::string, Thumb> thumbs;
-    int thumbs_budget = 2;
-    // file dialog: 1 open, 2 insert, 3 save as
-    int file_action = 0;
-    char file_path[1024] = "lens.json";
-    std::string lens_path;
-    char search[128] = "";
-    int columns = 2;
-    int gradient_stop = -1;
-    bool screenshot = false;
-    // a drop in the tree, done after the frame (the tree is being walked)
-    bool move_pending = false, move_into = false;
-    Path move_target;
-    bool tree_focused = false, scroll_to_selection = false;
-    Path last_primary;
-};
+namespace editor {
 
 double now() {
     using namespace std::chrono;
     return duration<double>(steady_clock::now().time_since_epoch()).count();
 }
 
-std::string read_file(const std::string &path) {
-    std::ifstream f(path, std::ios::binary);
-    std::stringstream s;
-    s << f.rdbuf();
-    return s.str();
-}
-
 bool write_file(const std::string &path, const std::string &text) {
     std::ofstream f(path, std::ios::binary);
     f << text;
     return (bool)f;
-}
-
-// ------------------------------------------------------------------ paths and changes
-
-Json *list_of(App &app, const Path &path) {
-    if (path.empty())
-        return nullptr;
-    const bool shadow = path[0] == -1;
-    Json *list = shadow ? &app.lens.shadow() : &app.lens.elements();
-    for (size_t i = shadow ? 1 : 0; i + 1 < path.size(); ++i) {
-        if (path[i] < 0 || path[i] >= (int)list->size())
-            return nullptr;
-        Json &e = (*list)[path[i]];
-        if (!e.is_object() || !e.contains("children") || !e["children"].is_array())
-            return nullptr;
-        list = &e["children"];
-    }
-    return list;
-}
-
-Json *element_at(App &app, const Path &path) {
-    Json *list = list_of(app, path);
-    if (!list || path.size() < (path[0] == -1 ? 2u : 1u) || path.back() < 0 || path.back() >= (int)list->size())
-        return nullptr;
-    return &(*list)[path.back()];
-}
-
-void touch(App &app) {
-    app.changed = true;
-    app.dirty = true;
-}
-
-// Markers put on elements while the tree changes, so that they are found again.
-const char *const MARK = "__millsaph_mark";
-
-void strip(Json &list, const char *key) {
-    if (!list.is_array())
-        return;
-    for (Json &e : list)
-        if (e.is_object()) {
-            e.erase(key);
-            if (e.contains("children"))
-                strip(e["children"], key);
-        }
-}
-
-bool find(Json &list, const std::string &mark, Path &path) {
-    if (!list.is_array())
-        return false;
-    for (int i = 0; i < (int)list.size(); ++i) {
-        Json &e = list[i];
-        if (!e.is_object())
-            continue;
-        path.push_back(i);
-        if (e.value(MARK, std::string()) == mark)
-            return true;
-        if (e.contains("children") && find(e["children"], mark, path))
-            return true;
-        path.pop_back();
-    }
-    return false;
-}
-
-// The selection marked "sel" (its order kept), the markers removed after.
-void mark_selection(App &app) {
-    int k = 0;
-    for (const Path &p : app.selected)
-        if (Json *e = element_at(app, p))
-            (*e)[MARK] = "sel" + std::to_string(k++);
-}
-
-void reselect(App &app, int count) {
-    app.selected.clear();
-    for (int k = 0; k < count; ++k) {
-        Path p;
-        if (find(app.lens.elements(), "sel" + std::to_string(k), p))
-            app.selected.push_back(p);
-        else if (Path q{-1}; find(app.lens.shadow(), "sel" + std::to_string(k), q))
-            app.selected.push_back(q);
-    }
-    strip(app.lens.elements(), MARK);
-    strip(app.lens.shadow(), MARK);
-}
-
-// The marked elements taken out of the tree (in its order).
-void take_marked(Json &list, const std::string &prefix, std::vector<Json> &out) {
-    if (!list.is_array())
-        return;
-    for (int i = 0; i < (int)list.size();) {
-        Json &e = list[i];
-        if (e.is_object() && e.value(MARK, std::string()).rfind(prefix, 0) == 0) {
-            out.push_back(e);
-            list.erase(list.begin() + i);
-            continue;
-        }
-        if (e.is_object() && e.contains("children"))
-            take_marked(e["children"], prefix, out);
-        ++i;
-    }
-}
-
-void remove_selected(App &app) {
-    if (app.selected.empty())
-        return;
-    mark_selection(app);
-    std::vector<Json> gone;
-    take_marked(app.lens.elements(), "sel", gone);
-    take_marked(app.lens.shadow(), "sel", gone);
-    app.selected.clear();
-    touch(app);
-}
-
-void duplicate_selected(App &app) {
-    const int n = (int)app.selected.size();
-    if (!n)
-        return;
-    mark_selection(app);
-    // each copy after its element, the copies selected
-    std::function<void(Json &)> walk = [&](Json &list) {
-        for (int i = 0; i < (int)list.size(); ++i) {
-            Json &e = list[i];
-            if (!e.is_object())
-                continue;
-            const std::string m = e.value(MARK, std::string());
-            if (m.rfind("sel", 0) == 0) {
-                Json copy = e;
-                e.erase(MARK);
-                list.insert(list.begin() + i + 1, copy);
-                ++i;
-            } else if (e.contains("children")) {
-                walk(e["children"]);
-            }
-        }
-    };
-    walk(app.lens.elements());
-    reselect(app, n);
-    touch(app);
-}
-
-int count_kind(App &app, const std::string &label) {
-    int n = 0;
-    std::function<void(const Json &)> walk = [&](const Json &list) {
-        for (const Json &e : list)
-            if (e.is_object()) {
-                if (e.value("name", "").rfind(label + " ", 0) == 0)
-                    ++n;
-                if (e.contains("children") && e["children"].is_array())
-                    walk(e["children"]);
-            }
-    };
-    walk(app.lens.elements());
-    return n;
-}
-
-void group_selected(App &app) {
-    if (app.selected.empty() || app.selected[0][0] == -1)
-        return;
-    // the group where the first selected element (in the tree's order) was
-    std::vector<Path> sel = app.selected;
-    std::sort(sel.begin(), sel.end());
-    Json *first = element_at(app, sel[0]);
-    if (!first)
-        return;
-    mark_selection(app);
-    Json group = lens::new_element("Group", count_kind(app, "Group") + 1);
-    group[MARK] = "group";
-    Json *list = list_of(app, sel[0]);
-    list->insert(list->begin() + sel[0].back(), group);
-    std::vector<Json> moved;
-    take_marked(app.lens.elements(), "sel", moved);
-    Path where;
-    if (find(app.lens.elements(), "group", where)) {
-        Json *g = element_at(app, where);
-        for (Json &m : moved) {
-            m.erase(MARK);
-            (*g)["children"].push_back(m);
-        }
-        g->erase(MARK);
-        app.selected = {where};
-    }
-    strip(app.lens.elements(), MARK);
-    touch(app);
-}
-
-// The selection moved before `target` (into it: at the end of a group's children).
-void move_selected(App &app, const Path &target, bool into) {
-    for (const Path &p : app.selected)
-        if (p[0] == -1 || (target.size() >= p.size() && std::equal(p.begin(), p.end(), target.begin())))
-            return; // (not into itself)
-    const int n = (int)app.selected.size();
-    Json *t = target.empty() ? nullptr : element_at(app, target);
-    mark_selection(app);
-    if (t)
-        (*t)[MARK] = "target";
-    std::vector<Json> moved;
-    take_marked(app.lens.elements(), "sel", moved);
-    Path where;
-    Json *list = &app.lens.elements();
-    int at = (int)list->size();
-    if (t && find(app.lens.elements(), "target", where)) {
-        Json *e = element_at(app, where);
-        if (into) {
-            list = &(*e)["children"];
-            at = (int)list->size();
-        } else {
-            list = list_of(app, where);
-            at = where.back();
-        }
-    }
-    for (Json &m : moved)
-        list->insert(list->begin() + at++, m);
-    reselect(app, n);
-    touch(app);
-}
-
-void add_element(App &app, const std::string &uitype, const std::string &label) {
-    Json e = lens::new_element(uitype, count_kind(app, label) + 1);
-    app.lens.elements().push_back(e);
-    app.selected = {Path{(int)app.lens.elements().size() - 1}};
-    app.scroll_to_selection = true;
-    touch(app);
-}
-
-void load_lens(App &app, const std::string &text, bool insert) {
-    std::string err;
-    lens::Lens next;
-    if (!lens::parse(text, next, err)) {
-        app.status = "Cannot read the lens: " + err;
-        return;
-    }
-    if (insert) {
-        for (const Json &e : next.elements())
-            app.lens.elements().push_back(e);
-    } else {
-        app.lens = next;
-        app.selected.clear();
-    }
-    touch(app);
 }
 
 // The lens the preview shows: the whole lens, the selection alone (Solo Selection,
@@ -649,512 +352,6 @@ void elements_panel(App &app) {
     ImGui::EndDisabled();
 }
 
-// ------------------------------------------------------------------ the properties
-
-double number(const Json &e, const char *key, double def) {
-    const Json *v = lens::value(e, key);
-    return v && v->is_number() ? v->get<double>() : v && v->is_boolean() ? (v->get<bool>() ? 1 : 0) : def;
-}
-
-const float LABEL_W = 150.0f, VALUE_W = 70.0f;
-
-// A row's label, right-aligned in its column (greyed when it does nothing).
-void row_label(const char *label, bool grey) {
-    ImGui::TableNextRow();
-    ImGui::TableSetColumnIndex(0);
-    ImGui::AlignTextToFramePadding();
-    const float w = ImGui::GetContentRegionAvail().x, t = ImGui::CalcTextSize(label).x;
-    ImGui::SetCursorPosX(ImGui::GetCursorPosX() + std::max(0.0f, w - t));
-    if (grey)
-        ImGui::TextDisabled("%s", label);
-    else
-        ImGui::TextUnformatted(label);
-}
-
-std::vector<std::string> split(const char *choices) {
-    std::vector<std::string> items;
-    for (const char *p = choices; p && *p;) {
-        const char *bar = std::strchr(p, '|');
-        items.emplace_back(p, bar ? (size_t)(bar - p) : std::strlen(p));
-        p = bar ? bar + 1 : p + std::strlen(p);
-    }
-    return items;
-}
-
-std::string title_case(std::string s) {
-    for (size_t i = 0; i < s.size(); ++i)
-        if (i == 0 || s[i - 1] == ' ')
-            s[i] = (char)std::toupper((unsigned char)s[i]);
-    return s;
-}
-
-// One field's row: the value box and the slider (numbers), or its control. True when changed.
-bool edit_field(Json &e, const lens::Field &f, bool grey, bool relative) {
-    const char *key = f.name;
-    bool changed = false;
-    Json now;
-    row_label(f.label, grey);
-    ImGui::PushID(key);
-    ImGui::BeginDisabled(grey);
-    ImGui::TableSetColumnIndex(1);
-    const lens::Mode mode = relative ? lens::mode(e, key) : lens::Mode::Overwrite;
-    const bool wide = f.max - f.min >= 100; // (angles, frequencies)
-    const char *fmt = mode == lens::Mode::Scale ? "x%.3f"
-                      : mode == lens::Mode::Offset ? (wide ? "%+.2f" : "%+.3f")
-                      : wide ? "%.2f" : "%.3f";
-    switch (f.kind) {
-    case lens::Kind::Number:
-    case lens::Kind::Integer: {
-        const bool integer = f.kind == lens::Kind::Integer;
-        float v = (float)number(e, key, lens::neutral(e, key));
-        const float speed = (float)(f.max - f.min) / 400.0f;
-        ImGui::SetNextItemWidth(VALUE_W);
-        bool c = integer ? false : ImGui::DragFloat("##v", &v, speed, 0, 0, fmt);
-        int iv = (int)std::lround(v);
-        if (integer) {
-            c = ImGui::DragInt("##v", &iv, 0.1f);
-            v = (float)iv;
-        }
-        ImGui::TableSetColumnIndex(2);
-        ImGui::SetNextItemWidth(-FLT_MIN);
-        if (integer) {
-            c |= ImGui::SliderInt("##s", &iv, (int)f.min, (int)f.max, "");
-            v = (float)iv;
-        } else {
-            c |= ImGui::SliderFloat("##s", &v, (float)f.min, (float)f.max, "");
-        }
-        if (c) {
-            now = integer ? Json((int)v) : Json((double)v);
-            changed = true;
-        }
-        break;
-    }
-    case lens::Kind::Bool: {
-        bool v = number(e, key, f.def) != 0;
-        if (ImGui::Checkbox("##v", &v)) {
-            now = v ? 1 : 0;
-            changed = true;
-        }
-        break;
-    }
-    case lens::Kind::Flag:
-    case lens::Kind::Choice:
-    case lens::Kind::Shape: {
-        const std::vector<std::string> items = split(f.choices);
-        int at = 0;
-        if (f.kind == lens::Kind::Flag)
-            at = number(e, key, f.def) != 0 ? 1 : 0;
-        else if (f.kind == lens::Kind::Shape)
-            at = number(e, "n_sides", 0) > 0 ? 1 : 0;
-        else if (const Json *v = lens::value(e, key); v && v->is_string())
-            for (int k = 0; k < (int)items.size(); ++k)
-                if (items[k] == v->get<std::string>())
-                    at = k;
-        ImGui::SetNextItemWidth(VALUE_W + 60);
-        if (ImGui::BeginCombo("##v", title_case(items[at]).c_str())) {
-            for (int k = 0; k < (int)items.size(); ++k)
-                if (ImGui::Selectable(title_case(items[k]).c_str(), k == at) && k != at) {
-                    if (f.kind == lens::Kind::Flag)
-                        now = k;
-                    else if (f.kind == lens::Kind::Shape) {
-                        lens::set_field(e, "n_sides", k ? 6 : 0);
-                        now = k ? "polygon" : "circle";
-                    } else
-                        now = items[k];
-                    changed = true;
-                }
-            ImGui::EndCombo();
-        }
-        break;
-    }
-    case lens::Kind::Color: {
-        float c[3] = {1, 1, 1};
-        if (const Json *v = lens::value(e, key); v && v->is_array())
-            for (int k = 0; k < 3 && k < (int)v->size(); ++k)
-                c[k] = (*v)[k].get<float>();
-        if (ImGui::ColorEdit3("##v", c, ImGuiColorEditFlags_Float | ImGuiColorEditFlags_HDR |
-                                            ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_PickerHueWheel)) {
-            now = {c[0], c[1], c[2]};
-            changed = true;
-        }
-        break;
-    }
-    case lens::Kind::Pair: {
-        float v[2] = {(float)f.def, (float)f.def};
-        if (const Json *j = lens::value(e, key); j && j->is_array())
-            for (int k = 0; k < 2 && k < (int)j->size(); ++k)
-                v[k] = (*j)[k].get<float>();
-        ImGui::TableSetColumnIndex(2);
-        ImGui::SetNextItemWidth(-FLT_MIN);
-        if (ImGui::SliderFloat2("##v", v, (float)f.min, (float)f.max, "%.3f")) {
-            now = {v[0], v[1]};
-            changed = true;
-        }
-        break;
-    }
-    case lens::Kind::Text:
-        break;
-    }
-    ImGui::EndDisabled();
-    ImGui::PopID();
-    if (changed)
-        lens::set_field(e, key, now);
-    return changed;
-}
-
-// Texture Overlay's image: none, one of MillSaph's generated textures, or one in the lens.
-bool edit_image(Json &e) {
-    bool changed = false;
-    const bool has = e.contains("image") && e["image"].is_object();
-    const bool generated = has && e["image"].contains("generate");
-    const char *now = !has ? "None" : generated ? "Generated" : "In the lens";
-    row_label("Image", false);
-    ImGui::TableSetColumnIndex(1);
-    ImGui::SetNextItemWidth(VALUE_W + 60);
-    if (ImGui::BeginCombo("##image", now)) {
-        if (ImGui::Selectable("None", !has)) {
-            e.erase("image");
-            changed = true;
-        }
-        if (ImGui::Selectable("Generated", generated)) {
-            e["image"] = {{"generate", "dirt"}, {"seed", 1}};
-            changed = true;
-        }
-        ImGui::EndCombo();
-    }
-    if (has && !generated) {
-        ImGui::TableSetColumnIndex(2);
-        ImGui::TextDisabled("%d x %d texels", (int)number(e["image"], "xdim", 0), (int)number(e["image"], "ydim", 0));
-    }
-    if (has && generated) {
-        Json &im = e["image"];
-        static const char *const kinds[] = {"dirt", "glint", "ramp", "iris", "field"};
-        const std::string kind = im.value("generate", "dirt");
-        row_label("Kind", false);
-        ImGui::TableSetColumnIndex(1);
-        ImGui::SetNextItemWidth(VALUE_W + 60);
-        if (ImGui::BeginCombo("##kind", title_case(kind).c_str())) {
-            for (const char *k : kinds)
-                if (ImGui::Selectable(title_case(k).c_str(), kind == k)) {
-                    im["generate"] = k;
-                    changed = true;
-                }
-            ImGui::EndCombo();
-        }
-        struct Knob {
-            const char *key, *label;
-            double def, min, max;
-            bool integer;
-        };
-        const Knob knobs[] = {
-            {"seed", "Seed", 0, 0, 100, true},
-            {"amount", "Amount", kind == "dirt" ? 0.35 : kind == "ramp" ? 1.0 : 0.5, 0, 1, false},
-            {"scale", "Scale", 1, 0.1, 4, false},
-            {"detail", "Detail", 0.5, 0, 1, false},
-        };
-        if (kind == "field") {
-            // a plain colour ("color"), faded to the edges ("edges" [x, y]), "aspect" wide
-            float col[3] = {1, 1, 1};
-            if (im.contains("color") && im["color"].is_array())
-                for (int c = 0; c < 3 && c < (int)im["color"].size(); ++c)
-                    col[c] = im["color"][c].get<float>();
-            row_label("Color", false);
-            ImGui::TableSetColumnIndex(1);
-            if (ImGui::ColorEdit3("##fieldcolor", col, ImGuiColorEditFlags_NoInputs)) {
-                im["color"] = {col[0], col[1], col[2]};
-                changed = true;
-            }
-            float edges[2] = {0, 0};
-            if (im.contains("edges") && im["edges"].is_array())
-                for (int c = 0; c < 2 && c < (int)im["edges"].size(); ++c)
-                    edges[c] = im["edges"][c].get<float>();
-            row_label("Edge Fade", false);
-            ImGui::TableSetColumnIndex(1);
-            ImGui::SetNextItemWidth(-FLT_MIN);
-            if (ImGui::SliderFloat2("##edges", edges, 0.0f, 1.0f, "%.2f")) {
-                im["edges"] = {edges[0], edges[1]};
-                changed = true;
-            }
-            float aspect = (float)number(im, "aspect", 1.0);
-            row_label("Aspect", false);
-            ImGui::TableSetColumnIndex(1);
-            ImGui::SetNextItemWidth(VALUE_W);
-            if (ImGui::DragFloat("##aspect", &aspect, 0.01f, 0.1f, 10.0f, "%.3f")) {
-                im["aspect"] = aspect;
-                changed = true;
-            }
-        }
-        for (const Knob &k : knobs) {
-            if (kind == "field")
-                break;
-            row_label(k.label, false);
-            ImGui::PushID(k.key);
-            ImGui::TableSetColumnIndex(1);
-            ImGui::SetNextItemWidth(VALUE_W);
-            float v = (float)number(im, k.key, k.def);
-            bool c = ImGui::DragFloat("##v", &v, (float)(k.max - k.min) / 400.0f, 0, 0, k.integer ? "%.0f" : "%.3f");
-            ImGui::TableSetColumnIndex(2);
-            ImGui::SetNextItemWidth(-FLT_MIN);
-            c |= ImGui::SliderFloat("##s", &v, (float)k.min, (float)k.max, "");
-            if (c) {
-                im[k.key] = k.integer ? Json((int)std::lround(v)) : Json((double)v);
-                changed = true;
-            }
-            ImGui::PopID();
-        }
-        if (kind == "iris" || kind == "ramp") {
-            row_label(kind == "iris" ? "Blades" : "Linear", false);
-            ImGui::TableSetColumnIndex(1);
-            ImGui::SetNextItemWidth(VALUE_W);
-            int sides = (int)number(im, "sides", kind == "iris" ? 6 : 0);
-            if (ImGui::DragInt("##sides", &sides, 0.1f, 0, kind == "iris" ? 12 : 1)) {
-                im["sides"] = sides;
-                changed = true;
-            }
-        }
-    }
-    return changed;
-}
-
-// A group header's open state, kept in the element (view_properties, as the lens files).
-bool group_collapsed(const Json &e, const std::string &group, bool def) {
-    if (e.contains("view_properties") && e["view_properties"].is_object()) {
-        const Json &v = e["view_properties"];
-        if (v.contains("ElementView") && v["ElementView"].contains("groups_collapsed") &&
-            v["ElementView"]["groups_collapsed"].contains(group) &&
-            v["ElementView"]["groups_collapsed"][group].is_boolean())
-            return v["ElementView"]["groups_collapsed"][group].get<bool>();
-    }
-    return def;
-}
-
-bool begin_table() {
-    if (!ImGui::BeginTable("rows", 3, ImGuiTableFlags_SizingFixedFit))
-        return false;
-    ImGui::TableSetupColumn("label", ImGuiTableColumnFlags_WidthFixed, LABEL_W);
-    ImGui::TableSetupColumn("value", ImGuiTableColumnFlags_WidthFixed | ImGuiTableColumnFlags_NoClip, VALUE_W);
-    ImGui::TableSetupColumn("slider", ImGuiTableColumnFlags_WidthStretch);
-    return true;
-}
-
-// A group's header: its triangle, its name (dim when the group does nothing) and its reset
-// button. True when open.
-bool group_header(App &app, Json &e, const std::string &group, const std::string &title, bool dim,
-                  bool def_collapsed, bool &reset) {
-    const bool collapsed = group_collapsed(e, group, def_collapsed);
-    ImGui::SetNextItemOpen(!collapsed, ImGuiCond_Always);
-    if (dim)
-        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
-    ImGui::PushStyleColor(ImGuiCol_Header, ImVec4(0, 0, 0, 0));
-    const bool open = ImGui::CollapsingHeader(title.c_str(), ImGuiTreeNodeFlags_AllowOverlap);
-    ImGui::PopStyleColor(dim ? 2 : 1);
-    if (open == collapsed) { // toggled: kept in the lens, not an undo step
-        e["view_properties"]["ElementView"]["groups_collapsed"][group] = !open;
-        if (!app.changed)
-            app.committed = lens::write(app.lens);
-    }
-    ImGui::SameLine();
-    ImGui::SetCursorPosX(ImGui::GetWindowContentRegionMax().x - 20);
-    reset = reset_button(("reset" + group).c_str(), 18, ("Reset " + title).c_str());
-    return open;
-}
-
-// Whether a field is at its default (left out, or its default's value).
-bool at_default(const Json &e, const lens::Field &f) {
-    const Json *v = lens::value(e, f.name);
-    if (!v || v->is_null())
-        return true;
-    if (v->is_number() || v->is_boolean())
-        return std::fabs(number(e, f.name, f.def) - f.def) < 1e-9;
-    if (f.kind == lens::Kind::Color && v->is_array()) {
-        for (const Json &c : *v)
-            if (!c.is_number() || c.get<double>() != f.def)
-                return false;
-        return true;
-    }
-    return false;
-}
-
-void reset_field(Json &e, const lens::Field &f) {
-    if (e.value("type", "") == "container") {
-        if (f.kind == lens::Kind::Color)
-            lens::set_field(e, f.name, Json{f.def, f.def, f.def});
-        else if (f.kind == lens::Kind::Pair)
-            lens::set_field(e, f.name, Json{f.def, f.def});
-        else if (f.kind == lens::Kind::Number || f.kind == lens::Kind::Integer || f.kind == lens::Kind::Bool ||
-                 f.kind == lens::Kind::Flag)
-            lens::set_field(e, f.name, f.def);
-        e.erase(f.name);
-    } else {
-        e.erase(f.name);
-    }
-    if (f.kind == lens::Kind::Shape)
-        e.erase("n_sides");
-}
-
-// The fields of `group` for this element.
-std::vector<const lens::Field *> group_fields(const Json &e, const std::string &group) {
-    std::vector<const lens::Field *> out;
-    const std::string type = lens::engine_type(e);
-    const bool gen = lens::is_generator(e), grp = lens::is_group(e);
-    for (const lens::Field &f : lens::fields()) {
-        if (group != f.group)
-            continue;
-        const bool gen_field = !std::strcmp(f.types, "generator");
-        const bool show = gen_field ? gen
-                          : grp      ? group != "Options" && std::strcmp(f.name, "color")
-                                     : lens::field_for(f, type);
-        if (show)
-            out.push_back(&f);
-    }
-    return out;
-}
-
-void properties_panel(App &app) {
-    centered_title("Properties");
-    ImGui::Separator();
-    Json *e = app.selected.empty() ? nullptr : element_at(app, app.selected.back());
-    if (!e) {
-        ImGui::TextDisabled("Select an element.");
-        return;
-    }
-    const Json before = *e;
-    const bool shadow = app.selected.back()[0] == -1;
-    const bool grp = lens::is_group(*e);
-    const std::string type = lens::engine_type(*e);
-    const std::string kind = shadow ? "Shadow" : lens::kind_label(*e);
-    bool changed = false, gradient_changed = false;
-    ImGui::BeginChild("fields", ImVec2(0, -ImGui::GetFrameHeightWithSpacing() - 4));
-
-    // Identity
-    bool reset = false;
-    if (group_header(app, *e, "Identity", "Identity", false, false, reset)) {
-        const float w = ImGui::GetContentRegionAvail().x;
-        ImGui::SetCursorPosX(ImGui::GetCursorPosX() + 150 + (w - 150 - 80) * 0.5f);
-        if (ImGui::Button("Identify", ImVec2(80, 0)))
-            app.identify_until = now() + 0.6;
-        if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("Show this element alone in the preview for a moment");
-        const ImVec2 p = ImGui::GetCursorScreenPos();
-        ImDrawList *d = ImGui::GetWindowDrawList();
-        d->AddRectFilled(p, ImVec2(p.x + 128, p.y + 72), IM_COL32(0, 0, 0, 255));
-        if (GLuint t = element_thumb(app, *e, 192, 108))
-            d->AddImage((ImTextureID)(intptr_t)t, p, ImVec2(p.x + 128, p.y + 72));
-        ImGui::SetCursorScreenPos(ImVec2(p.x + 140, p.y + 10));
-        ImGui::AlignTextToFramePadding();
-        ImGui::TextUnformatted("Name:");
-        ImGui::SetCursorScreenPos(ImVec2(p.x + 190, p.y + 10));
-        char buf[256];
-        std::snprintf(buf, sizeof buf, "%s", e->value("name", std::string()).c_str());
-        ImGui::SetNextItemWidth(-FLT_MIN);
-        if (ImGui::InputText("##name", buf, sizeof buf)) {
-            (*e)["name"] = std::string(buf);
-            changed = true;
-        }
-        ImGui::SetCursorScreenPos(ImVec2(p.x + 140, p.y + 44));
-        ImGui::TextUnformatted("Type:");
-        ImGui::SetCursorScreenPos(ImVec2(p.x + 190, p.y + 44));
-        ImGui::TextUnformatted(kind.c_str());
-        ImGui::SetCursorScreenPos(ImVec2(p.x, p.y + 80));
-        ImGui::Dummy(ImVec2(0, 0));
-    }
-
-    for (const char *group_name : lens::groups()) {
-        const std::string group = group_name;
-        std::vector<const lens::Field *> list = group_fields(*e, group);
-        const bool stops = group == "Color and Brightness" && lens::has_gradient(*e);
-        const bool image = group == "Texture Overlay" && !grp;
-        if (list.empty() && !stops && !image)
-            continue;
-        if (shadow && (group == "Animation" || group == "Triggers" || group == "Shadow"))
-            continue;
-        std::string title = group == "Options" ? (shadow ? "Shadow" : kind) + " Options" : group;
-        // dim: no effect (all at their defaults, no image)
-        bool dim = group != "Color and Brightness" && group != "Position" && group != "Size" && group != "Options";
-        for (const lens::Field *f : list)
-            dim &= at_default(*e, *f);
-        if (image && e->contains("image"))
-            dim = false;
-        const bool def_collapsed = !(group == "Position" || group == "Size" || group == "Color and Brightness" ||
-                                     group == "Options");
-        ImGui::PushID(group_name);
-        const bool open = group_header(app, *e, group, title, dim, def_collapsed, reset);
-        if (reset) {
-            for (const lens::Field *f : list)
-                reset_field(*e, *f);
-            if (image)
-                e->erase("image");
-            changed = true;
-        }
-        if (open && begin_table()) {
-            if (image)
-                changed |= edit_image(*e);
-            for (const lens::Field *f : list) {
-                bool grey = lens::field_grey(*f, type);
-                // Sides, Roundness, Randomize Sides: for polygons
-                if ((!std::strcmp(f->name, "roundness") || !std::strcmp(f->name, "random_side_lengths") ||
-                     !std::strcmp(f->name, "n_sides")) &&
-                    number(*e, "n_sides", 0) <= 0)
-                    grey = true;
-                changed |= edit_field(*e, *f, grey, grp);
-                if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
-                    reset_field(*e, *f);
-                    changed = true;
-                }
-                // the gradient after the colour
-                if (stops && (!std::strcmp(f->name, "tint") || !std::strcmp(f->name, "color"))) {
-                    row_label("Gradient:", false);
-                    ImGui::EndTable();
-                    gradient_changed |= gradient_edit(*e, app.gradient_stop, app.hint);
-                    if (!begin_table())
-                        break;
-                }
-            }
-            ImGui::EndTable();
-        }
-        ImGui::PopID();
-    }
-    ImGui::EndChild();
-    if (reset_button("resetall", 22, "Reset All Properties to Default Values")) {
-        const std::string name = e->value("name", std::string());
-        for (const lens::Field &f : lens::fields())
-            if (e->contains(f.name) || lens::value(*e, f.name))
-                reset_field(*e, f);
-        e->erase("image");
-        (*e)["name"] = name;
-        changed = true;
-    }
-    if (changed || gradient_changed) {
-        // the generators made again; the other selected elements given the same changes
-        bool regenerate = false;
-        Json diff = Json::object();
-        for (auto it = e->begin(); it != e->end(); ++it)
-            if (it.key() != "children" && it.key() != "name" && it.key() != "view_properties" &&
-                (!before.contains(it.key()) || before[it.key()] != it.value())) {
-                diff[it.key()] = it.value();
-                regenerate |= lens::generator_field(it.key());
-            }
-        if (lens::is_generator(*e) && (regenerate || diff.contains("center") || diff.contains("size") ||
-                                       diff.contains("brightness") || diff.contains("rotate") ||
-                                       diff.contains("tint") || diff.contains("color") || diff.contains("rand_seed")))
-            lens::generate(*e);
-        Json gone = Json::array();
-        for (auto it = before.begin(); it != before.end(); ++it)
-            if (!e->contains(it.key()))
-                gone.push_back(it.key());
-        for (size_t k = 0; k + 1 < app.selected.size(); ++k)
-            if (Json *o = element_at(app, app.selected[k]); o && o != e) {
-                for (auto it = diff.begin(); it != diff.end(); ++it)
-                    lens::set_field(*o, it.key(), it.value());
-                for (const Json &g : gone)
-                    o->erase(g.get<std::string>());
-                if (lens::is_generator(*o))
-                    lens::generate(*o);
-            }
-        touch(app);
-    }
-}
-
 // ------------------------------------------------------------------ the preview
 
 void preview_panel(App &app) {
@@ -1260,10 +457,7 @@ void load_presets(App &app) {
         for (const auto &f : std::filesystem::directory_iterator(dir, ec)) {
             if (f.path().extension() != ".json")
                 continue;
-            std::ifstream in(f.path());
-            std::stringstream ss;
-            ss << in.rdbuf();
-            Json j = Json::parse(ss.str(), nullptr, false);
+            Json j = Json::parse(window::read_file(f.path().string()), nullptr, false);
             if (j.is_discarded() || !j.is_object() || !j.contains("params") ||
                 !j["params"].is_object() || !j["params"].contains("lens_") ||
                 !j["params"]["lens_"].is_string())
@@ -1361,31 +555,38 @@ void save(App &app, const std::string &path) {
         app.lens_path = path;
 }
 
-void open_file_dialog(App &app, int action) {
+void open_file_dialog(App &app, FileAction action) {
     app.file_action = action;
     std::snprintf(app.file_path, sizeof app.file_path, "%s", app.lens_path.empty() ? "lens.json" : app.lens_path.c_str());
+}
+
+void new_lens(App &app) {
+    load_lens(app, "{\"elements\": []}", false);
+    app.lens_path.clear();
+}
+
+// Save: to the lens's file, or Save As when it has none (or `as`).
+void save_lens(App &app, bool as) {
+    if (as || app.lens_path.empty())
+        open_file_dialog(app, FILE_SAVE_AS);
+    else
+        save(app, app.lens_path);
 }
 
 void menus(App &app) {
     if (!ImGui::BeginMenuBar())
         return;
     if (ImGui::BeginMenu("File")) {
-        if (ImGui::MenuItem("New Lens", "Ctrl+N")) {
-            load_lens(app, "{\"elements\": []}", false);
-            app.lens_path.clear();
-        }
+        if (ImGui::MenuItem("New Lens", "Ctrl+N"))
+            new_lens(app);
         if (ImGui::MenuItem("Open Lens...", "Ctrl+O"))
-            open_file_dialog(app, 1);
+            open_file_dialog(app, FILE_OPEN);
         if (ImGui::MenuItem("Insert Lens...", "Ctrl+Shift+O"))
-            open_file_dialog(app, 2);
-        if (ImGui::MenuItem("Save Lens", "Ctrl+S")) {
-            if (app.lens_path.empty())
-                open_file_dialog(app, 3);
-            else
-                save(app, app.lens_path);
-        }
+            open_file_dialog(app, FILE_INSERT);
+        if (ImGui::MenuItem("Save Lens", "Ctrl+S"))
+            save_lens(app, false);
         if (ImGui::MenuItem("Save Lens As...", "Ctrl+Shift+S"))
-            open_file_dialog(app, 3);
+            save_lens(app, true);
         ImGui::Separator();
         if (ImGui::MenuItem("Quit (Cancel)"))
             app.quit = true;
@@ -1428,26 +629,20 @@ void menus(App &app) {
 
 void toolbar(App &app) {
     ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
-    if (ImGui::Button("New")) {
-        load_lens(app, "{\"elements\": []}", false);
-        app.lens_path.clear();
-    }
+    if (ImGui::Button("New"))
+        new_lens(app);
     ImGui::SameLine();
     if (ImGui::Button("Load"))
-        open_file_dialog(app, 1);
+        open_file_dialog(app, FILE_OPEN);
     ImGui::SameLine();
     if (ImGui::Button("Insert"))
-        open_file_dialog(app, 2);
+        open_file_dialog(app, FILE_INSERT);
     ImGui::SameLine();
-    if (ImGui::Button("Save")) {
-        if (app.lens_path.empty())
-            open_file_dialog(app, 3);
-        else
-            save(app, app.lens_path);
-    }
+    if (ImGui::Button("Save"))
+        save_lens(app, false);
     ImGui::SameLine();
     if (ImGui::Button("Save As"))
-        open_file_dialog(app, 3);
+        save_lens(app, true);
     ImGui::SameLine(0, 20);
     ImGui::BeginDisabled(app.undo.empty());
     if (ImGui::ArrowButton("undo", ImGuiDir_Left))
@@ -1503,36 +698,36 @@ void palette(App &app) {
 }
 
 void file_dialog(App &app) {
-    if (app.file_action) {
+    if (app.file_action != FILE_NONE) {
         ImGui::OpenPopup("Lens file");
     }
     if (ImGui::BeginPopupModal("Lens file", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
         static const char *const titles[] = {"", "Open a lens", "Insert a lens's elements", "Save the lens as"};
-        ImGui::TextUnformatted(titles[std::clamp(app.file_action, 0, 3)]);
+        ImGui::TextUnformatted(titles[app.file_action]);
         ImGui::SetNextItemWidth(520);
         if (ImGui::IsWindowAppearing())
             ImGui::SetKeyboardFocusHere();
         const bool enter = ImGui::InputText("##path", app.file_path, sizeof app.file_path,
                                             ImGuiInputTextFlags_EnterReturnsTrue);
         if (ImGui::Button("OK", ImVec2(100, 0)) || enter) {
-            if (app.file_action == 3) {
+            if (app.file_action == FILE_SAVE_AS) {
                 save(app, app.file_path);
             } else {
-                const std::string text = read_file(app.file_path);
+                const std::string text = window::read_file(app.file_path);
                 if (text.empty())
                     app.status = std::string("Cannot open ") + app.file_path;
                 else {
-                    load_lens(app, text, app.file_action == 2);
-                    if (app.file_action == 1)
+                    load_lens(app, text, app.file_action == FILE_INSERT);
+                    if (app.file_action == FILE_OPEN)
                         app.lens_path = app.file_path;
                 }
             }
-            app.file_action = 0;
+            app.file_action = FILE_NONE;
             ImGui::CloseCurrentPopup();
         }
         ImGui::SameLine();
         if (ImGui::Button("Cancel", ImVec2(100, 0))) {
-            app.file_action = 0;
+            app.file_action = FILE_NONE;
             ImGui::CloseCurrentPopup();
         }
         ImGui::EndPopup();
@@ -1555,9 +750,11 @@ void shortcuts(App &app) {
     else if (ctrl && ImGui::IsKeyPressed(ImGuiKey_I, false))
         app.identify_until = now() + 0.6;
     else if (ctrl && ImGui::IsKeyPressed(ImGuiKey_S, false))
-        shift || app.lens_path.empty() ? open_file_dialog(app, 3) : save(app, app.lens_path);
+        save_lens(app, shift);
+    else if (ctrl && ImGui::IsKeyPressed(ImGuiKey_N, false))
+        new_lens(app);
     else if (ctrl && ImGui::IsKeyPressed(ImGuiKey_O, false))
-        open_file_dialog(app, shift ? 2 : 1);
+        open_file_dialog(app, shift ? FILE_INSERT : FILE_OPEN);
     else if (!ctrl && ImGui::IsKeyPressed(ImGuiKey_Delete, false) && !ImGui::IsAnyItemActive() &&
              app.tree_focused)
         remove_selected(app);
@@ -1639,20 +836,6 @@ void frame(App &app) {
     }
 }
 
-bool screenshot(const char *path, int w, int h) {
-    std::vector<uint8_t> px((size_t)w * h * 3);
-    glPixelStorei(GL_PACK_ALIGNMENT, 1);
-    glReadPixels(0, 0, w, h, GL_RGB, GL_UNSIGNED_BYTE, px.data());
-    FILE *f = std::fopen(path, "wb");
-    if (!f)
-        return false;
-    std::fprintf(f, "P6\n%d %d\n255\n", w, h);
-    for (int y = h - 1; y >= 0; --y)
-        std::fwrite(&px[(size_t)y * w * 3], 1, (size_t)w * 3, f);
-    std::fclose(f);
-    return true;
-}
-
 void style() {
     ImGui::StyleColorsDark();
     ImGuiStyle &s = ImGui::GetStyle();
@@ -1697,7 +880,9 @@ void fonts() {
             return;
 }
 
-} // namespace
+} // namespace editor
+
+using namespace editor;
 
 int main(int argc, char **argv) {
     App app;
@@ -1716,7 +901,7 @@ int main(int argc, char **argv) {
             select = std::atoi(argv[i + 1]);
     }
     std::string err;
-    const std::string text = in_path.empty() ? std::string(ms_lensflare_preset_texts[0]) : read_file(in_path);
+    const std::string text = in_path.empty() ? std::string(ms_lensflare_preset_texts[0]) : window::read_file(in_path);
     if (!lens::parse(text, app.lens, err)) {
         std::fprintf(stderr, "millsaph_lens_editor: %s\n", err.c_str());
         lens::parse("{\"elements\": []}", app.lens, err);
@@ -1726,61 +911,26 @@ int main(int argc, char **argv) {
     app.committed = lens::write(app.lens);
     app.screenshot = shot != nullptr;
 
-    if (!glfwInit())
-        return 2;
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 2);
-    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-    glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE); // (macOS)
-    GLFWwindow *window = glfwCreateWindow(1700, 960, "MillSaph Lens Editor", nullptr, nullptr);
-    if (!window) {
-        glfwTerminate();
-        return 2;
-    }
-    glfwMakeContextCurrent(window);
-    glfwSwapInterval(1);
-    IMGUI_CHECKVERSION();
-    ImGui::CreateContext();
-    ImGui::GetIO().IniFilename = nullptr; // (no imgui.ini next to the host)
-    style();
-    fonts();
-    ImGui_ImplGlfw_InitForOpenGL(window, true);
-    ImGui_ImplOpenGL3_Init("#version 150");
-
-    int frames = 0;
-    while (!glfwWindowShouldClose(window) && !app.quit) {
-        if (shot)
-            glfwPollEvents();
-        else
-            glfwWaitEventsTimeout(app.dirty || app.busy ? 0.0 : 0.5);
+    window::Loop loop;
+    loop.look = [] {
+        style();
+        fonts();
+    };
+    loop.frame = [&] {
         app.busy = false;
         app.thumbs_budget = shot ? 1000 : 3;
-        ImGui_ImplOpenGL3_NewFrame();
-        ImGui_ImplGlfw_NewFrame();
-        ImGui::NewFrame();
         frame(app);
-        ImGui::Render();
-        drop_unused_thumbs(app);
-        int w, h;
-        glfwGetFramebufferSize(window, &w, &h);
-        glViewport(0, 0, w, h);
-        glClearColor(0.1f, 0.1f, 0.1f, 1);
-        glClear(GL_COLOR_BUFFER_BIT);
-        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-        if (shot && ++frames == 5) {
-            screenshot(shot, w, h);
-            app.quit = true;
-        }
-        glfwSwapBuffers(window);
-    }
-    for (auto &t : app.thumbs)
-        if (t.second.texture)
-            glDeleteTextures(1, &t.second.texture);
-    ImGui_ImplOpenGL3_Shutdown();
-    ImGui_ImplGlfw_Shutdown();
-    ImGui::DestroyContext();
-    glfwDestroyWindow(window);
-    glfwTerminate();
+    };
+    loop.after_render = [&] { drop_unused_thumbs(app); };
+    loop.wait = [&] { return app.dirty || app.busy ? 0.0 : 0.5; };
+    loop.quit = [&] { return app.quit; };
+    loop.shut_down = [&] {
+        for (auto &t : app.thumbs)
+            if (t.second.texture)
+                glDeleteTextures(1, &t.second.texture);
+    };
+    if (window::run("MillSaph Lens Editor", 1700, 960, shot, 5, loop) != 0)
+        return 2;
     ms_effects_release();
     ms_engine_shutdown();
     return app.saved ? 0 : 1;

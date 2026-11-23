@@ -13,6 +13,7 @@
 #include "common/defines.h"
 #include "common/effect.h"
 #include "common/mask.h"
+#include "effects/input.h"
 #include "effects/mask_input.h"
 #include "effects/profile.h"
 #include "engine/engine.h"
@@ -40,38 +41,12 @@ enum {
     SHOW_BLUR_AMOUNT2,
 };
 static const MsParam params[] = {
-    [BLUR1] = {.type = MS_PARAM_WIDTH,
-               .name = "blur_amount1",
-               .label = "Blur Amount1",
-               .hint = "The width for the first blur. Sets the low frequency cutoff.",
-               .def = 0.014,
-               .min = 0.0,
-               .max = MS_UNBOUNDED,
-               .display_max = 0.25},
-    [BLUR2] = {.type = MS_PARAM_WIDTH,
-               .name = "blur_amount2",
-               .label = "Blur Amount2",
-               .hint = "The width for the second blur. Sets the high frequency cutoff.",
-               .def = 0.028,
-               .min = 0.0,
-               .max = MS_UNBOUNDED,
-               .display_max = 0.25},
-    [REL_X] = {.type = MS_PARAM_DOUBLE,
-               .name = "blur_rel_x",
-               .label = "Blur Rel X",
-               .hint = "Relative horizontal blur width.",
-               .def = 1.0,
-               .min = 0.0,
-               .max = MS_UNBOUNDED,
-               .display_max = 5.0},
-    [REL_Y] = {.type = MS_PARAM_DOUBLE,
-               .name = "blur_rel_y",
-               .label = "Blur Rel Y",
-               .hint = "Relative vertical blur width.",
-               .def = 1.0,
-               .min = 0.0,
-               .max = MS_UNBOUNDED,
-               .display_max = 5.0},
+    MS_WIDTH(BLUR1, "blur_amount1", "Blur Amount1",
+             "The width for the first blur. Sets the low frequency cutoff.", 0.014, 0.25),
+    MS_WIDTH(BLUR2, "blur_amount2", "Blur Amount2",
+             "The width for the second blur. Sets the high frequency cutoff.", 0.028, 0.25),
+    MS_RELATIVE(REL_X, "blur_rel_x", "Blur Rel X", "Relative horizontal blur width.", 1.0),
+    MS_RELATIVE(REL_Y, "blur_rel_y", "Blur Rel Y", "Relative vertical blur width.", 1.0),
     [BRIGHTNESS] = {.type = MS_PARAM_DOUBLE,
                     .name = "brightness",
                     .label = "Brightness",
@@ -92,14 +67,7 @@ static const MsParam params[] = {
                       .def = 0.5,
                       .display_max = 1.0},
     [MASK_USE] = MS_PARAM_MASK_USE,
-    [BLUR_MASK] = {.type = MS_PARAM_WIDTH,
-                   .name = "blur_mask",
-                   .label = "Blur Mask",
-                   .hint = "Blurs the Mask input by this amount before using.",
-                   .def = 0.00625,
-                   .min = 0.0,
-                   .max = MS_UNBOUNDED,
-                   .display_max = 0.5},
+    [BLUR_MASK] = MS_PARAM_BLUR_MASK(0.00625, 0.5),
     [INVERT_MASK] = MS_PARAM_INVERT_MASK("Use the black areas of the Mask."),
     MS_SHOW(SHOW_BLUR_AMOUNT1, "ShowBlurAmount1", "Show Blur Amount1"),
     MS_SHOW(SHOW_BLUR_AMOUNT2, "ShowBlurAmount2", "Show Blur Amount2"),
@@ -145,13 +113,17 @@ static int run(MsApi api, void *user) {
 
 static int render(const MsRender *r) {
     const double *v = r->values;
-    const int w = r->width, h = r->height;
     MsImage source, output;
-    ms_image_rgba(&source, r->inputs[SOURCE].pixels, r->inputs[SOURCE].row, r->half, w, h);
-    ms_image_rgba(&output, r->output, r->output_row, r->half, w, h);
+    ms_input_image(&source, r, SOURCE);
+    ms_output_image(&output, r);
+    const size_t floats[] = {ms_mask_floats(r, MASK)};
+    float *block = malloc(ms_parts_size(floats, ARRAY_SIZE(floats))), *part[ARRAY_SIZE(floats)];
+    if (!block)
+        return ms_out_of_memory(r);
+    ms_parts(block, floats, ARRAY_SIZE(floats), part);
     MsMask mask;
-    if (!ms_mask_init(&mask, r, MASK, SOURCE, &source, v[MASK_USE], v[INVERT_MASK], v[BLUR_MASK]))
-        return 0;
+    ms_mask_init(&mask, r, MASK, SOURCE, &source, part[0], v[MASK_USE], v[INVERT_MASK],
+                 v[BLUR_MASK]);
     // Total blur radii, rounded as the blur does (src/halide/blur.h).
     Job j = {&source,
              &output,
@@ -165,55 +137,31 @@ static int render(const MsRender *r) {
              (float)v[OFFSET_DARKS]};
     // Inputs uploaded to the GPU: the Source, and the Mask or the one mask value.
     MsImage *const inputs[] = {&source, mask.input};
-    MsImage *const between[] = {&mask.value}; // made on the GPU from the Mask
-    const int ok = ms_run(run, &j, inputs, 2, between, mask.has_mask, &output, r->info, r->err,
-                          r->err_size);
-    ms_mask_free(&mask);
+    MsImage *const between[] = {ms_mask_between(&mask)}; // made on the GPU from the Mask
+    const int ok = ms_run(run, &j, inputs, ARRAY_SIZE(inputs), between, ARRAY_SIZE(between),
+                          &output, r->info, r->err, r->err_size);
+    free(block);
     return ok;
 }
 
 // The viewer: Blur Amount1 (red), Blur Amount2 (green) and Blur Rel X and Y (its arrows).
 static const MsOverlay overlay[] = {
-    {.kind = MS_OVERLAY_ELLIPSE,
-     .colour = MS_OVERLAY_RED,
-     .show = "ShowBlurAmount1",
-     .size = "blur_amount1",
-     .rel_x = "blur_rel_x",
-     .rel_y = "blur_rel_y"},
-    {.kind = MS_OVERLAY_ELLIPSE,
-     .colour = MS_OVERLAY_GREEN,
-     .show = "ShowBlurAmount2",
-     .size = "blur_amount2",
-     .rel_x = "blur_rel_x",
-     .rel_y = "blur_rel_y"},
-    {.kind = MS_OVERLAY_ARROW_X,
-     .colour = MS_OVERLAY_GREEN,
-     .show = "ShowBlurAmount2",
-     .size = "blur_amount2",
-     .rel_x = "blur_rel_x",
-     .rel_y = "blur_rel_y"},
-    {.kind = MS_OVERLAY_ARROW_Y,
-     .colour = MS_OVERLAY_GREEN,
-     .show = "ShowBlurAmount2",
-     .size = "blur_amount2",
-     .rel_x = "blur_rel_x",
-     .rel_y = "blur_rel_y"},
+    MS_OVERLAY_SIZED(MS_OVERLAY_ELLIPSE, "ShowBlurAmount1", "blur_amount1", NULL, "blur_rel_x",
+                     "blur_rel_y", 0.0, MS_OVERLAY_RED),
+    MS_OVERLAY_SIZED(MS_OVERLAY_ELLIPSE, "ShowBlurAmount2", "blur_amount2", NULL, "blur_rel_x",
+                     "blur_rel_y", 0.0, MS_OVERLAY_GREEN),
+    MS_OVERLAY_ARROWS("ShowBlurAmount2", "blur_amount2", "blur_rel_x", "blur_rel_y", 0.0,
+                      MS_OVERLAY_GREEN),
 };
 
 const MsEffect ms_bandpass_effect = {
-    MS_ID("BandPass"),
-    "MS_BandPass",
-    "Band-pass filter: the difference of two blurs, scaled and offset by a gray value.",
-    clips,
-    ARRAY_SIZE(clips),
-    params,
-    ARRAY_SIZE(params),
-    render,
-    NULL,
-    0,
-    NULL,
-    overlay,
-    ARRAY_SIZE(overlay),
-    "bandpass", // presets (common/preset.h)
-    NULL, // not varying with its settings
+    .id = MS_ID("BandPass"),
+    .label = "MS_BandPass",
+    .description =
+        "Band-pass filter: the difference of two blurs, scaled and offset by a gray value.",
+    MS_CLIPS(clips),
+    MS_PARAMS(params),
+    .render = render,
+    MS_OVERLAYS(overlay),
+    .presets = "bandpass",
 };

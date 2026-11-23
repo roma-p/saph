@@ -5,29 +5,13 @@
 // as two 32-bit integers, R and B in their low 16 bits (little-endian).
 
 #include "Halide.h"
+#include "shared.h"
 
 using namespace Halide;
 
 namespace {
 
-// The layout of the images: `values` per pixel next to each other (4 floats, or 2 integers of
-// two halves); the schedule: one pixel per thread on the GPU.
-void layout(OutputImageParam image, int values) {
-    image.dim(0).set_stride(values);
-    image.dim(2).set_stride(1).set_bounds(0, values);
-}
-
 Expr u32(uint32_t value) { return Internal::make_const(UInt(32), (uint64_t)value); }
-
-void schedule(Func output, int values, const Target &target) {
-    Var x = output.args()[0], y = output.args()[1], c = output.args()[2];
-    Var xo("xo"), yo("yo"), xi("xi"), yi("yi");
-    output.bound(c, 0, values).reorder(c, x, y).unroll(c);
-    if (target.has_gpu_feature())
-        output.gpu_tile(x, y, xo, yo, xi, yi, 16, 16);
-    else
-        output.vectorize(x, 8).parallel(y);
-}
 
 } // namespace
 
@@ -46,9 +30,9 @@ class ToFloat : public Generator<ToFloat> {
                            sign | ((exponent + 112) << 23) | (mantissa << 13));
         output(x, y, c) =
             select(exponent == 0, select(sign != 0, -small, small), reinterpret<float>(bits));
-        layout(input, 2);
-        layout(output, 4);
-        schedule(output, 4, get_target());
+        ms::interleaved(input, 2);
+        ms::interleaved(output, 4);
+        ms::schedule_rgba(output, get_target().has_gpu_feature(), 4);
     }
 };
 
@@ -74,9 +58,9 @@ class ToHalf : public Generator<ToHalf> {
     void generate() {
         Var x("x"), y("y"), c("c");
         output(x, y, c) = half_of(input(x, y, 2 * c)) | (half_of(input(x, y, 2 * c + 1)) << 16);
-        layout(input, 4);
-        layout(output, 2);
-        schedule(output, 2, get_target());
+        ms::interleaved(input, 4);
+        ms::interleaved(output, 2);
+        ms::schedule_rgba(output, get_target().has_gpu_feature(), 2);
     }
 };
 

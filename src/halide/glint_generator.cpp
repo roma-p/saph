@@ -58,25 +58,18 @@ class GlintSource : public Generator<GlintSource> {
         s(x, y, c) = (source(x, y, c) + (source(x, y, 3) - source(x, y, c)) * from_alpha) *
                      select(has_mask != 0, m, 1.0f);
         std::vector<ms_blur::Box> boxes;
-        Func b = ms_blur::blur3_subpixel(s, blur, blur_frac, blur, blur, blur_frac, blur, Expr(0),
-                                         source.width(), source.height(), gpu, "tblur", boxes);
+        Func b = ms_blur::blur3_subpixel(s, blur, blur_frac, Expr(0), source.width(),
+                                         source.height(), gpu, "tblur", boxes);
         Func th = ms::threshold_of(b, {threshold, add_r, add_g, add_b, Expr(1)});
         glints(x, y, c) = th(x, y, c);
 
         ms::interleaved(source);
         ms::interleaved(mask);
         ms::interleaved(glints);
-        Var xo("xo"), yo("yo"), xi("xi"), yi("yi");
         ms_blur::schedule(boxes, gpu, 4);
-        s.compute_root().bound(c, 0, 4).reorder_storage(c, x, y).reorder(c, x, y);
-        if (gpu) {
-            s.vectorize(c).gpu_tile(x, y, xo, yo, xi, yi, 16, 16);
-            glints.bound(c, 0, 4).reorder(c, x, y).vectorize(c).gpu_tile(x, y, xo, yo, xi, yi, 16,
-                                                                         16);
-        } else {
-            s.unroll(c).vectorize(x, 8).parallel(y);
-            glints.bound(c, 0, 4).reorder(c, x, y).unroll(c).vectorize(x, 8).parallel(y);
-        }
+        s.compute_root().reorder_storage(c, x, y);
+        ms::schedule_float4(s, gpu);
+        ms::schedule_float4(glints, gpu);
     }
 };
 
@@ -146,19 +139,12 @@ class GlintRay : public Generator<GlintRay> {
         ms::interleaved(glints);
         ms::interleaved(total);
         ms::interleaved(out);
-        Var xo("xo"), yo("yo"), xi("xi"), yi("yi");
         ms_blur::schedule(boxes, gpu, 4);
         if (direction >= 1) {
-            line.compute_root().bound(c, 0, 4).reorder_storage(c, t, i).reorder(c, t, i);
-            if (gpu)
-                line.vectorize(c).gpu_tile(t, i, xo, yo, xi, yi, 16, 16);
-            else
-                line.unroll(c).vectorize(t, 8).parallel(i);
+            line.compute_root().reorder_storage(c, t, i);
+            ms::schedule_float4(line, gpu);
         }
-        if (gpu)
-            out.bound(c, 0, 4).reorder(c, x, y).vectorize(c).gpu_tile(x, y, xo, yo, xi, yi, 16, 16);
-        else
-            out.bound(c, 0, 4).reorder(c, x, y).unroll(c).vectorize(x, 8).parallel(y);
+        ms::schedule_float4(out, gpu);
     }
 };
 
@@ -184,37 +170,23 @@ class GlintCombine : public Generator<GlintCombine> {
         std::vector<ms_blur::Box> boxes;
         Func ray("ray");
         if (blurred)
-            ray(x, y, c) = ms_blur::blur3_subpixel(turned, blur, blur_frac, blur, blur, blur_frac,
-                                                   blur, Expr(0), source.width(), source.height(),
-                                                   gpu, "gblur", boxes)(x, y, c);
+            ray(x, y, c) = ms_blur::blur3_subpixel(turned, blur, blur_frac, Expr(0), source.width(),
+                                                   source.height(), gpu, "gblur", boxes)(x, y, c);
         else
             ray(x, y, c) = turned(x, y, c);
 
         // Screened over the Source scaled by Source Opacity, or under it.
-        Expr a = source(x, y, 3) * source_opacity;
-        Expr s = source(x, y, c) * source_opacity;
-        Expr rc = ray(x, y, c);
-        Expr s0 = max(s, 0.0f);
-        Expr on = max(s0 + rc * max(1.0f - s0, 0.0f), rc);
-        Expr below = s + (1.0f - a) * rc;
-        Expr rgb = on + (below - on) * under;
-        Expr glint_alpha = max(ray(x, y, 0), max(ray(x, y, 1), ray(x, y, 2))) * affect_alpha;
-        Expr alpha = a + (1.0f - a) * glint_alpha;
-        output(x, y, c) = select(c == 3, alpha, rgb);
+        output(x, y, c) = ms::screened(source, ray, x, y, c, source_opacity, under, affect_alpha);
 
         ms::interleaved(source);
         ms::interleaved(total);
         ms::interleaved(output);
-        Var xo("xo"), yo("yo"), xi("xi"), yi("yi");
         ms_blur::schedule(boxes, gpu, 4);
         for (Func f : {turned, ray}) {
             if (!blurred && f.name() == ray.name())
                 continue; // inline
-            f.compute_root().bound(c, 0, 4).reorder_storage(c, x, y).reorder(c, x, y);
-            if (gpu)
-                f.vectorize(c).gpu_tile(x, y, xo, yo, xi, yi, 16, 16);
-            else
-                f.unroll(c).vectorize(x, 8).parallel(y);
+            f.compute_root().reorder_storage(c, x, y);
+            ms::schedule_float4(f, gpu);
         }
         ms::schedule_rgba(output, gpu);
     }

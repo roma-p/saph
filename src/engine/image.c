@@ -50,3 +50,18 @@ void ms_image_half(MsImage *image, const void *pixels, ptrdiff_t row, int width,
     image->b.host = (uint8_t *)pixels;
     image->b.type.code = halide_type_uint;
 }
+
+size_t ms_parts_size(const size_t *floats, int count) {
+    size_t total = 0;
+    for (int i = 0; i < count; ++i)
+        total += (floats[i] + 15) / 16 * 16;
+    return (total > 0 ? total : 16) * sizeof(float);
+}
+
+void ms_parts(float *block, const size_t *floats, int count, float **part) {
+    size_t at = 0;
+    for (int i = 0; i < count; ++i) {
+        part[i] = floats[i] ? block + at : NULL;
+        at += (floats[i] + 15) / 16 * 16;
+    }
+}

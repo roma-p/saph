@@ -53,7 +53,7 @@ static int fetch_image(OfxImageEffectHandle effect, const char *clip, OfxTime ti
     // The image's depth: floats when the host does not say (the plugin's first choice).
     char *pixel_depth = kOfxBitDepthFloat;
     ms_prop->propGetString(img->handle, kOfxImageEffectPropPixelDepth, 0, &pixel_depth);
-    img->element = !pixel_depth                                 ? 4
+    img->element = !pixel_depth                                  ? 4
                    : strcmp(pixel_depth, kOfxBitDepthHalf) == 0  ? 2
                    : strcmp(pixel_depth, kOfxBitDepthFloat) == 0 ? 4
                                                                  : 0;
@@ -105,8 +105,7 @@ static void fill(char *out, size_t count, int element, float value) {
 // Fills `buffer` with the pixels of `img` covering `area`, packed (bottom row first,
 // no padding); `outside` (all four channels) where `img` has no pixels. `buffer` must
 // hold width x height x 4 channel values of `area`, in `element` bytes.
-static void pack_image(const Image *img, OfxRectI area, float outside, int element,
-                       void *buffer) {
+static void pack_image(const Image *img, OfxRectI area, float outside, int element, void *buffer) {
     const int width = area.x2 - area.x1, height = area.y2 - area.y1;
     const size_t value = (size_t)element * 4; // bytes of a pixel
     for (int row = 0; row < height; ++row) {
@@ -188,6 +187,59 @@ static void *view(const Image *img, OfxRectI area, ptrdiff_t *row) {
     return pixel(img, area.x1, area.y1);
 }
 
+// The inputs' images at `time`, in `element` bytes per channel (the output's: the plugin does
+// not take mixed depths); optional inputs that are not connected have none.
+static OfxStatus fetch_inputs(OfxImageEffectHandle effect, const MsEffect *e, const int *connected,
+                              OfxTime time, int element, Image *images) {
+    OfxStatus status = kOfxStatOK;
+    for (int c = 0; c < e->clip_count; ++c) {
+        memset(&images[c], 0, sizeof images[c]);
+        if ((!connected[c] && e->clips[c].optional) || status != kOfxStatOK)
+            continue;
+        fetch_image(effect, e->clips[c].clip, time, &images[c]);
+        if (images[c].data && images[c].element != element)
+            status = kOfxStatErrImageFormat;
+    }
+    return status;
+}
+
+// The log of the first renders of the session (REPORTED_RENDERS): where their time `t` went,
+// the inputs (`how`), the output (`copied` or in place), the settings.
+static void log_render(OfxImageEffectHandle effect, const MsEffect *e, const MsRender *r,
+                       char (*how)[32], const MsRunInfo *info, const double *t, int copied,
+                       const Image *dst, OfxRectI window, OfxRectI area) {
+    static int reported;
+    static MsMutex lock = MS_MUTEX_INIT;
+    ms_mutex_lock(&lock);
+    const int number = ++reported;
+    ms_mutex_unlock(&lock);
+    if (number <= REPORTED_RENDERS) {
+        OfxPropertySetHandle props;
+        char *name = "?";
+        if (ms_effect->getPropertySet(effect, &props) == kOfxStatOK)
+            ms_prop->propGetString(props, kOfxPropLabel, 0, &name);
+        char inputs_line[512] = "", settings[1024] = "";
+        size_t used = 0;
+        for (int c = 0; c < e->clip_count && used < sizeof inputs_line; ++c)
+            used += (size_t)snprintf(inputs_line + used, sizeof inputs_line - used, "%s%s %s",
+                                     c ? ", " : "", e->clips[c].clip, how[c]);
+        // The settings (WIDTH and HEIGHT in pixels): what a slow render was asked to do.
+        used = 0;
+        for (int i = 0; i < e->param_count && used < sizeof settings; ++i)
+            if (e->params[i].type != MS_PARAM_TEXT && e->params[i].type != MS_PARAM_STRING)
+                used += (size_t)snprintf(settings + used, sizeof settings - used, " %s=%g",
+                                         e->params[i].name, r->values[i]);
+        ms_log("render %d %s %dx%d on %s: fetch %.1f ms, copy in %.1f, effect %.1f (kernels "
+               "with uploads %.1f, download %.1f), copy out %.1f, release %.1f (inputs: %s; "
+               "output %s, host %s; window %d %d %d %d, image %d %d %d %d); settings:%s",
+               number, name, area.x2 - area.x1, area.y2 - area.y1, ms_api_name(info->api),
+               t[1] - t[0], t[2] - t[1], t[3] - t[2], info->kernels_ms, info->download_ms,
+               t[4] - t[3], t[5] - t[4], inputs_line, copied ? "copied" : "in place", dst->depth,
+               window.x1, window.y1, window.x2, window.y2, area.x1, area.y1, area.x2, area.y2,
+               settings);
+    }
+}
+
 OfxStatus ms_render_with(OfxImageEffectHandle effect, OfxPropertySetHandle in_args,
                          const MsEffect *e, MsRender *r) {
     const MsClip *clips = e->clips;
@@ -229,16 +281,9 @@ OfxStatus ms_render_with(OfxImageEffectHandle effect, OfxPropertySetHandle in_ar
     Image images[MS_MAX_CLIPS];
     void *buffers[MS_MAX_CLIPS] = {NULL};
     MsInput inputs[MS_MAX_CLIPS];
-    OfxStatus status = kOfxStatOK;
-    for (int c = 0; c < clip_count; ++c) {
+    for (int c = 0; c < clip_count; ++c)
         inputs[c] = (MsInput){NULL, 0};
-        memset(&images[c], 0, sizeof images[c]);
-        if ((!connected[c] && clips[c].optional) || status != kOfxStatOK)
-            continue;
-        fetch_image(effect, clips[c].clip, time, &images[c]);
-        if (images[c].data && images[c].element != element)
-            status = kOfxStatErrImageFormat;
-    }
+    OfxStatus status = fetch_inputs(effect, e, connected, time, element, images);
     t[1] = ms_clock();
     char how[MS_MAX_CLIPS][32]; // per input: "in place", "copied", "none"; host depth
     for (int c = 0; c < clip_count; ++c) {
@@ -251,7 +296,7 @@ OfxStatus ms_render_with(OfxImageEffectHandle effect, OfxPropertySetHandle in_ar
             inputs[c] = (MsInput){pixels, row};
             int same = -1; // an earlier input with the same pixels (one image in the host)
             for (int k = 0; k < c && same < 0; ++k)
-                if (inputs[k].pixels == pixels && inputs[k].row == row)
+                if (ms_same_input(&inputs[k], &inputs[c]))
                     same = k;
             if (same >= 0)
                 snprintf(how[c], sizeof how[c], "same as %s", clips[same].clip);
@@ -325,34 +370,6 @@ OfxStatus ms_render_with(OfxImageEffectHandle effect, OfxPropertySetHandle in_ar
     release_image(&dst);
     t[5] = ms_clock();
 
-    static int reported;
-    static MsMutex lock = MS_MUTEX_INIT;
-    ms_mutex_lock(&lock);
-    const int number = ++reported;
-    ms_mutex_unlock(&lock);
-    if (number <= REPORTED_RENDERS) {
-        OfxPropertySetHandle props;
-        char *name = "?";
-        if (ms_effect->getPropertySet(effect, &props) == kOfxStatOK)
-            ms_prop->propGetString(props, kOfxPropLabel, 0, &name);
-        char inputs_line[512] = "", settings[1024] = "";
-        size_t used = 0;
-        for (int c = 0; c < clip_count && used < sizeof inputs_line; ++c)
-            used += (size_t)snprintf(inputs_line + used, sizeof inputs_line - used, "%s%s %s",
-                                     c ? ", " : "", clips[c].clip, how[c]);
-        // The settings (WIDTH and HEIGHT in pixels): what a slow render was asked to do.
-        used = 0;
-        for (int i = 0; i < e->param_count && used < sizeof settings; ++i)
-            if (e->params[i].type != MS_PARAM_TEXT && e->params[i].type != MS_PARAM_STRING)
-                used += (size_t)snprintf(settings + used, sizeof settings - used, " %s=%g",
-                                         e->params[i].name, r->values[i]);
-        ms_log("render %d %s %dx%d on %s: fetch %.1f ms, copy in %.1f, effect %.1f (kernels "
-               "with uploads %.1f, download %.1f), copy out %.1f, release %.1f (inputs: %s; "
-               "output %s, host %s; window %d %d %d %d, image %d %d %d %d); settings:%s",
-               number, name, width, height, ms_api_name(info.api), t[1] - t[0], t[2] - t[1],
-               t[3] - t[2], info.kernels_ms, info.download_ms, t[4] - t[3], t[5] - t[4],
-               inputs_line, result ? "copied" : "in place", dst.depth, window.x1, window.y1,
-               window.x2, window.y2, area.x1, area.y1, area.x2, area.y2, settings);
-    }
+    log_render(effect, e, r, how, &info, t, result != NULL, &dst, window, area);
     return status;
 }

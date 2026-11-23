@@ -29,10 +29,10 @@ inline Func threshold_of(Func s, const Threshold &p) {
                         select(vc > p.threshold, s(x, y, c), 0.0f));
     Expr total_t = t(x, y, 0) + t(x, y, 1) + t(x, y, 2);
     Expr total_s = s(x, y, 0) + s(x, y, 1) + s(x, y, 2);
-    Expr kept = p.keep_at_zero != 0 && p.threshold <= 0.0f && p.add_r == 0.0f &&
-                p.add_g == 0.0f && p.add_b == 0.0f;
-    out(x, y, c) = select(c >= 3, 0.0f, kept, s(x, y, c),
-                          total_s > 0.0f, min(s(x, y, c) * total_t / total_s, s(x, y, c)), 0.0f);
+    Expr kept = p.keep_at_zero != 0 && p.threshold <= 0.0f && p.add_r == 0.0f && p.add_g == 0.0f &&
+                p.add_b == 0.0f;
+    out(x, y, c) = select(c >= 3, 0.0f, kept, s(x, y, c), total_s > 0.0f,
+                          min(s(x, y, c) * total_t / total_s, s(x, y, c)), 0.0f);
     return out;
 }
 

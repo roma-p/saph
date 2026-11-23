@@ -1,5 +1,5 @@
 #!/bin/sh
-# Times every effect at 4K outside any host, with tools/test_host.c, on the plugin built by
+# Times every effect at 4K outside any host, with build/test_host, on the plugin built by
 # ./build.sh. Prints the GPU API the effects really ran on ("[MillSaph] running on CUDA")
 # and, per case, the best render time after the first (the first one loads the GPU).
 # Distort_CPU: Distort with Enable GPU off.
@@ -11,17 +11,12 @@ set -e
 cd "$(dirname "$0")/../.."
 
 frames="${1:-6}"
-third_party="${MILLSAPH_THIRD_PARTY_DIR:-$PWD/third_party}"
-case "$(uname)" in
-Darwin) plugin=build/MillSaph.ofx.bundle/Contents/MacOS/MillSaph.ofx; libs= ;;
-*)      plugin=build/MillSaph.ofx.bundle/Contents/Linux-x86-64/MillSaph.ofx; libs=-ldl ;;
-esac
-if [ ! -f "$plugin" ]; then
-    echo "no $plugin: run ./build.sh first"
+. tools/plugin_path.sh
+plugin=build/MillSaph.ofx.bundle/$plugin_lib
+if [ ! -f "$plugin" ] || [ ! -x build/test_host ]; then
+    echo "no $plugin or build/test_host: run ./build.sh first"
     exit 1
 fi
-cc -std=c11 -O2 -I"$third_party/openfx/include" -Isrc tools/test_host.c src/common/half.c $libs \
-    -o build/test_host
 
 echo "machine: $(uname -sm), $(nproc 2>/dev/null || sysctl -n hw.ncpu) CPU threads"
 command -v nvidia-smi > /dev/null && nvidia-smi --query-gpu=name,driver_version,memory.total --format=csv,noheader | sed 's/^/GPU: /'

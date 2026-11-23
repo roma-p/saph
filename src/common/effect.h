@@ -53,7 +53,7 @@ typedef enum {
 // thread, while the user waits): read and set them by name (POINT: x, its _y entry: y).
 typedef struct MsHost MsHost;
 struct MsHost {
-    const char *(*get_text)(MsHost *host, const char *name); // STRING (NULL: none)
+    const char *(*get_text)(MsHost *host, const char *name);           // STRING (NULL: none)
     int (*set_text)(MsHost *host, const char *name, const char *text); // 1: done
     double (*get_value)(MsHost *host, const char *name); // DOUBLE, WIDTH, CHOICE, BOOL...
     int (*set_value)(MsHost *host, const char *name, double value);
@@ -78,10 +78,18 @@ typedef struct {
     const char *def_text;      // STRING: the default text
     // BUTTON: what pressing it does; returns 0 with the reason in err (shown by the host)
     int (*press)(MsHost *host, char *err, size_t err_size);
+    // 1: kept (saved in scripts and presets) but not shown (it does nothing, or no longer)
+    int hidden;
 } MsParam;
 
 // Common kinds of parameter, as table entries ([id] = ...): name n, label l, hint h, default d.
 // A scale (0 and up, slider to 5):
+// 1 for the entries that are a part of the parameter before (an RGB's green and blue, a
+// POINT's y): the hosts read and show them with it.
+static inline int ms_param_part(MsParamType t) {
+    return t == MS_PARAM_RGB_PART || t == MS_PARAM_POINT_Y;
+}
+
 #define MS_RELATIVE(id, n, l, h, d)                                                                \
     [id] = {.type = MS_PARAM_DOUBLE,                                                               \
             .name = (n),                                                                           \
@@ -101,8 +109,8 @@ typedef struct {
             .min = 0.0,                                                                            \
             .max = 1.0,                                                                            \
             .display_max = 1.0}
-// a distance (a fraction of the frame's width, 0 and up, slider to 1):
-#define MS_DISTANCE(id, n, l, h, d)                                                                \
+// A width (a fraction of the frame width) from 0, without an upper limit, its slider to `dm`.
+#define MS_WIDTH(id, n, l, h, d, dm)                                                               \
     [id] = {.type = MS_PARAM_WIDTH,                                                                \
             .name = (n),                                                                           \
             .label = (l),                                                                          \
@@ -110,13 +118,14 @@ typedef struct {
             .def = (d),                                                                            \
             .min = 0.0,                                                                            \
             .max = MS_UNBOUNDED,                                                                   \
-            .display_max = 1.0}
-// a colour, white by default (its green and blue: entries id + 1 and id + 2, n "_green" and
-// n "_blue"):
-#define MS_COLOUR(id, n, l, h)                                                                     \
-    [id] = {.type = MS_PARAM_RGB, .name = (n), .label = (l), .hint = (h), .def = 1.0},             \
-    [id + 1] = {.type = MS_PARAM_RGB_PART, .name = n "_green", .def = 1.0},                        \
-    [id + 2] = {.type = MS_PARAM_RGB_PART, .name = n "_blue", .def = 1.0}
+            .display_max = (dm)}
+#define MS_DISTANCE(id, n, l, h, d) MS_WIDTH(id, n, l, h, d, 1.0)
+// A colour (three entries: id, id + 1, id + 2), each channel `d` by default.
+#define MS_COLOUR_OF(id, n, l, h, d)                                                               \
+    [id] = {.type = MS_PARAM_RGB, .name = (n), .label = (l), .hint = (h), .def = (d)},             \
+    [id + 1] = {.type = MS_PARAM_RGB_PART, .name = n "_green", .def = (d)},                        \
+    [id + 2] = {.type = MS_PARAM_RGB_PART, .name = n "_blue", .def = (d)}
+#define MS_COLOUR(id, n, l, h) MS_COLOUR_OF(id, n, l, h, 1.0)
 
 // The most inputs and parameters of an effect (the hosts' code sizes arrays by them).
 #define MS_MAX_CLIPS 8
@@ -149,8 +158,8 @@ typedef struct MsRender {
     ptrdiff_t output_row;
     char *err; // reason of a failure
     size_t err_size;
-    int half; // the inputs and the output in 16-bit floats (else floats): engine.h,
-              // ms_image_rgba
+    int half;               // the inputs and the output in 16-bit floats (else floats): engine.h,
+                            // ms_image_rgba
     struct MsRunInfo *info; // what the effect's ms_run did (engine.h), or NULL
     // One per parameter: the STRING parameters' texts (NULL for the others). NULL when the
     // caller has none to give (the effects then take their default texts).
@@ -228,6 +237,28 @@ typedef struct {
     int (*varying)(const double *values);
 } MsEffect;
 
+// An MsEffect's tables with their counts (ARRAY_SIZE: common/defines.h), by field name with the
+// others: {.id = MS_ID("X"), .label = "MS_X", MS_CLIPS(clips), MS_PARAMS(params), ...}.
+#define MS_CLIPS(a) .clips = (a), .clip_count = ARRAY_SIZE(a)
+#define MS_PARAMS(a) .params = (a), .param_count = ARRAY_SIZE(a)
+#define MS_OVERLAYS(a) .overlay = (a), .overlay_count = ARRAY_SIZE(a)
+
+// A shape drawn from a width: `size` x `scale` (NULL: 1) x `factor` (0: 1), its relative
+// width and height `rel_x`, `rel_y` (NULL: 1), in the colour last (an MS_OVERLAY_ colour);
+// MS_OVERLAY_ARROWS: its two arrows (ARROW_X, ARROW_Y). MsOverlay initializers.
+#define MS_OVERLAY_SIZED(k, sh, sz, sc, rx, ry, f, ...)                                            \
+    {.kind = (k),                                                                                  \
+     .colour = __VA_ARGS__,                                                                        \
+     .show = (sh),                                                                                 \
+     .size = (sz),                                                                                 \
+     .scale = (sc),                                                                                \
+     .rel_x = (rx),                                                                                \
+     .rel_y = (ry),                                                                                \
+     .factor = (f)}
+#define MS_OVERLAY_ARROWS(sh, sz, rx, ry, f, ...)                                                  \
+    MS_OVERLAY_SIZED(MS_OVERLAY_ARROW_X, sh, sz, NULL, rx, ry, f, __VA_ARGS__),                    \
+        MS_OVERLAY_SIZED(MS_OVERLAY_ARROW_Y, sh, sz, NULL, rx, ry, f, __VA_ARGS__)
+
 // Shape colours of the viewer overlays.
 #define MS_OVERLAY_ORANGE {0.9f, 0.4f, 0.1f}
 #define MS_OVERLAY_WHITE {1.0f, 1.0f, 1.0f}
@@ -250,24 +281,14 @@ extern const int ms_effect_count;
 // Calls every effect's release (the plugin is unloaded).
 void ms_effects_release(void);
 
+// "not enough memory" in r->err; returns 0 (a render's failure).
+int ms_out_of_memory(const MsRender *r);
+
 // The effects.
 extern const MsEffect ms_test_effect;
-extern const MsEffect ms_bandpass_effect;
-extern const MsEffect ms_edgeawareblur_effect;
-extern const MsEffect ms_distort_effect;
-extern const MsEffect ms_mosaic_effect;
-extern const MsEffect ms_glow_effect;
-extern const MsEffect ms_edgeblur_effect;
-extern const MsEffect ms_rackdefocus_effect;
-extern const MsEffect ms_glint_effect;
-extern const MsEffect ms_glare_effect;
-extern const MsEffect ms_lensflare_effect;
-extern const MsEffect ms_jpegdamage_effect;
-extern const MsEffect ms_pixelsort_effect;
-extern const MsEffect ms_flickermatch_effect;
-extern const MsEffect ms_flickermatchcolor_effect;
-extern const MsEffect ms_flicker_effect;
-extern const MsEffect ms_tvdamage_effect;
+#define MS_EFFECT(Name, name, pipl_id, varies) extern const MsEffect ms_##name##_effect;
+#include "effects/list.def"
+#undef MS_EFFECT
 
 #ifdef __cplusplus
 }

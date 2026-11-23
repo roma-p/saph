@@ -16,9 +16,9 @@ typedef struct {
     // hotspot (pixels, y up), each at pivot + center x (hotspot - pivot).
     int lens;
     double hotspot[2], pivot[2];
-    double unit;        // distances' unit (pixels): the frame's width / 4
-    double frame_width, frame_height; // pixels
-    double gamma;       // each element's brightness b -> b^(1 / gamma)
+    double unit;                                  // distances' unit (pixels): the frame's width / 4
+    double frame_width, frame_height;             // pixels
+    double gamma;                                 // each element's brightness b -> b^(1 / gamma)
     double hot_gain[3], other_gain[3], rays_gain; // the families' brightness x colour
     double other_width, rays_rotate;
     // The Center and Edge Triggers: (scale - 1) x their weight here, for the brightness and

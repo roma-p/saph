@@ -148,8 +148,7 @@ inline Expr box_radius(Expr total, int i) { return total / 3 + select(i >= 3 - t
 // The 3-box blur of `in` (x, y, c): 3 horizontal boxes, then 3 vertical ones, of `kind` on
 // the GPU. Appends its 6 boxes to `boxes` (for schedule()).
 inline Func blur3(Func in, Expr total_x, Expr total_y, Expr width, Expr height, bool gpu,
-                  const std::string &name, std::vector<Box> &boxes,
-                  Boxes kind = Boxes::windows) {
+                  const std::string &name, std::vector<Box> &boxes, Boxes kind = Boxes::windows) {
     Func f = in;
     for (int i = 0; i < 6; ++i) {
         const bool along_x = i < 3;
@@ -184,6 +183,12 @@ inline Func blur3_subpixel(Func in, Expr nx, Expr fx, Expr nx_max, Expr ny, Expr
         }
     }
     return f;
+}
+
+// The same radius (and fraction) on both axes.
+inline Func blur3_subpixel(Func in, Expr n, Expr frac, Expr zero, Expr width, Expr height, bool gpu,
+                           const std::string &name, std::vector<Box> &boxes) {
+    return blur3_subpixel(in, n, frac, n, n, frac, n, zero, width, height, gpu, name, boxes);
 }
 
 // GPU RGB staged boxes: each block first loads its pixels and their windows into on-chip

@@ -3,7 +3,6 @@
 
 #pragma once
 
-
 #include <functional>
 
 #include "Halide.h"
@@ -66,18 +65,16 @@ inline void polar_noises(PolarNoises &p, const Field &nf, std::function<Expr(Exp
     Var i = p.i, e = p.e, which = p.which;
     Expr at = -PI + (cast<float>(i) + 0.5f) * (2.0f * PI / ANGLES);
     auto around = [&](int rho, int seed, int octaves, int scale, float mean, float shift) {
-        Expr n = ms_noise::fbm(cos(at) * nf(rho, e) + shift, sin(at) * nf(rho, e) + 3.3f,
-                               nf(seed, e), nf(octaves, e), 0.43f, 8,
-                               "octave" + std::to_string(rho));
+        Expr n =
+            ms_noise::fbm(cos(at) * nf(rho, e) + shift, sin(at) * nf(rho, e) + 3.3f, nf(seed, e),
+                          nf(octaves, e), 0.43f, 8, "octave" + std::to_string(rho));
         return clamp(mean + nf(scale, e) * n, 0.0f, 1.0f);
     };
-    p.raw(i, e, which) = select(which == 0,
-                                around(GLARE_RN_RHO, GLARE_RN_SEED, GLARE_RN_OCTAVES,
-                                       GLARE_RN_SCALE, 0.39f, 11.1f),
-                                around(GLARE_NB_RHO, GLARE_NB_SEED, GLARE_NB_OCTAVES,
-                                       GLARE_NB_SCALE, 0.5f, 7.7f));
-    p.thresholded(i, e) =
-        threshold(p.raw(i, e, 1), nf(GLARE_NB_WIDTH, e), nf(GLARE_NB_SOFT, e));
+    p.raw(i, e, which) =
+        select(which == 0,
+               around(GLARE_RN_RHO, GLARE_RN_SEED, GLARE_RN_OCTAVES, GLARE_RN_SCALE, 0.39f, 11.1f),
+               around(GLARE_NB_RHO, GLARE_NB_SEED, GLARE_NB_OCTAVES, GLARE_NB_SCALE, 0.5f, 7.7f));
+    p.thresholded(i, e) = threshold(p.raw(i, e, 1), nf(GLARE_NB_WIDTH, e), nf(GLARE_NB_SOFT, e));
     RDom tap(0, TAPS, "tap");
     Expr blur = nf(GLARE_NB_BLUR, e);
     Expr step = cast<int>(round(blur * ANGLES * ((cast<float>(tap) + 0.5f) / TAPS - 0.5f)));
@@ -170,11 +167,13 @@ inline ElementFrame element_frame(const Field &field, Expr dx, Expr dy, Expr e) 
     m.angle = atan2(aey, aex);
     {
         Expr bx = dx0 / f(GLARE_ANGLE_X), by = dy0 / f(GLARE_ANGLE_Y);
-        Expr ox = select(m.turned, (dx0 / max(f(GLARE_REL_X), 1e-6f)) * m.cr +
-                                       (dy0 / max(f(GLARE_REL_Y), 1e-6f)) * m.sr,
+        Expr ox = select(m.turned,
+                         (dx0 / max(f(GLARE_REL_X), 1e-6f)) * m.cr +
+                             (dy0 / max(f(GLARE_REL_Y), 1e-6f)) * m.sr,
                          bx * m.cr + by * m.sr);
-        Expr oy = select(m.turned, -(dx0 / max(f(GLARE_REL_X), 1e-6f)) * m.sr +
-                                       (dy0 / max(f(GLARE_REL_Y), 1e-6f)) * m.cr,
+        Expr oy = select(m.turned,
+                         -(dx0 / max(f(GLARE_REL_X), 1e-6f)) * m.sr +
+                             (dy0 / max(f(GLARE_REL_Y), 1e-6f)) * m.cr,
                          -bx * m.sr + by * m.cr);
         Expr around = atan2(oy, ox);
         m.angle = select(s_e != 0.0f, around, m.angle);
@@ -220,8 +219,7 @@ inline Expr stops_radius(const Field &field, const ElementFrame &m, Expr e, cons
     Expr lo = f(GLARE_RW_MIN), hi = f(GLARE_RW_MAX);
     // (their frequency across the sector's width; a whole turn: per turn)
     Expr whole = phase - 2.0f * PI * floor(phase / (2.0f * PI));
-    Expr wave_c =
-        0.5f + 0.5f * cos(f(GLARE_RW_FREQ) * whole * (2.0f * PI / f(GLARE_WIDTH)));
+    Expr wave_c = 0.5f + 0.5f * cos(f(GLARE_RW_FREQ) * whole * (2.0f * PI / f(GLARE_WIDTH)));
     Expr r = select(lo != 1.0f || hi != 1.0f,
                     r1 / (lo + (hi - lo) * pow(max(wave_c, 0.0f), f(GLARE_RW_SPIKE))), r1);
     if (noise) {
@@ -247,8 +245,9 @@ inline Expr stops_profile(const Field &field, Expr r, Expr c, Expr e) {
     k.where(k < last);
     Expr ka = radius(k), kb = radius(k + 1);
     Expr inside = t >= ka && t < kb && kb > ka;
-    Expr between = sum(select(inside, colour(k) + (colour(k + 1) - colour(k)) *
-                                                      ((t - ka) / select(kb > ka, kb - ka, 1.0f)),
+    Expr between = sum(select(inside,
+                              colour(k) + (colour(k + 1) - colour(k)) *
+                                              ((t - ka) / select(kb > ka, kb - ka, 1.0f)),
                               0.0f));
     Expr held = select(t < radius(0), colour(0), t >= radius(last), colour(last), between);
     auto edge_of = [&](Expr d) {
@@ -296,10 +295,9 @@ inline Expr sector_window(const Field &field, const ElementFrame &m, Expr e, Exp
     // pixel of arc.
     Expr past = (turn - width) * m.r0;
     Expr sharp = select(u <= 1e-5f, 0.0f, u <= 1.0f, 1.0f, clamp(0.57f - past, 0.0f, 1.0f));
-    Expr window = select(soft > 0.0f,
-                         smoothstep(min(v, 1.0f - v) / (0.5f * soft)) *
-                             select(u <= 1.0f, 1.0f, 0.0f),
-                         sharp);
+    Expr window =
+        select(soft > 0.0f,
+               smoothstep(min(v, 1.0f - v) / (0.5f * soft)) * select(u <= 1.0f, 1.0f, 0.0f), sharp);
     return select(width >= 2.0f * PI - 1e-5f && soft == 0.0f, 1.0f, window);
 }
 
@@ -314,8 +312,7 @@ inline Expr sector_waves(const Field &field, Expr e, Expr u, Expr v) {
     // (Lens Flare: x wave_brightness x the cosine wave thresholded by width and softness,
     // a peak at the sector's start, shifted by wave_phase)
     // (in each of the sector's repeats)
-    Expr cosine =
-        0.5f + 0.5f * cos(2.0f * PI * (v * f(GLARE_WAVE_FREQ) - f(GLARE_WAVE_PHASE)));
+    Expr cosine = 0.5f + 0.5f * cos(2.0f * PI * (v * f(GLARE_WAVE_FREQ) - f(GLARE_WAVE_PHASE)));
     return select(f(GLARE_WAVE_LENS) == 0.0f || wave == 0.0f, waves,
                   wave * threshold(cosine, ww, f(GLARE_WAVE_SOFT)));
 }
@@ -343,7 +340,8 @@ inline Expr rays_value(const Field &field, const ElementFrame &m, Expr dx, Expr 
     // element's frame, the angle kept: L / sqrt((cos / kx)^2 + (sin / ky)^2); the reference's
     // lengths at 12 angles, stretch 0.25-4, rotate 0 and 30)
     Expr phi = ang - m.rot;
-    Expr ex_ = cos(phi) / max(f(GLARE_SCALE_X), 1e-6f), ey_ = sin(phi) / max(f(GLARE_SCALE_Y), 1e-6f);
+    Expr ex_ = cos(phi) / max(f(GLARE_SCALE_X), 1e-6f),
+         ey_ = sin(phi) / max(f(GLARE_SCALE_Y), 1e-6f);
     Lj = select(m.turned, Lj / max(sqrt(ex_ * ex_ + ey_ * ey_), 1e-6f), Lj);
     // (Lens Flare: each line turned by the rotation in the frame q, its length there; its
     // width across it as the squeeze makes it: x rel_width rel_height / |v|)
@@ -390,10 +388,9 @@ inline Expr element_value(const Field &field, Expr dx, Expr dy, Expr c, Expr e,
     if (noise) { // (Lens Flare: x noise_brightness x its noise; with waves, as GLARE_WAVE_NOISE)
         Expr nb = f(GLARE_NB), nv = (*noise)(1, m.th, e), mode = f(GLARE_WAVE_NOISE);
         Expr both = nb != 0.0f && f(GLARE_WAVE) != 0.0f;
-        gradient = select(nb == 0.0f, gradient,
-                          both && mode == 1.0f, shape * (waves + nb * nv),
-                          both && mode == 2.0f, gradient * (1.0f + nb * (nv - 0.5f)),
-                          gradient * nb * nv);
+        gradient =
+            select(nb == 0.0f, gradient, both && mode == 1.0f, shape * (waves + nb * nv),
+                   both && mode == 2.0f, gradient * (1.0f + nb * (nv - 0.5f)), gradient * nb * nv);
     }
     Expr ray = rays_value(field, m, dx, dy, e, streaks);
     Expr value = select(kind == GLARE_FALLOFF, falloff, kind == GLARE_RAYS, ray, gradient);

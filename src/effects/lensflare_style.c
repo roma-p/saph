@@ -44,8 +44,8 @@ void ms_lens_place(const GlareBuilder *b, int e, float *row, double *size_k, dou
     // the frame's width
     const double d = axis_length / g->unit;
     // rel_speed s: its center c moved to c x s^(d / 2) (s 0.5, 1.5, 1.81, 2.5: exact)
-    const double c = get(b, e, "center", 1.0) *
-                     pow(fmax(get(b, e, "rel_speed", 1.0), 1e-6), d / 2.0);
+    const double c =
+        get(b, e, "center", 1.0) * pow(fmax(get(b, e, "rel_speed", 1.0), 1e-6), d / 2.0);
     // offset_off_axis: across the axis (turned a quarter turn counter-clockwise), x the frame
     double px = g->pivot[0] + c * ax, py = g->pivot[1] + c * ay;
     const double off = get(b, e, "offset_off_axis", 0.0) * g->frame_width;
@@ -103,8 +103,8 @@ void ms_lens_place(const GlareBuilder *b, int e, float *row, double *size_k, dou
     // scale_brightness_by_dist s: x (min_brightness_scale + s d), or x max(1 - s d, min) when
     // brightness_scale_inverted; scale_width_by_dist the same with its own settings
     // (brightness_direction, size_direction: no change on a still)
-    const double by_bright = by_dist(b, e, sbd, d, "brightness_scale_inverted",
-                                     "min_brightness_scale");
+    const double by_bright =
+        by_dist(b, e, sbd, d, "brightness_scale_inverted", "min_brightness_scale");
     const double by_width = by_dist(b, e, swd, d, "width_scale_inverted", "min_width_scale");
     *size_k = by_width * shrink * (at_hotspot ? 1.0 : g->other_width) * triggers_width;
     row[GLARE_TURNED_FRAME] = 1.0f;
@@ -145,9 +145,8 @@ void ms_lens_texture_noise(const GlareBuilder *b, int e, float *row, double radi
     row[GLARE_TN_FX] = (float)(k * get(b, e, "freq_rel_x", 1.0));
     row[GLARE_TN_FY] = (float)(k * get(b, e, "freq_rel_y", 1.0));
     const double px = row[GLARE_POS_X], py = row[GLARE_POS_Y];
-    row[GLARE_TN_Z] = (float)fmod(0.3 + 37.1 * get(b, e, "rand_seed", 0.0) +
-                                      vary * (0.6 * px + 0.8 * py),
-                                  4096.0);
+    row[GLARE_TN_Z] = (float)fmod(
+        0.3 + 37.1 * get(b, e, "rand_seed", 0.0) + vary * (0.6 * px + 0.8 * py), 4096.0);
     row[GLARE_TN_U] = (float)fmod(vary * (0.6 * py - 0.8 * px), 4096.0);
     row[GLARE_TN_PERSIST] = (float)get(b, e, "octaves_scale", 0.2);
 }
@@ -164,7 +163,8 @@ void ms_lens_streaks(const GlareBuilder *b, int e, float *row) {
     if (streaks == 0.0)
         return;
     row[GLARE_STREAK_AMP] = (float)streaks;
-    row[GLARE_STREAK_FREQ] = (float)(pow(fmax(get(b, e, "streaks_freq", 1.0), 0.0), 0.87) * STREAK_SCALE);
+    row[GLARE_STREAK_FREQ] =
+        (float)(pow(fmax(get(b, e, "streaks_freq", 1.0), 0.0), 0.87) * STREAK_SCALE);
     row[GLARE_STREAK_PERSIST] = (float)get(b, e, "streaks_octaves_scale", 0.3);
     row[GLARE_STREAK_SEED] = (float)(0.7 + 37.1 * get(b, e, "rand_seed", 0.0));
 }
@@ -455,8 +455,8 @@ static int generated(GlareBuilder *b, int image, int *w, int *h, size_t *start) 
             kind = k;
     if (!t || kind < 0)
         return 0;
-    const int side = (int)fmin(fmax(ms_json_get(b->nodes, image, "texels", sizes[kind]), 8.0),
-                               2048.0);
+    const int side =
+        (int)fmin(fmax(ms_json_get(b->nodes, image, "texels", sizes[kind]), 8.0), 2048.0);
     double color[3] = {1.0, 1.0, 1.0};
     if (kind == 4) {
         const int list = ms_json_member(b->nodes, image, "color");
@@ -466,8 +466,8 @@ static int generated(GlareBuilder *b, int image, int *w, int *h, size_t *start) 
             color[i] = b->nodes[m].number;
     }
     // (a "field": "aspect" its width / height, "edges" [x, y] its fades to the edges)
-    const double aspect = kind == 4 ? fmin(fmax(ms_json_get(b->nodes, image, "aspect", 1.0), 0.05), 20.0)
-                                    : 1.0;
+    const double aspect =
+        kind == 4 ? fmin(fmax(ms_json_get(b->nodes, image, "aspect", 1.0), 0.05), 20.0) : 1.0;
     double edges[2] = {0.0, 0.0};
     if (kind == 4) {
         const int list = ms_json_member(b->nodes, image, "edges");
@@ -482,7 +482,9 @@ static int generated(GlareBuilder *b, int image, int *w, int *h, size_t *start) 
     want.seed = ms_json_get(b->nodes, image, "seed", 0.0);
     want.amount = kind == 4 ? color[0]
                             : ms_json_get(b->nodes, image, "amount",
-                                          kind == 0 ? 0.35 : kind == 2 ? 1.0 : 0.5);
+                                          kind == 0   ? 0.35
+                                          : kind == 2 ? 1.0
+                                                      : 0.5);
     want.scale = kind == 4 ? color[1] : ms_json_get(b->nodes, image, "scale", 1.0);
     want.detail = kind == 4 ? color[2] : ms_json_get(b->nodes, image, "detail", 0.5);
     want.edge_x = edges[0], want.edge_y = edges[1];
@@ -496,9 +498,8 @@ static int generated(GlareBuilder *b, int image, int *w, int *h, size_t *start) 
     for (int i = 0; i < t->count; ++i) {
         const MsLensTexture *have = &t->list[i];
         if (have->kind == want.kind && have->seed == want.seed && have->amount == want.amount &&
-            have->scale == want.scale && have->detail == want.detail &&
-            have->sides == want.sides && have->width == want.width &&
-            have->height == want.height && have->mean == want.mean &&
+            have->scale == want.scale && have->detail == want.detail && have->sides == want.sides &&
+            have->width == want.width && have->height == want.height && have->mean == want.mean &&
             have->edge_x == want.edge_x && have->edge_y == want.edge_y) {
             *w = have->width, *h = have->height, *start = have->start;
             return 1;
@@ -531,9 +532,8 @@ void ms_lens_image(GlareBuilder *b, int e, float *row) {
     size_t start;
     const int texture = is_type(b, e, "texture");
     int found = image >= 0 && b->images >= 0 &&
-                image_at(b->nodes, b->images,
-                         (int)ms_json_get(b->nodes, image, "save_index", -1.0), &w, &h,
-                         &channels, &start);
+                image_at(b->nodes, b->images, (int)ms_json_get(b->nodes, image, "save_index", -1.0),
+                         &w, &h, &channels, &start);
     if (image >= 0 && !found)
         found = generated(b, image, &w, &h, &start) || written(b, image, &w, &h, &start);
     if (!found || start + (size_t)w * h * 3 >= (1u << 24)) { // (indices exact in floats)
@@ -542,8 +542,8 @@ void ms_lens_image(GlareBuilder *b, int e, float *row) {
         return;
     }
     double side = !texture && get(b, e, "image_absolute_size_p", 0.0) != 0.0 ? g->frame_width
-                  : texture                                                 ? 2.0 * b->last_r
-                                                       : 2.0 * (b->last_r + 1.5);
+                  : texture ? 2.0 * b->last_r
+                            : 2.0 * (b->last_r + 1.5);
     if (!texture)
         side *= get(b, e, "image_scale_size", 1.0);
     // (image_absolute_size_p: the frame's width across the image's longer side, as its
@@ -571,8 +571,8 @@ void ms_lens_image(GlareBuilder *b, int e, float *row) {
     const double sy = on_screen ? 1.0 : fmax(row[GLARE_SCALE_Y], 1e-6);
     const double rw = on_screen ? 1.0 : fmax(row[GLARE_REL_X], 1e-6);
     const double rh = on_screen ? 1.0 : fmax(row[GLARE_REL_Y], 1e-6);
-    const double rot = !texture && get(b, e, "image_absolute_rotate_p", 0.0) != 0.0
-                           ? 0.0 : row[GLARE_ROTATE];
+    const double rot =
+        !texture && get(b, e, "image_absolute_rotate_p", 0.0) != 0.0 ? 0.0 : row[GLARE_ROTATE];
     double m[2][2] = {{1.0 / rw, 0.0}, {0.0, 1.0 / rh}};
     const double cb = cos(rot), sb = sin(rot);
     double t[2][2] = {{(cb * m[0][0] + sb * m[1][0]) / sx, (cb * m[0][1] + sb * m[1][1]) / sx},

@@ -26,6 +26,7 @@
 #include "common/defines.h"
 #include "common/effect.h"
 #include "common/mask.h"
+#include "effects/input.h"
 #include "effects/mask_input.h"
 #include "engine/engine.h"
 
@@ -39,9 +40,8 @@ enum { SOURCE, MASK };
 static const char *const modes[] = {"Linear", "Radial", "Circular"};
 static const char *const apply[] = {"Post-threshold", "Pre-effect"};
 static const char *const directions[] = {"sort below threshold", "sort above threshold"};
-static const char *const types[] = {"monochrome", "average", "minimum", "maximum", "red",
-                                    "green",      "blue",    "hue",     "saturation",
-                                    "brightness"};
+static const char *const types[] = {"monochrome", "average", "minimum", "maximum",    "red",
+                                    "green",      "blue",    "hue",     "saturation", "brightness"};
 static const char *const shows[] = {"Result", "Raw Sort Values", "Threshold Mask",
                                     "Random Restart Noise", "Combined Threshold Mask"};
 enum {
@@ -143,8 +143,7 @@ static const MsParam params[] = {
                      .def = 0.5},
     [RING_CENTER_Y] = {.type = MS_PARAM_POINT_Y, .name = "circle_center_y", .def = 0.5},
     MS_FRACTION(VARY_START, "vary_start", "Vary Start",
-                "Turns each ring's start by a random share of a turn up to this (Circular).",
-                0.15),
+                "Turns each ring's start by a random share of a turn up to this (Circular).", 0.15),
     MS_DISTANCE(RING_INNER, "inner_radius", "Inner Radius", "The smallest ring (Circular).", 0.0),
     MS_DISTANCE(THICKNESS, "thickness", "Thickness", "The rings' width (Circular).", 0.55),
     MS_FRACTION(THRESHOLD, "threshold", "Threshold",
@@ -175,8 +174,7 @@ static const MsParam params[] = {
                  .max = MS_UNBOUNDED,
                  .display_max = 1000.0},
     MS_DISTANCE(SOFTEN, "soften_threshold_mask", "Soften Threshold Mask",
-                "Blurs the threshold mask: the runs then end at random within its edges.",
-                0.0125),
+                "Blurs the threshold mask: the runs then end at random within its edges.", 0.0125),
     [DOWNSAMPLE] = {.type = MS_PARAM_BOOL,
                     .name = "downsample",
                     .label = "Downsample",
@@ -206,15 +204,10 @@ static const MsParam params[] = {
                       "pixels.",
               .entries = shows,
               .entry_count = 5},
-    [MASK_USE] = MS_PARAM_MASK_USE,
-    [BLUR_MASK] = {.type = MS_PARAM_WIDTH,
-                   .name = "blur_mask",
-                   .label = "Blur Mask",
-                   .hint = "Blurs the Mask input by this amount before using.",
-                   .def = 0.00625,
-                   .min = 0.0,
-                   .max = MS_UNBOUNDED,
-                   .display_max = 0.2},
+    // (the reference reads the Mask's luma whatever its Mask Use says: kept for the scripts
+    // and presets that set it, not shown)
+    [MASK_USE] = MS_PARAM_MASK_USE_HIDDEN(1),
+    [BLUR_MASK] = MS_PARAM_BLUR_MASK(0.00625, 0.2),
     [INVERT_MASK] = MS_PARAM_INVERT_MASK("Sorts the black areas of the Mask."),
 };
 
@@ -228,7 +221,7 @@ static const MsParam params[] = {
 // The share of restart pixels by Randomly Restart Sort / width (the reference's, measured;
 // linear between, held past the last).
 static double restart_share(double rate) {
-    static const double at[][2] = {{0.0, 0.0},     {0.039, 0.0009}, {0.098, 0.0053},
+    static const double at[][2] = {{0.0, 0.0},      {0.039, 0.0009}, {0.098, 0.0053},
                                    {0.195, 0.0069}, {0.29, 0.0103},  {0.39, 0.0117},
                                    {0.59, 0.012}};
     const int n = ARRAY_SIZE(at);
@@ -264,9 +257,8 @@ typedef struct {
         MS_FLOAT("slope", (j)->slope), MS_INT("offset", (j)->offset), MS_FLOAT("cx", (j)->cx),     \
         MS_FLOAT("cy", (j)->cy), MS_FLOAT("inner", (j)->inner), MS_FLOAT("extent", (j)->extent),   \
         MS_FLOAT("vary", (j)->vary), MS_FLOAT("a0", (j)->a0), MS_FLOAT("span", (j)->span),         \
-        MS_FLOAT("step", (j)->step), MS_INT("seed", (j)->seed),                                    \
-        MS_FLOAT("restart", (j)->restart), MS_INT("sort_type", (j)->sort_type),                    \
-        MS_INT("mask_post", (j)->mask_post)
+        MS_FLOAT("step", (j)->step), MS_INT("seed", (j)->seed), MS_FLOAT("restart", (j)->restart), \
+        MS_INT("sort_type", (j)->sort_type), MS_INT("mask_post", (j)->mask_post)
 
 static int run(MsApi api, void *user) {
     const Job *j = user;
@@ -321,7 +313,8 @@ static void lines(const double *v, int w, int sw, int sh, Job *j) {
         const int e = (int)nearest % 8;
         double dx = cos(angle * M_PI / 180.0), dy = sin(angle * M_PI / 180.0);
         if (on_eighth) { // (exactly: the diagonals' slope 1)
-            static const int ex[8] = {1, 1, 0, -1, -1, -1, 0, 1}, ey[8] = {0, 1, 1, 1, 0, -1, -1, -1};
+            static const int ex[8] = {1, 1, 0, -1, -1, -1, 0, 1},
+                             ey[8] = {0, 1, 1, 1, 0, -1, -1, -1};
             dx = ex[e];
             dy = ey[e];
         }
@@ -344,9 +337,11 @@ static void lines(const double *v, int w, int sw, int sh, Job *j) {
     const double inner = fmax(v[radial ? RAY_INNER : RING_INNER], 0.0) * RADIUS_SCALE * scale;
     const double extent = fmax(v[radial ? RAY_LENGTH : THICKNESS], 0.0) * RADIUS_SCALE * scale;
     // (only as far as the image's farthest corner)
-    const double far = sqrt(fmax(cx * cx, (sw - cx) * (sw - cx)) + fmax(cy * cy, (sh - cy) * (sh - cy)));
+    const double far =
+        sqrt(fmax(cx * cx, (sw - cx) * (sw - cx)) + fmax(cy * cy, (sh - cy) * (sh - cy)));
     const double reach = fmax(fmin(extent, far - inner), 0.0);
-    const double span = fmin(fmax(v[radial ? RAY_DEGREES : RING_DEGREES], 0.0), 360.0) * M_PI / 180.0;
+    const double span =
+        fmin(fmax(v[radial ? RAY_DEGREES : RING_DEGREES], 0.0), 360.0) * M_PI / 180.0;
     j->cx = (float)cx;
     j->cy = (float)cy;
     j->inner = (float)inner;
@@ -396,48 +391,38 @@ static int render(const MsRender *r) {
     for (int k = 0; k < 3; ++k)
         j.soften[k] = (soften + k) / 3;
 
+    // The downsampled Source, the softened sort values, the lines' two buffers (integers), the
+    // mask value.
     const size_t pixels = (size_t)sw * sh, samples = (size_t)2 * j.samples * j.count;
-    float *small = j.downsample ? malloc(pixels * 4 * sizeof(float)) : NULL;
-    float *soft = malloc(pixels * sizeof(float));
-    uint32_t *buffers[2] = {malloc(samples * sizeof(uint32_t)), malloc(samples * sizeof(uint32_t))};
-    MsImage source;
-    ms_image_rgba(&source, r->inputs[SOURCE].pixels, r->inputs[SOURCE].row, r->half, w, h);
-    MsMask mask = {0};
-    int ok = soft && buffers[0] && buffers[1] && (small || !j.downsample);
-    if (!ok)
-        snprintf(r->err, r->err_size, "not enough memory");
-    else // (the reference reads the Mask's luma whatever Mask Use says)
-        ok = ms_mask_init(&mask, r, MASK, SOURCE, &source, 0.0, v[INVERT_MASK], v[BLUR_MASK]);
-    if (ok) {
-        MsImage image, soft_image, line_images[2], output;
-        ms_image(&image, small, (ptrdiff_t)sw * 4, sw, sh, 4);
-        ms_image(&soft_image, soft, sw, sw, sh, 1);
-        for (int k = 0; k < 2; ++k) {
-            ms_image_uint(&line_images[k], buffers[k], 2 * j.samples, 2 * j.samples, j.count);
-            j.lines[k] = &line_images[k];
-        }
-        ms_image_rgba(&output, r->output, r->output_row, r->half, w, h);
-        j.source = &source;
-        j.mask = &mask;
-        j.image = j.downsample ? &image : &source;
-        j.soft = &soft_image;
-        j.output = &output;
-        // Inputs uploaded to the GPU: the Source, the Mask or the one mask value.
-        MsImage *const inputs[] = {&source, mask.input};
-        MsImage *between[5] = {&soft_image, &line_images[0], &line_images[1]};
-        int between_count = 3;
-        if (mask.has_mask)
-            between[between_count++] = &mask.value;
-        if (j.downsample)
-            between[between_count++] = &image;
-        ok = ms_run(run, &j, inputs, 2, between, between_count, &output, r->info, r->err,
-                    r->err_size);
+    const size_t floats[] = {j.downsample ? pixels * 4 : 0, pixels, samples, samples,
+                             ms_mask_floats(r, MASK)};
+    float *block = malloc(ms_parts_size(floats, ARRAY_SIZE(floats))), *part[ARRAY_SIZE(floats)];
+    if (!block)
+        return ms_out_of_memory(r);
+    ms_parts(block, floats, ARRAY_SIZE(floats), part);
+    MsImage source, image, soft_image, line_images[2], output;
+    ms_input_image(&source, r, SOURCE);
+    ms_image(&image, part[0], (ptrdiff_t)sw * 4, sw, sh, 4);
+    ms_image(&soft_image, part[1], sw, sw, sh, 1);
+    for (int k = 0; k < 2; ++k) {
+        ms_image_uint(&line_images[k], part[2 + k], 2 * j.samples, 2 * j.samples, j.count);
+        j.lines[k] = &line_images[k];
     }
-    ms_mask_free(&mask);
-    free(small);
-    free(soft);
-    free(buffers[0]);
-    free(buffers[1]);
+    ms_output_image(&output, r);
+    MsMask mask; // (the reference reads the Mask's luma whatever Mask Use says)
+    ms_mask_init(&mask, r, MASK, SOURCE, &source, part[4], 0.0, v[INVERT_MASK], v[BLUR_MASK]);
+    j.source = &source;
+    j.mask = &mask;
+    j.image = j.downsample ? &image : &source;
+    j.soft = &soft_image;
+    j.output = &output;
+    // Inputs uploaded to the GPU: the Source, the Mask or the one mask value.
+    MsImage *const inputs[] = {&source, mask.input};
+    MsImage *const between[] = {&soft_image, &line_images[0], &line_images[1],
+                                ms_mask_between(&mask), j.downsample ? &image : NULL};
+    const int ok = ms_run(run, &j, inputs, ARRAY_SIZE(inputs), between, ARRAY_SIZE(between),
+                          &output, r->info, r->err, r->err_size);
+    free(block);
     return ok;
 }
 
@@ -448,20 +433,14 @@ static int identity(const double *values, const int *connected) {
 }
 
 const MsEffect ms_pixelsort_effect = {
-    MS_ID("PixelSort"),
-    "MS_PixelSort",
-    "Sorts the pixels by brightness (or hue, a channel...) along lines, rays or rings, in the "
-    "runs a threshold leaves.",
-    clips,
-    ARRAY_SIZE(clips),
-    params,
-    ARRAY_SIZE(params),
-    render,
-    identity,
-    0,
-    NULL,
-    NULL,
-    0,
-    "pixelsort", // presets (common/preset.h)
-    NULL, // not varying with its settings
+    .id = MS_ID("PixelSort"),
+    .label = "MS_PixelSort",
+    .description =
+        "Sorts the pixels by brightness (or hue, a channel...) along lines, rays or rings, in the "
+        "runs a threshold leaves.",
+    MS_CLIPS(clips),
+    MS_PARAMS(params),
+    .render = render,
+    .identity = identity,
+    .presets = "pixelsort",
 };

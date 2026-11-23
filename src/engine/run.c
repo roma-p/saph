@@ -134,8 +134,8 @@ static int upload_constant(MsImage *image, MsApi api) {
 // A host image in 16-bit floats (ms_image_rgba), converted on `api`: an input to floats
 // before the kernels, the output from floats after them. `view`: its 16-bit pixels
 // themselves, page-locked for CUDA's copies (`pins`, `pinned` of them, with `context`).
-static int convert(MsImage *image, int input, MsApi api, MsImage *view, MsPinned *pins,
-                   int *pinned, void *context) {
+static int convert(MsImage *image, int input, MsApi api, MsImage *view, MsPinned *pins, int *pinned,
+                   void *context) {
     ms_image_half(view, image->half, image->half_row, image->dim[0].extent, image->dim[1].extent);
     if (api != MS_API_CPU) {
         if (input)
@@ -180,7 +180,8 @@ static int attempt(MsRun run, void *user, MsApi api, MsImage *const *inputs, int
         }
     }
     for (int k = 0; k < between_count && status == 0; ++k)
-        status = prepare(between[k], api);
+        if (between[k])
+            status = prepare(between[k], api);
     if (status == 0)
         status = prepare(output, api);
     // CUDA: the host's images page-locked for the copies (pin.c), in the context of the
@@ -231,7 +232,8 @@ static int attempt(MsRun run, void *user, MsApi api, MsImage *const *inputs, int
         }
     }
     for (int k = 0; k < between_count; ++k)
-        ms_pool_park(&between[k]->b, keep);
+        if (between[k])
+            ms_pool_park(&between[k]->b, keep);
     return status;
 }
 
@@ -269,8 +271,8 @@ int ms_run(MsRun run, void *user, MsImage *const *inputs, int input_count, MsIma
         if (skip)
             continue;
         MsRunInfo times;
-        status = attempt(run, user, api, unique, unique_count, between, between_count, output,
-                         &times);
+        status =
+            attempt(run, user, api, unique, unique_count, between, between_count, output, &times);
         if (status == 0) {
             ms_mutex_lock(&lock);
             const int first = !used[api];

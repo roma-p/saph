@@ -17,6 +17,7 @@
 #include "common/defines.h"
 #include "common/effect.h"
 #include "common/mask.h"
+#include "effects/input.h"
 #include "effects/mask_input.h"
 #include "effects/profile.h"
 #include "engine/engine.h"
@@ -74,43 +75,17 @@ static const MsParam params[] = {
                  .hint = "Moves the grid of cells vertically.",
                  .display_min = -1.0,
                  .display_max = 1.0},
-    [SMOOTH] = {.type = MS_PARAM_WIDTH,
-                .name = "smooth_colors",
-                .label = "Smooth Colors",
-                .hint = "Blurs the Source by this amount before taking the cells' colours.",
-                .min = 0.0,
-                .max = MS_UNBOUNDED,
-                .display_max = 1.0},
-    [MIX] = {.type = MS_PARAM_DOUBLE,
-             .name = "mix_with_source",
-             .label = "Mix With Source",
-             .hint = "Mixes the Source back over the result: 0 for the mosaic only.",
-             .min = 0.0,
-             .max = 1.0,
-             .display_max = 1.0},
-    [BLUR_MASK] = {.type = MS_PARAM_WIDTH,
-                   .name = "blur_mask",
-                   .label = "Blur Mask",
-                   .hint = "Blurs the Mask input by this amount before using.",
-                   .min = 0.0,
-                   .max = MS_UNBOUNDED,
-                   .display_max = 1.0},
+    MS_WIDTH(SMOOTH, "smooth_colors", "Smooth Colors",
+             "Blurs the Source by this amount before taking the cells' colours.", 0.0, 1.0),
+    MS_FRACTION(MIX, "mix_with_source", "Mix With Source",
+                "Mixes the Source back over the result: 0 for the mosaic only.", 0.0),
+    [BLUR_MASK] = MS_PARAM_BLUR_MASK(0.0, 1.0),
     [INVERT_MASK] = MS_PARAM_INVERT_MASK("Use the black areas of the Mask."),
     [MASK_USE] = MS_PARAM_MASK_USE,
-    [CROP_LEFT] = {.type = MS_PARAM_WIDTH,
-                   .name = "crop_left",
-                   .label = "Crop Left",
-                   .hint = "Leaves out this much of the Source's left side from the cells.",
-                   .min = 0.0,
-                   .max = MS_UNBOUNDED,
-                   .display_max = 2.0},
-    [CROP_RIGHT] = {.type = MS_PARAM_WIDTH,
-                    .name = "crop_right",
-                    .label = "Crop Right",
-                    .hint = "Leaves out this much of the Source's right side from the cells.",
-                    .min = 0.0,
-                    .max = MS_UNBOUNDED,
-                    .display_max = 2.0},
+    MS_WIDTH(CROP_LEFT, "crop_left", "Crop Left",
+             "Leaves out this much of the Source's left side from the cells.", 0.0, 2.0),
+    MS_WIDTH(CROP_RIGHT, "crop_right", "Crop Right",
+             "Leaves out this much of the Source's right side from the cells.", 0.0, 2.0),
     [CROP_TOP] = {.type = MS_PARAM_HEIGHT,
                   .name = "crop_top",
                   .label = "Crop Top",
@@ -169,19 +144,18 @@ static int render(const MsRender *r) {
     const int w = r->width, h = r->height;
     const int smooth = (int)floor(v[SMOOTH] + 0.5);
     MsImage source, smooth_image, output;
-    ms_image_rgba(&source, r->inputs[SOURCE].pixels, r->inputs[SOURCE].row, r->half, w, h);
-    ms_image_rgba(&output, r->output, r->output_row, r->half, w, h);
+    ms_input_image(&source, r, SOURCE);
+    ms_output_image(&output, r);
+    // The mask value and the smoothed Source.
+    const size_t floats[] = {ms_mask_floats(r, MASK), smooth > 0 ? (size_t)w * h * 4 : 0};
+    float *block = malloc(ms_parts_size(floats, ARRAY_SIZE(floats))), *part[ARRAY_SIZE(floats)];
+    if (!block)
+        return ms_out_of_memory(r);
+    ms_parts(block, floats, ARRAY_SIZE(floats), part);
     MsMask mask;
-    if (!ms_mask_init(&mask, r, MASK, SOURCE, &source, v[MASK_USE], v[INVERT_MASK], v[BLUR_MASK]))
-        return 0;
-    // The smoothed Source.
-    float *smoothed = smooth > 0 ? malloc((size_t)w * h * 4 * sizeof(float)) : NULL;
-    if (smooth > 0 && !smoothed) {
-        ms_mask_free(&mask);
-        snprintf(r->err, r->err_size, "not enough memory");
-        return 0;
-    }
-    ms_image(&smooth_image, smoothed, (ptrdiff_t)w * 4, w, h, 4);
+    ms_mask_init(&mask, r, MASK, SOURCE, &source, part[0], v[MASK_USE], v[INVERT_MASK],
+                 v[BLUR_MASK]);
+    ms_image(&smooth_image, part[1], (ptrdiff_t)w * 4, w, h, 4);
     const double cell_w = w / v[FREQUENCY];
     Job j = {.source = &source,
              .smoothed = &smooth_image,
@@ -197,16 +171,10 @@ static int render(const MsRender *r) {
     kept(h, v[CROP_BOTTOM], v[CROP_TOP], &j.kept_y0, &j.kept_y1);
     // Inputs uploaded to the GPU: the Source, and the Mask or the one mask value.
     MsImage *const inputs[] = {&source, mask.input};
-    MsImage *between[2]; // made on the GPU: the mask value, the smoothed Source
-    int between_count = 0;
-    if (mask.has_mask)
-        between[between_count++] = &mask.value;
-    if (smooth > 0)
-        between[between_count++] = &smooth_image;
-    const int ok = ms_run(run, &j, inputs, 2, between, between_count, &output, r->info, r->err,
-                          r->err_size);
-    ms_mask_free(&mask);
-    free(smoothed);
+    MsImage *const between[] = {ms_mask_between(&mask), smooth > 0 ? &smooth_image : NULL};
+    const int ok = ms_run(run, &j, inputs, ARRAY_SIZE(inputs), between, ARRAY_SIZE(between),
+                          &output, r->info, r->err, r->err_size);
+    free(block);
     return ok;
 }
 
@@ -217,19 +185,13 @@ static int identity(const double *v, const int *connected) {
 }
 
 const MsEffect ms_mosaic_effect = {
-    MS_ID("Mosaic"),
-    "MS_Mosaic",
-    "Turns the image into a grid of flat cells, each the colour of the image at its centre.",
-    clips,
-    ARRAY_SIZE(clips),
-    params,
-    ARRAY_SIZE(params),
-    render,
-    identity,
-    0,
-    NULL,
-    NULL,
-    0,
-    "mosaic", // presets (common/preset.h)
-    NULL, // not varying with its settings
+    .id = MS_ID("Mosaic"),
+    .label = "MS_Mosaic",
+    .description =
+        "Turns the image into a grid of flat cells, each the colour of the image at its centre.",
+    MS_CLIPS(clips),
+    MS_PARAMS(params),
+    .render = render,
+    .identity = identity,
+    .presets = "mosaic",
 };

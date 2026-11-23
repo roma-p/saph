@@ -14,6 +14,7 @@
 
 #include "common/defines.h"
 #include "common/effect.h"
+#include "effects/input.h"
 #include "engine/engine.h"
 
 // Inputs: clip, label in the host, value where there is no image, optional, mask.
@@ -59,14 +60,10 @@ static const MsParam level_params[] = {
 
 static const MsParam color_params[] = {
     CORNERS,
-    [TARGET] = {.type = MS_PARAM_RGB,
-                .name = "match_color",
-                .label = "Match Color",
-                .hint = "The Match input's colour (mean in the rectangle) that leaves the Source "
-                        "as it is: each channel is scaled by the mean over this.",
-                .def = 0.5},
-    [TARGET_G] = {.type = MS_PARAM_RGB_PART, .name = "match_color_green", .def = 0.5},
-    [TARGET_B] = {.type = MS_PARAM_RGB_PART, .name = "match_color_blue", .def = 0.5},
+    MS_COLOUR_OF(TARGET, "match_color", "Match Color",
+                 "The Match input's colour (mean in the rectangle) that leaves the Source "
+                 "as it is: each channel is scaled by the mean over this.",
+                 0.5),
     SHOW_RECT(COLOR_SHOW_RECT),
 };
 
@@ -98,14 +95,12 @@ static int render_with(const MsRender *r, int luma) {
     const double *v = r->values;
     const int w = r->width, h = r->height, has_match = r->connected[MATCH];
     MsImage source, match, output;
-    ms_image_rgba(&source, r->inputs[SOURCE].pixels, r->inputs[SOURCE].row, r->half, w, h);
-    ms_image_rgba(&match, r->inputs[MATCH].pixels, r->inputs[MATCH].row, r->half, w, h);
-    ms_image_rgba(&output, r->output, r->output_row, r->half, w, h);
+    ms_input_image(&source, r, SOURCE);
+    ms_output_image(&output, r);
     int x1, y1;
     // Without a Match input: no target, gains of 1 (the Source stands in for the Match).
-    const int match_is_source = !has_match || ms_same_input(&r->inputs[MATCH], &r->inputs[SOURCE]);
     Job j = {.source = &source,
-             .match = match_is_source ? &source : &match,
+             .match = ms_input_or(&match, r, MATCH, has_match, &source, SOURCE),
              .output = &output,
              .luma = luma,
              .target = {has_match ? (float)v[TARGET] : 0.0f,
@@ -147,39 +142,29 @@ static const MsOverlay overlay[] = {
 };
 
 const MsEffect ms_flickermatch_effect = {
-    MS_ID("FlickerMatch"),
-    "MS_FlickerMatch",
-    "Gives the Source the flicker of the Match input: scales it by the Match input's level in "
-    "a rectangle over Match Level, frame by frame.",
-    clips,
-    ARRAY_SIZE(clips),
-    level_params,
-    ARRAY_SIZE(level_params),
-    render_level,
-    identity,
-    0,
-    NULL,
-    overlay,
-    ARRAY_SIZE(overlay),
-    "flickermatch", // presets (common/preset.h)
-    NULL, // not varying with its settings
+    .id = MS_ID("FlickerMatch"),
+    .label = "MS_FlickerMatch",
+    .description =
+        "Gives the Source the flicker of the Match input: scales it by the Match input's level in "
+        "a rectangle over Match Level, frame by frame.",
+    MS_CLIPS(clips),
+    MS_PARAMS(level_params),
+    .render = render_level,
+    .identity = identity,
+    MS_OVERLAYS(overlay),
+    .presets = "flickermatch",
 };
 
 const MsEffect ms_flickermatchcolor_effect = {
-    MS_ID("FlickerMatchColor"),
-    "MS_FlickerMatchColor",
-    "Gives the Source the colour flicker of the Match input: scales each channel by the Match "
-    "input's mean in a rectangle over Match Color, frame by frame.",
-    clips,
-    ARRAY_SIZE(clips),
-    color_params,
-    ARRAY_SIZE(color_params),
-    render_color,
-    identity,
-    0,
-    NULL,
-    overlay,
-    ARRAY_SIZE(overlay),
-    "flickermatchcolor", // presets (common/preset.h)
-    NULL, // not varying with its settings
+    .id = MS_ID("FlickerMatchColor"),
+    .label = "MS_FlickerMatchColor",
+    .description =
+        "Gives the Source the colour flicker of the Match input: scales each channel by the Match "
+        "input's mean in a rectangle over Match Color, frame by frame.",
+    MS_CLIPS(clips),
+    MS_PARAMS(color_params),
+    .render = render_color,
+    .identity = identity,
+    MS_OVERLAYS(overlay),
+    .presets = "flickermatchcolor",
 };

@@ -10,20 +10,47 @@ namespace ms {
 
 using namespace Halide;
 
-// Interleaved RGBA: channels next to each other.
-template <typename B> void interleaved(B &&b) {
-    b.dim(0).set_stride(4);
-    b.dim(2).set_stride(1).set_bounds(0, 4);
+// Interleaved RGBA: channels (`values` of them) next to each other.
+template <typename B> void interleaved(B &&b, int values = 4) {
+    b.dim(0).set_stride(values);
+    b.dim(2).set_stride(1).set_bounds(0, values);
 }
 
-// An RGBA output (x, y, c) computed per pixel, its 4 channels unrolled: 16 x 16 GPU tiles, or
-// 8-wide vectors and parallel rows on the CPU.
-template <typename F> void schedule_rgba(F &&f, bool gpu) {
+// An RGBA output (x, y, c) computed per pixel, its `channels` channels unrolled: 16 x 16 GPU
+// tiles, or 8-wide vectors and parallel rows on the CPU.
+template <typename F> void schedule_rgba(F &&f, bool gpu, int channels = 4) {
     Var x = f.args()[0], y = f.args()[1], c = f.args()[2];
     Var xo("xo"), yo("yo"), xi("xi"), yi("yi");
-    f.bound(c, 0, 4).reorder(c, x, y).unroll(c);
+    f.bound(c, 0, channels).reorder(c, x, y).unroll(c);
     if (gpu)
         f.gpu_tile(x, y, xo, yo, xi, yi, 16, 16);
+    else
+        f.vectorize(x, 8).parallel(y);
+}
+
+// A whole-image stage (x, y, c) of `channels` channels: on the GPU float4 pixels (c
+// vectorized; one channel: scalars) in tiles of tile_x x tile_y threads; on the CPU c
+// unrolled, 8-wide vectors along x, parallel rows.
+template <typename F>
+void schedule_float4(F &&f, bool gpu, int tile_x = 16, int tile_y = 16, int channels = 4) {
+    Var x = f.args()[0], y = f.args()[1], c = f.args()[2];
+    Var xo("xo"), yo("yo"), xi("xi"), yi("yi");
+    f.bound(c, 0, channels).reorder(c, x, y);
+    if (gpu && channels > 1)
+        f.vectorize(c);
+    if (gpu)
+        f.gpu_tile(x, y, xo, yo, xi, yi, tile_x, tile_y);
+    else
+        f.unroll(c).vectorize(x, 8).parallel(y);
+}
+
+// A one-channel stage (x, y): tiles of tile_x x tile_y GPU threads, or 8-wide vectors and
+// parallel rows on the CPU.
+template <typename F> void schedule_2d(F &&f, bool gpu, int tile_x = 16, int tile_y = 16) {
+    Var x = f.args()[0], y = f.args()[1];
+    Var xo("xo"), yo("yo"), xi("xi"), yi("yi");
+    if (gpu)
+        f.gpu_tile(x, y, xo, yo, xi, yi, tile_x, tile_y);
     else
         f.vectorize(x, 8).parallel(y);
 }

@@ -8,6 +8,7 @@
 // Images: 4 floats per pixel, two complex numbers (re, im, re, im), interleaved.
 
 #include "Halide.h"
+#include "shared.h"
 
 using namespace Halide;
 
@@ -54,10 +55,8 @@ class FftStage : public Generator<FftStage> {
         Tuple v = acc(x, y);
         out(x, y, c) = mux(c, {v[0], v[1], v[2], v[3]});
 
-        in.dim(0).set_stride(4);
-        in.dim(2).set_stride(1).set_bounds(0, 4);
-        out.dim(0).set_stride(4);
-        out.dim(2).set_stride(1).set_bounds(0, 4);
+        ms::interleaved(in);
+        ms::interleaved(out);
         Var xo("xo"), yo("yo"), xi("xi"), yi("yi");
         out.bound(c, 0, 4).reorder(c, x, y);
         twiddle.compute_root();

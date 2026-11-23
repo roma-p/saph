@@ -60,26 +60,23 @@ typedef struct {
     char popups[MS_MAX_PARAMS][256]; // CHOICE entries as After Effects wants them: "A|B|C"
 } AeEffect;
 
+// every effect of effects/list.def (not MS_Test)
 static AeEffect effects[] = {
-    {&ms_bandpass_effect, {{0}}}, {&ms_edgeawareblur_effect, {{0}}}, {&ms_distort_effect, {{0}}},
-    {&ms_mosaic_effect, {{0}}},   {&ms_glow_effect, {{0}}},          {&ms_edgeblur_effect, {{0}}},
-    {&ms_rackdefocus_effect, {{0}}}, {&ms_glint_effect, {{0}}},     {&ms_glare_effect, {{0}}},
-    {&ms_lensflare_effect, {{0}}}, {&ms_jpegdamage_effect, {{0}}}, {&ms_pixelsort_effect, {{0}}},
-    {&ms_flickermatch_effect, {{0}}}, {&ms_flickermatchcolor_effect, {{0}}},
-    {&ms_flicker_effect, {{0}}}, {&ms_tvdamage_effect, {{0}}},
+#define MS_EFFECT(Name, name, pipl_id, varies) {&ms_##name##_effect, {{0}}},
+#include "effects/list.def"
+#undef MS_EFFECT
 };
-enum { BANDPASS, EDGEAWAREBLUR, DISTORT, MOSAIC, GLOW, EDGEBLUR, RACKDEFOCUS, GLINT, GLARE, LENSFLARE,
-       JPEGDAMAGE, PIXELSORT, FLICKERMATCH, FLICKERMATCHCOLOR, FLICKER,
-       TVDAMAGE
+enum { // their slots
+#define MS_EFFECT(Name, name, pipl_id, varies) SLOT_##Name,
+#include "effects/list.def"
+#undef MS_EFFECT
 };
 
 // ---------------------------------------------------------------- parameters
 
 // 1 when parameter type `t` has an After Effects parameter (TEXT ones are left out, and the
 // green and blue of an RGB are in its colour).
-static int in_ae(MsParamType t) {
-    return t != MS_PARAM_TEXT && t != MS_PARAM_RGB_PART && t != MS_PARAM_POINT_Y;
-}
+static int in_ae(MsParamType t) { return t != MS_PARAM_TEXT && !ms_param_part(t); }
 
 // The effect parameter of After Effects index `index` (-1: none).
 static int param_at(const MsEffect *e, int index) {
@@ -117,9 +114,7 @@ static int layer_index(const MsEffect *e, int c) {
     return index + c - 1;
 }
 
-static A_u_char to_byte(double v) {
-    return (A_u_char)(v <= 0 ? 0 : v >= 1 ? 255 : v * 255 + 0.5);
-}
+static A_u_char to_byte(double v) { return (A_u_char)(v <= 0 ? 0 : v >= 1 ? 255 : v * 255 + 0.5); }
 
 static PF_Err add_param(PF_InData *in_data, PF_ParamDef *def) {
     return in_data->inter.add_param(in_data->effect_ref, -1, def);
@@ -216,8 +211,8 @@ static PF_Err text_callback(const MsEffect *e, PF_InData *in_data, PF_ArbParamsE
                      "%s", a);
         break;
     case PF_Arbitrary_SCAN_FUNC:
-        *x->u.scan_func_params.arbPH = new_text(in_data, x->u.scan_func_params.bufPC,
-                                                x->u.scan_func_params.bytes_to_scanLu);
+        *x->u.scan_func_params.arbPH =
+            new_text(in_data, x->u.scan_func_params.bufPC, x->u.scan_func_params.bytes_to_scanLu);
         break;
     default:
         break;
@@ -279,8 +274,8 @@ static PF_Err params_setup(AeEffect *ae, PF_InData *in_data, PF_OutData *out_dat
             def.u.td.y_dephault = (PF_Fixed)((1.0 - p[1].def) * 100.0 * 65536.0);
         } else if (p->type == MS_PARAM_RGB) { // red here, green and blue in the next two
             def.param_type = PF_Param_COLOR;
-            def.u.cd.dephault = (PF_Pixel){255, to_byte(p[0].def), to_byte(p[1].def),
-                                           to_byte(p[2].def)};
+            def.u.cd.dephault =
+                (PF_Pixel){255, to_byte(p[0].def), to_byte(p[1].def), to_byte(p[2].def)};
             def.u.cd.value = def.u.cd.dephault;
         } else {
             // DOUBLE, WIDTH, HEIGHT: a slider. WIDTH and HEIGHT in % of the layer.
@@ -301,6 +296,8 @@ static PF_Err params_setup(AeEffect *ae, PF_InData *in_data, PF_OutData *out_dat
             def.u.fs_d.display_flags =
                 percent ? PF_ValueDisplayFlag_PERCENT : PF_ValueDisplayFlag_NONE;
         }
+        if (p->hidden)
+            def.ui_flags |= PF_PUI_INVISIBLE;
         err = add_param(in_data, &def);
     }
     for (int c = 1; c < e->clip_count && !err; ++c) {
@@ -325,7 +322,8 @@ static void read_color(PF_InData *in_data, const PF_ParamDef *def, double *rgb) 
         in_data->pica_basicP->AcquireSuite(kPFColorParamSuite, kPFColorParamSuiteVersion1,
                                            (const void **)&suite) == kSPNoError &&
         suite) {
-        const PF_Err err = suite->PF_GetFloatingPointColorFromColorDef(in_data->effect_ref, def, &c);
+        const PF_Err err =
+            suite->PF_GetFloatingPointColorFromColorDef(in_data->effect_ref, def, &c);
         in_data->pica_basicP->ReleaseSuite(kPFColorParamSuite, kPFColorParamSuiteVersion1);
         if (!err) {
             rgb[0] = c.red, rgb[1] = c.green, rgb[2] = c.blue;
@@ -350,18 +348,16 @@ static PF_Err read_values(const MsEffect *e, PF_InData *in_data, double frame, d
     const A_u_long scale = in_data->time_scale * TIME_STEPS;
     for (int i = 0; i < e->param_count; ++i) {
         const MsParam *p = &e->params[i];
-        if (p->type != MS_PARAM_RGB_PART && p->type != MS_PARAM_POINT_Y) // with the one before
+        if (!ms_param_part(p->type)) // with the one before
             values[i] = 0.0;
         if (texts)
             texts[i] = NULL;
-        if (!in_ae(p->type) || p->type == MS_PARAM_BUTTON ||
-            (p->type == MS_PARAM_STRING && !texts))
+        if (!in_ae(p->type) || p->type == MS_PARAM_BUTTON || (p->type == MS_PARAM_STRING && !texts))
             continue;
         PF_ParamDef def;
         memset(&def, 0, sizeof def);
-        const PF_Err err =
-            in_data->inter.checkout_param(in_data->effect_ref, param_index(e, i), time, step,
-                                          scale, &def);
+        const PF_Err err = in_data->inter.checkout_param(in_data->effect_ref, param_index(e, i),
+                                                         time, step, scale, &def);
         if (err)
             return err;
         switch (p->type) {
@@ -382,7 +378,8 @@ static PF_Err read_values(const MsEffect *e, PF_InData *in_data, double frame, d
             break;
         case MS_PARAM_POINT: // layer pixels from the top-left corner, at full size
             values[i] = def.u.td.x_value / 65536.0 * frame_width / in_data->width;
-            values[i + 1] = frame_height - def.u.td.y_value / 65536.0 * frame_height / in_data->height;
+            values[i + 1] =
+                frame_height - def.u.td.y_value / 65536.0 * frame_height / in_data->height;
             break;
         case MS_PARAM_WIDTH:
             values[i] = def.u.fs_d.value / 100.0 * frame_width;
@@ -559,12 +556,21 @@ static PF_Err render(const MsEffect *e, PF_InData *in_data, PF_OutData *out_data
         err = read_values(e, in_data, frame, frame_width, frame_height, values, texts);
     if (ok && !err) {
         RenderCaller caller = {e, in_data, frame_width, frame_height};
-        const MsRender r = {values,       connected,     inputs,
-                            area.width,   area.height,   frame_width,
-                            frame_height, result,        (ptrdiff_t)area.width * 4,
-                            message,      sizeof message, 0,
-                            NULL,         (const char *const *)texts, frame,
-                            values_at,    &caller};
+        const MsRender r = {.values = values,
+                            .connected = connected,
+                            .inputs = inputs,
+                            .width = area.width,
+                            .height = area.height,
+                            .frame_width = frame_width,
+                            .frame_height = frame_height,
+                            .output = result,
+                            .output_row = (ptrdiff_t)area.width * 4,
+                            .err = message,
+                            .err_size = sizeof message,
+                            .texts = (const char *const *)texts,
+                            .time = frame,
+                            .values_at = values_at,
+                            .caller = &caller};
         if (e->render(&r)) {
             unpack(result, area, output, depth);
         } else {
@@ -693,7 +699,8 @@ static PF_Err user_changed_param(const MsEffect *e, PF_InData *in_data, PF_OutDa
     if (i < 0 || e->params[i].type != MS_PARAM_BUTTON || !e->params[i].press || !params)
         return PF_Err_NONE;
     AeHost data = {e, in_data, params, NULL};
-    MsHost host = {host_get_text, host_set_text, host_get_value, host_set_value, &data};
+    MsHost host = {host_get_text,  host_set_text, host_get_value,
+                   host_set_value, &data,         NULL}; // (the frame's size: unknown)
     char message[256] = "";
     if (!e->params[i].press(&host, message, sizeof message)) {
         snprintf(out_data->return_msg, sizeof out_data->return_msg, "%s: %s", e->label, message);
@@ -747,33 +754,20 @@ static PF_Err main_entry(AeEffect *ae, PF_Cmd cmd, PF_InData *in_data, PF_OutDat
         (void)output;                                                                              \
         return main_entry(&effects[slot], cmd, in_data, out_data, params, extra);                  \
     }
-ENTRY(BandPass, BANDPASS)
-ENTRY(EdgeAwareBlur, EDGEAWAREBLUR)
-ENTRY(Distort, DISTORT)
-ENTRY(Mosaic, MOSAIC)
-ENTRY(Glow, GLOW)
-ENTRY(EdgeBlur, EDGEBLUR)
-ENTRY(RackDefocus, RACKDEFOCUS)
-ENTRY(Glint, GLINT)
-ENTRY(Glare, GLARE)
-ENTRY(LensFlare, LENSFLARE)
-ENTRY(JpegDamage, JPEGDAMAGE)
-ENTRY(PixelSort, PIXELSORT)
-ENTRY(FlickerMatch, FLICKERMATCH)
-ENTRY(FlickerMatchColor, FLICKERMATCHCOLOR)
-ENTRY(Flicker, FLICKER)
-ENTRY(TVDamage, TVDAMAGE)
+#define MS_EFFECT(Name, name, pipl_id, varies) ENTRY(Name, SLOT_##Name)
+#include "effects/list.def"
+#undef MS_EFFECT
 
 // One effect for PluginDataEntryFunction2: what the SDK's PF_REGISTER_EFFECT_EXT2 does
 // (Util/entry.h, C++ only), as an effect plug-in ('eFKT') with the reserved info it gives.
-static PF_Err register_effect(PF_PluginDataPtr in_ptr, PF_PluginDataCB2 callback,
-                              const char *name, const char *match_name, const char *entry) {
+static PF_Err register_effect(PF_PluginDataPtr in_ptr, PF_PluginDataCB2 callback, const char *name,
+                              const char *match_name, const char *entry) {
     const A_long effect_kind = ('e' << 24) | ('F' << 16) | ('K' << 8) | 'T';
     const A_long reserved_info = 8; // AE_RESERVED_INFO
-    const A_Err err = callback(in_ptr, (const A_u_char *)name, (const A_u_char *)match_name,
-                               (const A_u_char *)MS_GROUP, (const A_u_char *)entry, effect_kind,
-                               PF_AE_PLUG_IN_VERSION, PF_AE_PLUG_IN_SUBVERS, reserved_info,
-                               (const A_u_char *)"");
+    const A_Err err =
+        callback(in_ptr, (const A_u_char *)name, (const A_u_char *)match_name,
+                 (const A_u_char *)MS_GROUP, (const A_u_char *)entry, effect_kind,
+                 PF_AE_PLUG_IN_VERSION, PF_AE_PLUG_IN_SUBVERS, reserved_info, (const A_u_char *)"");
     return err == A_Err_NONE ? PF_Err_NONE : (PF_Err)err;
 }
 
@@ -787,22 +781,10 @@ EXPORT PF_Err PluginDataEntryFunction2(PF_PluginDataPtr in_ptr, PF_PluginDataCB2
     (void)host_version;
     // name, match name (saved in projects: keep them), entry point; as in pipl.r
     static const char *const list[][3] = {
-        {"MS_BandPass", "MillSaph BandPass", "EffectMain_BandPass"},
-        {"MS_EdgeAwareBlur", "MillSaph EdgeAwareBlur", "EffectMain_EdgeAwareBlur"},
-        {"MS_Distort", "MillSaph Distort", "EffectMain_Distort"},
-        {"MS_Mosaic", "MillSaph Mosaic", "EffectMain_Mosaic"},
-        {"MS_Glow", "MillSaph Glow", "EffectMain_Glow"},
-        {"MS_EdgeBlur", "MillSaph EdgeBlur", "EffectMain_EdgeBlur"},
-        {"MS_RackDefocus", "MillSaph RackDefocus", "EffectMain_RackDefocus"},
-        {"MS_Glint", "MillSaph Glint", "EffectMain_Glint"},
-        {"MS_Glare", "MillSaph Glare", "EffectMain_Glare"},
-        {"MS_LensFlare", "MillSaph LensFlare", "EffectMain_LensFlare"},
-        {"MS_JpegDamage", "MillSaph JpegDamage", "EffectMain_JpegDamage"},
-        {"MS_PixelSort", "MillSaph PixelSort", "EffectMain_PixelSort"},
-        {"MS_FlickerMatch", "MillSaph FlickerMatch", "EffectMain_FlickerMatch"},
-        {"MS_FlickerMatchColor", "MillSaph FlickerMatchColor", "EffectMain_FlickerMatchColor"},
-        {"MS_Flicker", "MillSaph Flicker", "EffectMain_Flicker"},
-        {"MS_TVDamage", "MillSaph TVDamage", "EffectMain_TVDamage"},
+#define MS_EFFECT(Name, name, pipl_id, varies)                                                     \
+    {"MS_" #Name, "MillSaph " #Name, "EffectMain_" #Name},
+#include "effects/list.def"
+#undef MS_EFFECT
     };
     PF_Err err = PF_Err_NONE;
     for (size_t i = 0; i < ARRAY_SIZE(list) && !err; ++i)

@@ -28,6 +28,7 @@
 #include "common/effect.h"
 #include "common/mask.h"
 #include "effects/fft.h"
+#include "effects/input.h"
 #include "effects/mask_input.h"
 #include "engine/engine.h"
 
@@ -79,14 +80,8 @@ static const MsParam params[] = {
               .hint = "Blurs the colors, or the luma alone (a monochrome result).",
               .entries = mode_entries,
               .entry_count = ARRAY_SIZE(mode_entries)},
-    [DEFOCUS_WIDTH] = {.type = MS_PARAM_WIDTH,
-                       .name = "defocus_width",
-                       .label = "Defocus Width",
-                       .hint = "The radius of the lens.",
-                       .def = 0.011,
-                       .min = 0.0,
-                       .max = MS_UNBOUNDED,
-                       .display_max = 0.25},
+    MS_WIDTH(DEFOCUS_WIDTH, "defocus_width", "Defocus Width", "The radius of the lens.", 0.011,
+             0.25),
     [REL_HEIGHT] = {.type = MS_PARAM_DOUBLE,
                     .name = "rel_height",
                     .label = "Rel Height",
@@ -128,13 +123,8 @@ static const MsParam params[] = {
                .max = 1.0,
                .display_min = -1.0,
                .display_max = 1.0},
-    [LENS_NOISE] = {.type = MS_PARAM_DOUBLE,
-                    .name = "lens_noise",
-                    .label = "Lens Noise",
-                    .hint = "Dark specks across the lens (0: none).",
-                    .min = 0.0,
-                    .max = MS_UNBOUNDED,
-                    .display_max = 5.0},
+    MS_RELATIVE(LENS_NOISE, "lens_noise", "Lens Noise", "Dark specks across the lens (0: none).",
+                0.0),
     [NOISE_FREQ] = {.type = MS_PARAM_DOUBLE,
                     .name = "noise_freq",
                     .label = "Noise Freq",
@@ -159,13 +149,8 @@ static const MsParam params[] = {
                     .hint = "Another Lens Noise for each value.",
                     .def = 0.123,
                     .display_max = 5.0},
-    [GAUSS_BLUR] = {.type = MS_PARAM_WIDTH,
-                    .name = "gauss_blur",
-                    .label = "Gauss Blur",
-                    .hint = "Softens the lens' edge by this much.",
-                    .min = 0.0,
-                    .max = MS_UNBOUNDED,
-                    .display_max = 0.05},
+    MS_WIDTH(GAUSS_BLUR, "gauss_blur", "Gauss Blur", "Softens the lens' edge by this much.", 0.0,
+             0.05),
     [USE_GAMMA] = {.type = MS_PARAM_DOUBLE,
                    .name = "use_gamma",
                    .label = "Use Gamma",
@@ -176,13 +161,8 @@ static const MsParam params[] = {
                    .max = MS_UNBOUNDED,
                    .display_min = 0.1,
                    .display_max = 5.0},
-    [BOOST] = {.type = MS_PARAM_DOUBLE,
-               .name = "boost_highlights",
-               .label = "Boost Highlights",
-               .hint = "Brightens the parts above Hilight Threshold before the blur.",
-               .min = 0.0,
-               .max = MS_UNBOUNDED,
-               .display_max = 5.0},
+    MS_RELATIVE(BOOST, "boost_highlights", "Boost Highlights",
+                "Brightens the parts above Hilight Threshold before the blur.", 0.0),
     [THRESHOLD] = {.type = MS_PARAM_DOUBLE,
                    .name = "hilight_threshold",
                    .label = "Hilight Threshold",
@@ -209,14 +189,7 @@ static const MsParam params[] = {
                   .max = 5.0,
                   .display_min = -0.5,
                   .display_max = 0.5},
-    [BRIGHTNESS] = {.type = MS_PARAM_DOUBLE,
-                    .name = "brightness",
-                    .label = "Brightness",
-                    .hint = "Scales the blurred colors.",
-                    .def = 1.0,
-                    .min = 0.0,
-                    .max = MS_UNBOUNDED,
-                    .display_max = 5.0},
+    MS_RELATIVE(BRIGHTNESS, "brightness", "Brightness", "Scales the blurred colors.", 1.0),
     [OFFSET_DARKS] = {.type = MS_PARAM_DOUBLE,
                       .name = "offset_darks",
                       .label = "Offset Darks",
@@ -226,13 +199,8 @@ static const MsParam params[] = {
                       .max = MS_UNBOUNDED,
                       .display_min = -5.0,
                       .display_max = 1.0},
-    [MIX] = {.type = MS_PARAM_DOUBLE,
-             .name = "mix_with_source",
-             .label = "Mix With Source",
-             .hint = "Mixes the Source back over the result: 0 for the blur only.",
-             .min = 0.0,
-             .max = 1.0,
-             .display_max = 1.0},
+    MS_FRACTION(MIX, "mix_with_source", "Mix With Source",
+                "Mixes the Source back over the result: 0 for the blur only.", 0.0),
     [EDGE_MODE] = {.type = MS_PARAM_CHOICE,
                    .name = "edge_mode",
                    .label = "Edge Mode",
@@ -242,14 +210,7 @@ static const MsParam params[] = {
                    .entries = edge_entries,
                    .entry_count = ARRAY_SIZE(edge_entries)},
     [MASK_USE] = MS_PARAM_MASK_USE,
-    [BLUR_MASK] = {.type = MS_PARAM_WIDTH,
-                   .name = "blur_mask",
-                   .label = "Blur Mask",
-                   .hint = "Blurs the Mask input by this amount before using.",
-                   .def = 0.00625,
-                   .min = 0.0,
-                   .max = MS_UNBOUNDED,
-                   .display_max = 0.5},
+    [BLUR_MASK] = MS_PARAM_BLUR_MASK(0.00625, 0.5),
     [INVERT_MASK] = MS_PARAM_INVERT_MASK("Use the black areas of the Mask."),
     MS_SHOW(SHOW_DEFOCUS_WIDTH, "ShowDefocusWidth", "Show Defocus Width"),
 };
@@ -394,40 +355,32 @@ static int render(const MsRender *r) {
     const int nx = ms_fft_length(w + 2 * j.pad), ny = ms_fft_length(h + 2 * j.pad);
     j.scale = (float)(1.0 / ((double)nx * ny));
 
+    // The three transforms' buffers and the mask value.
     const size_t size = (size_t)nx * ny * 4;
-    float *buffers[3] = {malloc(size * sizeof(float)), malloc(size * sizeof(float)),
-                         malloc(size * sizeof(float))};
-    MsImage source;
-    ms_image_rgba(&source, r->inputs[SOURCE].pixels, r->inputs[SOURCE].row, r->half, w, h);
-    MsMask mask = {0};
-    int ok = buffers[0] && buffers[1] && buffers[2];
-    if (!ok)
-        snprintf(r->err, r->err_size, "not enough memory");
-    else
-        ok = ms_mask_init(&mask, r, MASK, SOURCE, &source, v[MASK_USE], v[INVERT_MASK],
-                          v[BLUR_MASK]);
-    if (ok) {
-        MsImage output, images[3];
-        ms_image_rgba(&output, r->output, r->output_row, r->half, w, h);
-        for (int i = 0; i < 3; ++i) {
-            ms_image(&images[i], buffers[i], (ptrdiff_t)nx * 4, nx, ny, 4);
-            j.buffers[i] = &images[i];
-        }
-        j.source = &source;
-        j.mask = &mask;
-        j.output = &output;
-        // Inputs uploaded to the GPU: the Source, and the Mask or the one mask value.
-        MsImage *const inputs[] = {&source, mask.input};
-        MsImage *between[4] = {&images[0], &images[1], &images[2]};
-        int between_count = 3;
-        if (mask.has_mask)
-            between[between_count++] = &mask.value;
-        ok = ms_run(run, &j, inputs, 2, between, between_count, &output, r->info, r->err,
-                    r->err_size);
+    const size_t floats[] = {size, size, size, ms_mask_floats(r, MASK)};
+    float *block = malloc(ms_parts_size(floats, ARRAY_SIZE(floats))), *part[ARRAY_SIZE(floats)];
+    if (!block)
+        return ms_out_of_memory(r);
+    ms_parts(block, floats, ARRAY_SIZE(floats), part);
+    MsImage source, output, images[3];
+    ms_input_image(&source, r, SOURCE);
+    ms_output_image(&output, r);
+    for (int i = 0; i < 3; ++i) {
+        ms_image(&images[i], part[i], (ptrdiff_t)nx * 4, nx, ny, 4);
+        j.buffers[i] = &images[i];
     }
-    ms_mask_free(&mask);
-    for (int i = 0; i < 3; ++i)
-        free(buffers[i]);
+    MsMask mask;
+    ms_mask_init(&mask, r, MASK, SOURCE, &source, part[3], v[MASK_USE], v[INVERT_MASK],
+                 v[BLUR_MASK]);
+    j.source = &source;
+    j.mask = &mask;
+    j.output = &output;
+    // Inputs uploaded to the GPU: the Source, and the Mask or the one mask value.
+    MsImage *const inputs[] = {&source, mask.input};
+    MsImage *const between[] = {&images[0], &images[1], &images[2], ms_mask_between(&mask)};
+    const int ok = ms_run(run, &j, inputs, ARRAY_SIZE(inputs), between, ARRAY_SIZE(between),
+                          &output, r->info, r->err, r->err_size);
+    free(block);
     return ok;
 }
 
@@ -441,32 +394,20 @@ static int identity(const double *v, const int *connected) {
 
 // The viewer: the Defocus Width and the Rel Height (the arrow).
 static const MsOverlay overlay[] = {
-    {.kind = MS_OVERLAY_ELLIPSE,
-     .colour = MS_OVERLAY_ORANGE,
-     .show = "ShowDefocusWidth",
-     .size = "defocus_width",
-     .rel_y = "rel_height"},
-    {.kind = MS_OVERLAY_ARROW_Y,
-     .colour = MS_OVERLAY_ORANGE,
-     .show = "ShowDefocusWidth",
-     .size = "defocus_width",
-     .rel_y = "rel_height"},
+    MS_OVERLAY_SIZED(MS_OVERLAY_ELLIPSE, "ShowDefocusWidth", "defocus_width", NULL, NULL,
+                     "rel_height", 0.0, MS_OVERLAY_ORANGE),
+    MS_OVERLAY_SIZED(MS_OVERLAY_ARROW_Y, "ShowDefocusWidth", "defocus_width", NULL, NULL,
+                     "rel_height", 0.0, MS_OVERLAY_ORANGE),
 };
 
 const MsEffect ms_rackdefocus_effect = {
-    MS_ID("RackDefocus"),
-    "MS_RackDefocus",
-    "Blurs the image as an out-of-focus lens would, by its shape.",
-    clips,
-    ARRAY_SIZE(clips),
-    params,
-    ARRAY_SIZE(params),
-    render,
-    identity,
-    0,
-    NULL,
-    overlay,
-    ARRAY_SIZE(overlay),
-    "rackdefocus", // presets (common/preset.h)
-    NULL,          // not varying with its settings
+    .id = MS_ID("RackDefocus"),
+    .label = "MS_RackDefocus",
+    .description = "Blurs the image as an out-of-focus lens would, by its shape.",
+    MS_CLIPS(clips),
+    MS_PARAMS(params),
+    .render = render,
+    .identity = identity,
+    MS_OVERLAYS(overlay),
+    .presets = "rackdefocus",
 };

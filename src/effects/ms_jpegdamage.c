@@ -25,6 +25,7 @@
 #include "common/defines.h"
 #include "common/effect.h"
 #include "common/mask.h"
+#include "effects/input.h"
 #include "effects/mask_input.h"
 #include "engine/engine.h"
 
@@ -115,36 +116,19 @@ static const MsParam params[] = {
     [AFFECT_CHROMA] = {.type = MS_PARAM_DOUBLE,
                        .name = "affect_chroma",
                        .label = "Affect Chroma",
-                       .hint = "How much the Frequency settings change the colours (0: not at all).",
+                       .hint =
+                           "How much the Frequency settings change the colours (0: not at all).",
                        .def = 0.5,
                        .min = 0.0,
                        .max = MS_UNBOUNDED,
                        .display_max = 10.0},
-    [ERROR_RATE] = {.type = MS_PARAM_DOUBLE,
-                    .name = "error_rate",
-                    .label = "Error Rate",
-                    .hint = "How many errors damage the blocks (0: none).",
-                    .min = 0.0,
-                    .max = MS_UNBOUNDED,
-                    .display_max = 5.0},
+    MS_RELATIVE(ERROR_RATE, "error_rate", "Error Rate",
+                "How many errors damage the blocks (0: none).", 0.0),
     MS_FRACTION(ERROR_DENSITY, "err_block_density", "Err Block Density",
                 "The share of the blocks the errors can reach.", 0.75),
-    [ERROR_AMP] = {.type = MS_PARAM_DOUBLE,
-                   .name = "error_amp",
-                   .label = "Error Amp",
-                   .hint = "How strong the errors are.",
-                   .def = 1.0,
-                   .min = 0.0,
-                   .max = MS_UNBOUNDED,
-                   .display_max = 5.0},
-    [ERROR_COHERENCE] = {.type = MS_PARAM_DOUBLE,
-                         .name = "error_coherence",
-                         .label = "Error Coherence",
-                         .hint = "How much the errors run on from block to block.",
-                         .def = 1.0,
-                         .min = 0.0,
-                         .max = MS_UNBOUNDED,
-                         .display_max = 5.0},
+    MS_RELATIVE(ERROR_AMP, "error_amp", "Error Amp", "How strong the errors are.", 1.0),
+    MS_RELATIVE(ERROR_COHERENCE, "error_coherence", "Error Coherence",
+                "How much the errors run on from block to block.", 1.0),
     [JITTER_FRAMES] = {.type = MS_PARAM_DOUBLE,
                        .name = "jitter_frames",
                        .label = "Jitter Frames",
@@ -190,14 +174,7 @@ static const MsParam params[] = {
                     .label = "Flip Noise Vertically",
                     .hint = "Turns the pattern of the errors upside down."},
     [MASK_USE] = MS_PARAM_MASK_USE,
-    [BLUR_MASK] = {.type = MS_PARAM_WIDTH,
-                   .name = "blur_mask",
-                   .label = "Blur Mask",
-                   .hint = "Blurs the Mask input by this amount before using.",
-                   .def = 0.00625,
-                   .min = 0.0,
-                   .max = MS_UNBOUNDED,
-                   .display_max = 0.2},
+    [BLUR_MASK] = MS_PARAM_BLUR_MASK(0.00625, 0.2),
     [INVERT_MASK] = MS_PARAM_INVERT_MASK("Damages the black areas of the Mask."),
 };
 
@@ -233,9 +210,9 @@ static void tables(const double *v, float steps[8][8][2], float decoder[8][8][2]
                 const int r = u > vv ? u : vv;
                 const double low = r <= 1 ? 1.0 : r == 2 ? 0.5 : 0.0;
                 const double high = r >= 6 ? 1.0 : r == 5 ? 0.5 : 0.0;
-                double gain = (low * v[LOW_FREQ] + (1.0 - low - high) * v[MID_FREQ] +
-                               high * v[HIGH_FREQ]) *
-                              v[ALL_FREQ] * axis_gain(v[X_FREQ], u, vv) * axis_gain(v[Y_FREQ], vv, u);
+                double gain =
+                    (low * v[LOW_FREQ] + (1.0 - low - high) * v[MID_FREQ] + high * v[HIGH_FREQ]) *
+                    v[ALL_FREQ] * axis_gain(v[X_FREQ], u, vv) * axis_gain(v[Y_FREQ], vv, u);
                 // Affect Luma / Affect Chroma a on the table's plane: above 1, 1 + a (g - 1);
                 // below, g^a (at gain 0, any a > 0 the same)
                 const double a = v[t == 0 ? AFFECT_LUMA : AFFECT_CHROMA];
@@ -268,24 +245,27 @@ static int run(MsApi api, void *user) {
                      MS_FLOAT("rate", j->rate), MS_FLOAT("amp", j->amp),
                      MS_FLOAT("density", j->density), MS_FLOAT("coherence", j->coherence),
                      MS_INT("seed", j->seed), MS_INT("epoch", j->epoch), MS_INT("flip", j->flip),
-                     MS_FLOAT("saturation", j->saturation),
-                     MS_FLOAT("lights", j->lights), MS_FLOAT("darks", j->darks),
-                     MS_IMAGE("output", j->output));
+                     MS_FLOAT("saturation", j->saturation), MS_FLOAT("lights", j->lights),
+                     MS_FLOAT("darks", j->darks), MS_IMAGE("output", j->output));
 }
 
 static int render(const MsRender *r) {
     const double *v = r->values;
-    const int w = r->width, h = r->height;
     MsImage source, steps_image, decoder_image, output;
-    ms_image_rgba(&source, r->inputs[SOURCE].pixels, r->inputs[SOURCE].row, r->half, w, h);
+    ms_input_image(&source, r, SOURCE);
+    const size_t floats[] = {ms_mask_floats(r, MASK)};
+    float *block = malloc(ms_parts_size(floats, ARRAY_SIZE(floats))), *part[ARRAY_SIZE(floats)];
+    if (!block)
+        return ms_out_of_memory(r);
+    ms_parts(block, floats, ARRAY_SIZE(floats), part);
     MsMask mask;
-    if (!ms_mask_init(&mask, r, MASK, SOURCE, &source, v[MASK_USE], v[INVERT_MASK], v[BLUR_MASK]))
-        return 0;
+    ms_mask_init(&mask, r, MASK, SOURCE, &source, part[0], v[MASK_USE], v[INVERT_MASK],
+                 v[BLUR_MASK]);
     float steps[8][8][2], decoder[8][8][2];
     tables(v, steps, decoder);
     ms_image(&steps_image, &steps[0][0][0], 16, 8, 8, 2);
     ms_image(&decoder_image, &decoder[0][0][0], 16, 8, 8, 2);
-    ms_image_rgba(&output, r->output, r->output_row, r->half, w, h);
+    ms_output_image(&output, r);
     Job j = {.source = &source,
              .mask = &mask,
              .steps = &steps_image,
@@ -313,27 +293,27 @@ static int render(const MsRender *r) {
     j.flip = (int)v[FLIP_NOISE];
     // Inputs uploaded to the GPU: the Source, the Mask or the one mask value, the tables.
     MsImage *const inputs[] = {&source, mask.input, &steps_image, &decoder_image};
-    MsImage *between[] = {&mask.value}; // made on the GPU from the Mask
-    const int ok = ms_run(run, &j, inputs, 4, between, mask.has_mask, &output, r->info, r->err,
-                          r->err_size);
-    ms_mask_free(&mask);
+    MsImage *const between[] = {ms_mask_between(&mask)}; // made on the GPU from the Mask
+    const int ok = ms_run(run, &j, inputs, ARRAY_SIZE(inputs), between, ARRAY_SIZE(between),
+                          &output, r->info, r->err, r->err_size);
+    free(block);
     return ok;
 }
 
+// The errors change over time with Jitter Frames (every that many frames), else they stay;
+// without errors (Error Rate, Err Block Density or Error Amp 0) nothing changes.
+static int varying(const double *v) {
+    return v[JITTER_FRAMES] > 0 && v[ERROR_RATE] > 0 && v[ERROR_DENSITY] > 0 && v[ERROR_AMP] != 0;
+}
+
 const MsEffect ms_jpegdamage_effect = {
-    MS_ID("JpegDamage"),
-    "MS_JpegDamage",
-    "Damages the image as a low-quality JPEG file does: blocks, lost detail, blurred colours.",
-    clips,
-    ARRAY_SIZE(clips),
-    params,
-    ARRAY_SIZE(params),
-    render,
-    NULL,
-    1, // the errors change over time (Jitter Frames)
-    NULL,
-    NULL,
-    0,
-    "jpegdamage", // presets (common/preset.h)
-    NULL, // not varying with its settings
+    .id = MS_ID("JpegDamage"),
+    .label = "MS_JpegDamage",
+    .description =
+        "Damages the image as a low-quality JPEG file does: blocks, lost detail, blurred colours.",
+    MS_CLIPS(clips),
+    MS_PARAMS(params),
+    .render = render,
+    .varying = varying,
+    .presets = "jpegdamage",
 };

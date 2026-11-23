@@ -12,8 +12,10 @@
 import glob, json, os, subprocess, sys
 import numpy as np
 
+sys.dont_write_bytecode = True  # (no __pycache__ in the repo)
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import scores
+import jobfile  # noqa: E402
+import scores  # noqa: E402
 
 HOME = os.path.expanduser("~/millsaph_measure")
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -23,7 +25,7 @@ def batches():
     """{effect: [jobs file, ...]}, one file per batch (out folder)."""
     by_out = {}
     for path in sorted(glob.glob(os.path.join(HOME, "jobs", "*.json"))):
-        spec = json.load(open(path))
+        spec = jobfile.load(path)
         if not spec.get("jobs"):
             continue
         out = os.path.basename(os.path.expanduser(spec["out"]).rstrip("/"))
@@ -40,22 +42,23 @@ def batches():
 
 
 def main(argv):
-    if argv and argv[0] in ("-h", "--help"):
-        print(open(__file__).read().split("\nimport")[0])
-        return 2
-    opts = {k: argv[argv.index(k) + 1] for k in ("--save",) if k in argv}
-    words = [a for a in argv if not a.startswith("--") and a not in opts.values()]
+    p = jobfile.parser(__file__)
+    p.add_argument("effect", nargs="*")
+    p.add_argument("--render", action="store_true")
+    p.add_argument("--cpu", action="store_true")
+    p.add_argument("--save")
+    args = p.parse_intermixed_args(argv)
     report = {}
     for effect, paths in batches().items():
-        if words and effect not in words:
+        if args.effect and effect not in args.effect:
             continue
         values = {}
         for path in paths:
-            if "--render" in argv:
-                args = [sys.executable, os.path.join(HERE, "ms_render.py"), path]
-                if "--cpu" in argv:
-                    args.append("--cpu")
-                subprocess.run(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            if args.render:
+                run = [sys.executable, os.path.join(HERE, "ms_render.py"), path]
+                if args.cpu:
+                    run.append("--cpu")
+                subprocess.run(run, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             batch = os.path.basename(path)[:-5]
             for job, s in scores.batch_scores(path).items():
                 values[batch + "/" + job] = s
@@ -72,8 +75,8 @@ def main(argv):
                                                 100 * r["p999_median"], 100 * r["l1_median"],
                                                 100 * r["within_1"], 100 * r["within_5"]),
               flush=True)
-    if "--save" in opts:
-        json.dump(report, open(opts["--save"], "w"), indent=1)
+    if args.save:
+        json.dump(report, open(args.save, "w"), indent=1)
     return 0
 
 

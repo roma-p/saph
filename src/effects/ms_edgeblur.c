@@ -13,6 +13,8 @@
 
 #include "common/defines.h"
 #include "common/effect.h"
+#include "effects/input.h"
+#include "effects/pixels.h"
 #include "engine/engine.h"
 
 // Inputs: clip, label in the host, value where there is no image, optional, mask.
@@ -36,30 +38,11 @@ enum {
     SHOW_BLUR_WIDTH,
 };
 static const MsParam params[] = {
-    [BLUR_WIDTH] = {.type = MS_PARAM_WIDTH,
-                    .name = "blur_width",
-                    .label = "Blur Width",
-                    .hint = "How much the edges are blurred.",
-                    .def = 0.014,
-                    .min = 0.0,
-                    .max = MS_UNBOUNDED,
-                    .display_max = 0.1},
-    [EDGE_WIDTH] = {.type = MS_PARAM_WIDTH,
-                    .name = "edge_width",
-                    .label = "Edge Width",
-                    .hint = "The width of the edges found and blurred.",
-                    .def = 0.014,
-                    .min = 0.0,
-                    .max = MS_UNBOUNDED,
-                    .display_max = 0.1},
-    [EDGE_STRENGTH] = {.type = MS_PARAM_DOUBLE,
-                       .name = "edge_strength",
-                       .label = "Edge Strength",
-                       .hint = "Scales the edges: more of the image is blurred.",
-                       .def = 0.5,
-                       .min = 0.0,
-                       .max = MS_UNBOUNDED,
-                       .display_max = 5.0},
+    MS_WIDTH(BLUR_WIDTH, "blur_width", "Blur Width", "How much the edges are blurred.", 0.014, 0.1),
+    MS_WIDTH(EDGE_WIDTH, "edge_width", "Edge Width", "The width of the edges found and blurred.",
+             0.014, 0.1),
+    MS_RELATIVE(EDGE_STRENGTH, "edge_strength", "Edge Strength",
+                "Scales the edges: more of the image is blurred.", 0.5),
     [EDGE_THRESHOLD] = {.type = MS_PARAM_DOUBLE,
                         .name = "edge_threshold",
                         .label = "Edge Threshold",
@@ -112,47 +95,36 @@ static int run(MsApi api, void *user) {
                      MS_IMAGE("output", j->output));
 }
 
-// A total radius `t`: whole pixels (Subpixel: the fraction past them in *frac, else rounded).
-static int radius(double t, int subpixel, float *frac) {
-    t = t > 0 ? (t < 1e7 ? t : 1e7) : 0;
-    const double whole = subpixel ? floor(t) : floor(t + 0.5);
-    *frac = (float)(subpixel ? t - whole : 0.0);
-    return (int)whole;
-}
-
 static int render(const MsRender *r) {
     const double *v = r->values;
     const int w = r->width, h = r->height, has_matte = r->connected[MATTE];
     const int subpixel = v[SUBPIXEL] != 0, show_edges = (int)v[SHOW] == 1;
     float *edges = malloc((size_t)w * h * sizeof(float));
-    if (!edges) {
-        snprintf(r->err, r->err_size, "not enough memory");
-        return 0;
-    }
+    if (!edges)
+        return ms_out_of_memory(r);
     MsImage source, matte, edge_image, output;
-    ms_image_rgba(&source, r->inputs[SOURCE].pixels, r->inputs[SOURCE].row, r->half, w, h);
-    ms_image_rgba(&matte, r->inputs[MATTE].pixels, r->inputs[MATTE].row, r->half, w, h);
+    ms_input_image(&source, r, SOURCE);
     ms_image(&edge_image, edges, w, w, h, 1);
-    ms_image_rgba(&output, r->output, r->output_row, r->half, w, h);
+    ms_output_image(&output, r);
     // Without a Matte, or one that is the Source's image in the host: the Source stands in
     // (uploaded once).
-    const int matte_is_source = has_matte && ms_same_input(&r->inputs[MATTE], &r->inputs[SOURCE]);
     const double edge_width = v[EDGE_WIDTH] > 0 ? v[EDGE_WIDTH] : 0;
     Job j = {.source = &source,
-             .matte = has_matte && !matte_is_source ? &matte : &source,
+             .matte = ms_input_or(&matte, r, MATTE, has_matte, &source, SOURCE),
              .edges = &edge_image,
              .output = &output,
              .use_alpha = has_matte && (int)v[MATTE_USE] == 1,
              .show_edges = show_edges,
              .scale = (float)(v[EDGE_STRENGTH] * (0.8 * edge_width + r->frame_width / 100)),
              .threshold = (float)v[EDGE_THRESHOLD]};
-    j.edge_radius = radius(edge_width, subpixel, &j.edge_frac);
+    j.edge_radius = ms_whole_pixels(edge_width, subpixel, &j.edge_frac);
     // Show Edges: no blur.
-    j.blur_radius = show_edges ? 0 : radius(v[BLUR_WIDTH], subpixel, &j.blur_frac);
+    j.blur_radius = show_edges ? 0 : ms_whole_pixels(v[BLUR_WIDTH], subpixel, &j.blur_frac);
     // Inputs uploaded to the GPU: the Source, and the Matte.
     MsImage *const inputs[] = {&source, j.matte};
     MsImage *const between[] = {&edge_image};
-    const int ok = ms_run(run, &j, inputs, 2, between, 1, &output, r->info, r->err, r->err_size);
+    const int ok = ms_run(run, &j, inputs, ARRAY_SIZE(inputs), between, ARRAY_SIZE(between),
+                          &output, r->info, r->err, r->err_size);
     free(edges);
     return ok;
 }
@@ -161,33 +133,25 @@ static int render(const MsRender *r) {
 static int identity(const double *v, const int *connected) {
     (void)connected;
     float frac;
-    const int no_blur = radius(v[BLUR_WIDTH], v[SUBPIXEL] != 0, &frac) == 0 && frac == 0.0f;
+    const int no_blur =
+        ms_whole_pixels(v[BLUR_WIDTH], v[SUBPIXEL] != 0, &frac) == 0 && frac == 0.0f;
     return (int)v[SHOW] == 0 && (no_blur || v[EDGE_STRENGTH] == 0.0);
 }
 
 // The viewer: the Blur Width (a circle of 4 x it).
 static const MsOverlay overlay[] = {
-    {.kind = MS_OVERLAY_ELLIPSE,
-     .colour = MS_OVERLAY_ORANGE,
-     .show = "ShowBlurWidth",
-     .size = "blur_width",
-     .factor = 4.0},
+    MS_OVERLAY_SIZED(MS_OVERLAY_ELLIPSE, "ShowBlurWidth", "blur_width", NULL, NULL, NULL, 4.0,
+                     MS_OVERLAY_ORANGE),
 };
 
 const MsEffect ms_edgeblur_effect = {
-    MS_ID("EdgeBlur"),
-    "MS_EdgeBlur",
-    "Blurs the image along its edges.",
-    clips,
-    ARRAY_SIZE(clips),
-    params,
-    ARRAY_SIZE(params),
-    render,
-    identity,
-    0,
-    NULL,
-    overlay,
-    ARRAY_SIZE(overlay),
-    "edgeblur", // presets (common/preset.h)
-    NULL, // not varying with its settings
+    .id = MS_ID("EdgeBlur"),
+    .label = "MS_EdgeBlur",
+    .description = "Blurs the image along its edges.",
+    MS_CLIPS(clips),
+    MS_PARAMS(params),
+    .render = render,
+    .identity = identity,
+    MS_OVERLAYS(overlay),
+    .presets = "edgeblur",
 };

@@ -18,6 +18,7 @@
 #include "common/defines.h"
 #include "common/effect.h"
 #include "common/mask.h"
+#include "effects/input.h"
 #include "effects/mask_input.h"
 #include "effects/profile.h"
 #include "engine/engine.h"
@@ -175,13 +176,8 @@ static const MsParam params[] = {
            0.0, 1.0),
     SLIDER(SHIFT, "shift", "Shift", "The ghosts' side and distance (0: none).", 0.5, ANY,
            MS_UNBOUNDED, -1.0, 1.0),
-    [GHOST_BLUR] = {.type = MS_PARAM_WIDTH,
-                    .name = "blur_",
-                    .label = "Blur",
-                    .hint = "Softens the ghosts across (wide: fainter ghosts).",
-                    .min = 0.0,
-                    .max = MS_UNBOUNDED,
-                    .display_max = 0.25},
+    MS_WIDTH(GHOST_BLUR, "blur_", "Blur", "Softens the ghosts across (wide: fainter ghosts).", 0.0,
+             0.25),
     AMOUNT(H_FREQ, "h_frequency", "H Frequency", "How many waves down the rows.", 1.25, 5.0),
     AMOUNT(H_TIME, "h_time_vary", "H Time Vary", "How fast the rows' moves change.", 0.5, 5.0),
     SLIDER(H_OCTAVES, "h_octaves", "H Octaves", "Detail of the rows' moves.", 3.0, 1.0, 10.0, 1.0,
@@ -206,16 +202,16 @@ static const MsParam params[] = {
            "The narrow bars' frequency, relative.", 6.0, 1.0, MS_UNBOUNDED, 1.0, 100.0),
     SLIDER(BAR2_SHARP, "bar2_sharpness", "Bar2 Sharpness", "The narrow bars' edges.", 0.5, 0.01,
            MS_UNBOUNDED, 0.01, 10.0),
-    SLIDER(COLOR_FREQ, "color_frequency", "Color Frequency",
-           "Stripes across half the width.", 10.0, 1.0, MS_UNBOUNDED, 1.0, 40.0),
+    SLIDER(COLOR_FREQ, "color_frequency", "Color Frequency", "Stripes across half the width.", 10.0,
+           1.0, MS_UNBOUNDED, 1.0, 40.0),
     SLIDER(COLOR_ANGLE, "color_angle", "Color Angle", "The stripes' angle.", 160.0, ANY,
            MS_UNBOUNDED, -360.0, 360.0),
     AMOUNT(ROLL_SPEED, "roll_speed", "Roll Speed", "How fast the stripes move.", 3.0, 5.0),
     AMOUNT(FF_FREQ, "FF_band_frequency", "FF Band Frequency", "Torn bands down the picture.", 4.0,
            25.0),
     AMOUNT(FF_SHIFT, "FF_band_shift", "FF Band Shift", "How far the bands tear.", 0.1, 5.0),
-    SLIDER(FF_HEIGHT, "FF_band_height", "FF Band Height", "The bands' height.", 0.16, 0.0, 1.0,
-           0.0, 1.0),
+    SLIDER(FF_HEIGHT, "FF_band_height", "FF Band Height", "The bands' height.", 0.16, 0.0, 1.0, 0.0,
+           1.0),
     SLIDER(DROP_LEN, "dropout_length", "Dropout Length", "A streak's length.", 0.25, 0.0, 1.0, 0.0,
            1.0),
     AMOUNT(DROP_GAP, "dropout_gap_length", "Dropout Gap Length", "The gaps between streaks.", 0.2,
@@ -228,46 +224,29 @@ static const MsParam params[] = {
            "How often frames have streaks (0: never).", 1.0, 0.0, 1.0, 0.0, 1.0),
     AMOUNT(VIG_RADIUS, "vignette_radius", "Vignette Radius",
            "Where the vignette darkens, in half widths.", 1.0, 5.0),
-    AMOUNT(VIG_SOFT, "vignette_edge_softness", "Vignette Edge Softness",
-           "The vignette's edge.", 0.5, 5.0),
+    AMOUNT(VIG_SOFT, "vignette_edge_softness", "Vignette Edge Softness", "The vignette's edge.",
+           0.5, 5.0),
     SLIDER(VIG_REL_H, "vignette_rel_height", "Vignette Rel Height",
            "The vignette's height, relative to its width.", 0.75, 0.1, MS_UNBOUNDED, 0.1, 5.0),
     SLIDER(SCANLINES, "scanlines", "Scanlines", "Dark lines across.", 0.1, 0.0, 1.0, 0.0, 1.0),
     AMOUNT(SCAN_FREQ, "scanlines_rel_freq", "Scanlines Rel Freq", "How many scanlines.", 1.0, 5.0),
     AMOUNT(ORTHICON, "orthicon", "Orthicon", "Dark halos around the bright parts.", 0.0, 5.0),
-    SLIDER(ORTH_THRESHOLD, "threshold", "Threshold", "Where the bright parts start.", 0.7, 0.0,
-           1.0, 0.0, 1.0),
+    SLIDER(ORTH_THRESHOLD, "threshold", "Threshold", "Where the bright parts start.", 0.7, 0.0, 1.0,
+           0.0, 1.0),
     AMOUNT(DARKS_WIDTH, "darks_width", "Darks Width", "The halos' width.", 0.2, 5.0),
     SLIDER(HUE, "hue_shift", "Hue Shift", "Turns the colours (in turns).", 0.0, ANY, MS_UNBOUNDED,
            -1.0, 1.0),
     AMOUNT(SATURATION, "saturation", "Saturation", "The colours' strength.", 1.0, 2.0),
     AMOUNT(SCALE_LIGHTS, "scale_lights", "Scale Lights", "Scales the picture.", 1.0, 5.0),
-    SLIDER(OFFSET_DARKS, "offset_darks", "Offset Darks", "Raises (or lowers) the blacks.", 0.0,
-           ANY, 1.0, -5.0, 1.0),
-    [TINT_LIGHTS] = {.type = MS_PARAM_RGB,
-                     .name = "tint_lights",
-                     .label = "Tint Lights",
-                     .hint = "Tints the whites.",
-                     .def = 1.0},
-    [TINT_LIGHTS_G] = {.type = MS_PARAM_RGB_PART, .name = "tint_lights_green", .def = 1.0},
-    [TINT_LIGHTS_B] = {.type = MS_PARAM_RGB_PART, .name = "tint_lights_blue", .def = 1.0},
-    [TINT_DARKS] = {.type = MS_PARAM_RGB,
-                    .name = "tint_darks",
-                    .label = "Tint Darks",
-                    .hint = "Tints the blacks."},
-    [TINT_DARKS_G] = {.type = MS_PARAM_RGB_PART, .name = "tint_darks_green"},
-    [TINT_DARKS_B] = {.type = MS_PARAM_RGB_PART, .name = "tint_darks_blue"},
+    SLIDER(OFFSET_DARKS, "offset_darks", "Offset Darks", "Raises (or lowers) the blacks.", 0.0, ANY,
+           1.0, -5.0, 1.0),
+    MS_COLOUR(TINT_LIGHTS, "tint_lights", "Tint Lights", "Tints the whites."),
+    MS_COLOUR_OF(TINT_DARKS, "tint_darks", "Tint Darks", "Tints the blacks.", 0.0),
     SLIDER(TURN_OFF, "turn_off", "Turn Off",
            "Switches the TV off: the picture shrinks to a line, then a fading spot.", 0.0, 0.0, 1.0,
            0.0, 1.0),
-    [FLARE_WIDTH] = {.type = MS_PARAM_WIDTH,
-                     .name = "flare_width",
-                     .label = "Flare Width",
-                     .hint = "The turned off spot's width.",
-                     .def = 0.19394,
-                     .min = 0.0,
-                     .max = MS_UNBOUNDED,
-                     .display_max = 1.0},
+    MS_WIDTH(FLARE_WIDTH, "flare_width", "Flare Width", "The turned off spot's width.", 0.19394,
+             1.0),
     AMOUNT(FLARE_BRIGHT, "flare_brightness", "Flare Brightness",
            "The turned off spot's brightness.", 2.0, 5.0),
     SLIDER(FADE_TIME, "fade_out_time", "Fade Out Time",
@@ -281,23 +260,9 @@ static const MsParam params[] = {
                     .label = "Downsample",
                     .hint = "Shows the picture at the TV's pixels.",
                     .def = 1.0},
-    [SEED] = {.type = MS_PARAM_DOUBLE,
-              .name = "seed",
-              .label = "Seed",
-              .hint = "Other random damage.",
-              .def = 0.123,
-              .min = 0.0,
-              .max = MS_UNBOUNDED,
-              .display_max = 5.0},
+    MS_RELATIVE(SEED, "seed", "Seed", "Other random damage.", 0.123),
     [MASK_USE] = MS_PARAM_MASK_USE,
-    [BLUR_MASK] = {.type = MS_PARAM_WIDTH,
-                   .name = "blur_mask",
-                   .label = "Blur Mask",
-                   .hint = "Blurs the Mask input by this amount before using.",
-                   .def = 0.00667,
-                   .min = 0.0,
-                   .max = MS_UNBOUNDED,
-                   .display_max = 0.2},
+    [BLUR_MASK] = MS_PARAM_BLUR_MASK(0.00667, 0.2),
     [INVERT_MASK] = MS_PARAM_INVERT_MASK("Damages the black areas of the Mask."),
 };
 
@@ -325,8 +290,8 @@ static void static_share(double density, double *share, double *boost) {
 // the reference's (the ghost of a line at 320 wide: sides 0.13, 0.21, 0.25 at b 12, 16, 20;
 // then 0.87, 0.75, 0.55, 0.44, 0.14 of it at 24, 32, 48, 64, 80).
 static void ghost_blur(double b, double k, float *s) {
-    static const double at[] = {20, 24, 32, 48, 64, 80, 120}, kept[] = {1, 0.874, 0.746, 0.553,
-                                                                          0.436, 0.135, 0};
+    static const double at[] = {20, 24, 32, 48, 64, 80, 120},
+                        kept[] = {1, 0.874, 0.746, 0.553, 0.436, 0.135, 0};
     const double sd = fmax(b, 0.0) / 24.0, ref = fmax(b, 0.0) / fmax(k, 1e-6);
     double w1 = 0.0, w2 = 0.0;
     if (sd > 0.05) {
@@ -442,8 +407,7 @@ static void settings(const double *v, int w, int h, double time, float *s) {
 typedef struct {
     MsImage *source, *settings, *picture, *bright, *narrow, *wide, *screen, *cells, *output;
     MsMask *mask;
-    int orthicon, cells_on, narrow_radius,
-        wide_radius, reach_x, reach_y, ghosts, octaves;
+    int orthicon, cells_on, narrow_radius, wide_radius, reach_x, reach_y, ghosts, octaves;
 } Job;
 
 static int run(MsApi api, void *user) {
@@ -494,93 +458,76 @@ static int render(const MsRender *r) {
     const int narrow = (int)fmax(floor(3.0 * (2.0 * k - 0.5) + 0.5), 1.0);
     const int wide = (int)fmax(floor(3.0 * (13.5 * v[DARKS_WIDTH] * k - 0.5) + 0.5), narrow + 3);
 
-    const size_t pixels = (size_t)w * h;
-    float *picture = malloc(pixels * 4 * sizeof(float));
-    float *screen = malloc(pixels * 4 * sizeof(float));
-    float *bright = orthicon ? malloc(pixels * 4 * sizeof(float)) : NULL;
-    float *narrowed = orthicon ? malloc(pixels * 4 * sizeof(float)) : NULL;
-    float *widened = orthicon ? malloc(pixels * 4 * sizeof(float)) : NULL;
-    float *small = cells_on ? malloc((size_t)sw * sh * 4 * sizeof(float)) : NULL;
-    MsImage source;
-    ms_image_rgba(&source, r->inputs[SOURCE].pixels, r->inputs[SOURCE].row, r->half, w, h);
-    MsMask mask = {0};
-    int ok = picture && screen && (!orthicon || (bright && narrowed && widened)) &&
-             (small || !cells_on);
-    if (!ok)
-        snprintf(r->err, r->err_size, "not enough memory");
-    else
-        ok = ms_mask_init(&mask, r, MASK, SOURCE, &source, v[MASK_USE], v[INVERT_MASK],
-                          v[BLUR_MASK]);
-    if (ok) {
-        MsImage settings_image, picture_image, bright_image, narrow_image, wide_image,
-            screen_image, cells_image, output;
-        ms_image(&settings_image, row, TV_FIELDS, TV_FIELDS, 1, 1);
-        ms_image(&picture_image, picture, (ptrdiff_t)w * 4, w, h, 4);
-        ms_image(&bright_image, bright, (ptrdiff_t)w * 4, w, h, 4);
-        ms_image(&narrow_image, narrowed, (ptrdiff_t)w * 4, w, h, 4);
-        ms_image(&wide_image, widened, (ptrdiff_t)w * 4, w, h, 4);
-        ms_image(&screen_image, screen, (ptrdiff_t)w * 4, w, h, 4);
-        ms_image(&cells_image, small, (ptrdiff_t)sw * 4, sw, sh, 4);
-        ms_image_rgba(&output, r->output, r->output_row, r->half, w, h);
-        Job j = {.source = &source,
-                 .mask = &mask,
-                 .settings = &settings_image,
-                 .picture = &picture_image,
-                 .bright = &bright_image,
-                 .narrow = &narrow_image,
-                 .wide = &wide_image,
-                 .screen = &screen_image,
-                 .cells = &cells_image,
-                 .output = &output,
-                 .orthicon = orthicon,
-                 .cells_on = cells_on,
-                 .narrow_radius = narrow,
-                 .wide_radius = wide,
-                 .reach_x = (int)ceil((double)w / sw) + 1,
-                 .reach_y = (int)ceil((double)h / sh) + 1,
-                 .ghosts = (int)row[TV_GHOSTS],
-                 .octaves = (int)row[TV_HHOLD_OCTAVES]};
-        // Inputs uploaded to the GPU: the Source, the Mask or the one mask value, the settings.
-        MsImage *const inputs[] = {&source, mask.input, &settings_image};
-        MsImage *between[7] = {&picture_image, &screen_image};
-        int between_count = 2;
-        if (mask.has_mask)
-            between[between_count++] = &mask.value;
-        if (orthicon) {
-            between[between_count++] = &bright_image;
-            between[between_count++] = &narrow_image;
-            between[between_count++] = &wide_image;
-        }
-        if (cells_on)
-            between[between_count++] = &cells_image;
-        ok = ms_run(run, &j, inputs, 3, between, between_count, &output, r->info, r->err,
-                    r->err_size);
-    }
-    ms_mask_free(&mask);
-    free(picture);
-    free(screen);
-    free(bright);
-    free(narrowed);
-    free(widened);
-    free(small);
+    // The picture and the screen; the Orthicon's bright parts and their two blurs; the TV
+    // pixels' cells; the mask value.
+    const size_t image = (size_t)w * h * 4, ortho = orthicon ? image : 0;
+    const size_t floats[] = {image,
+                             image,
+                             ortho,
+                             ortho,
+                             ortho,
+                             cells_on ? (size_t)sw * sh * 4 : 0,
+                             ms_mask_floats(r, MASK)};
+    float *block = malloc(ms_parts_size(floats, ARRAY_SIZE(floats))), *part[ARRAY_SIZE(floats)];
+    if (!block)
+        return ms_out_of_memory(r);
+    ms_parts(block, floats, ARRAY_SIZE(floats), part);
+    MsImage source, settings_image, picture_image, screen_image, bright_image, narrow_image,
+        wide_image, cells_image, output;
+    ms_input_image(&source, r, SOURCE);
+    ms_image(&settings_image, row, TV_FIELDS, TV_FIELDS, 1, 1);
+    ms_image(&picture_image, part[0], (ptrdiff_t)w * 4, w, h, 4);
+    ms_image(&screen_image, part[1], (ptrdiff_t)w * 4, w, h, 4);
+    ms_image(&bright_image, part[2], (ptrdiff_t)w * 4, w, h, 4);
+    ms_image(&narrow_image, part[3], (ptrdiff_t)w * 4, w, h, 4);
+    ms_image(&wide_image, part[4], (ptrdiff_t)w * 4, w, h, 4);
+    ms_image(&cells_image, part[5], (ptrdiff_t)sw * 4, sw, sh, 4);
+    ms_output_image(&output, r);
+    MsMask mask;
+    ms_mask_init(&mask, r, MASK, SOURCE, &source, part[6], v[MASK_USE], v[INVERT_MASK],
+                 v[BLUR_MASK]);
+    Job j = {.source = &source,
+             .mask = &mask,
+             .settings = &settings_image,
+             .picture = &picture_image,
+             .bright = &bright_image,
+             .narrow = &narrow_image,
+             .wide = &wide_image,
+             .screen = &screen_image,
+             .cells = &cells_image,
+             .output = &output,
+             .orthicon = orthicon,
+             .cells_on = cells_on,
+             .narrow_radius = narrow,
+             .wide_radius = wide,
+             .reach_x = (int)ceil((double)w / sw) + 1,
+             .reach_y = (int)ceil((double)h / sh) + 1,
+             .ghosts = (int)row[TV_GHOSTS],
+             .octaves = (int)row[TV_HHOLD_OCTAVES]};
+    // Inputs uploaded to the GPU: the Source, the Mask or the one mask value, the settings.
+    MsImage *const inputs[] = {&source, mask.input, &settings_image};
+    MsImage *const between[] = {&picture_image,
+                                &screen_image,
+                                ms_mask_between(&mask),
+                                orthicon ? &bright_image : NULL,
+                                orthicon ? &narrow_image : NULL,
+                                orthicon ? &wide_image : NULL,
+                                cells_on ? &cells_image : NULL};
+    const int ok = ms_run(run, &j, inputs, ARRAY_SIZE(inputs), between, ARRAY_SIZE(between),
+                          &output, r->info, r->err, r->err_size);
+    free(block);
     return ok;
 }
 
 const MsEffect ms_tvdamage_effect = {
-    MS_ID("TVDamage"),
-    "MS_TVDamage",
-    "A damaged TV picture: static, interference, ghosts, rolling and sliding holds, bars, "
-    "stripes, scanlines, vignette, colour, fish eye and turning off.",
-    clips,
-    ARRAY_SIZE(clips),
-    params,
-    ARRAY_SIZE(params),
-    render,
-    NULL,
-    1,
-    NULL,
-    NULL,
-    0,
-    "tvdamage", // presets (common/preset.h)
-    NULL, // not varying with its settings
+    .id = MS_ID("TVDamage"),
+    .label = "MS_TVDamage",
+    .description =
+        "A damaged TV picture: static, interference, ghosts, rolling and sliding holds, bars, "
+        "stripes, scanlines, vignette, colour, fish eye and turning off.",
+    MS_CLIPS(clips),
+    MS_PARAMS(params),
+    .render = render,
+    .frame_varying = 1,
+    .presets = "tvdamage",
 };

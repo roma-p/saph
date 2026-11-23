@@ -18,8 +18,7 @@ inline Expr u32(uint64_t v) { return Internal::make_const(UInt(32), v); }
 
 // A 32-bit hash of the lattice point (ix, iy, iz) (any integers: wrapping).
 inline Expr hash3(Expr ix, Expr iy, Expr iz) {
-    Expr h = (cast<uint32_t>(ix) * u32(0x8da6b343)) ^
-             (cast<uint32_t>(iy) * u32(0xd8163841)) ^
+    Expr h = (cast<uint32_t>(ix) * u32(0x8da6b343)) ^ (cast<uint32_t>(iy) * u32(0xd8163841)) ^
              (cast<uint32_t>(iz) * u32(0xcb1ab31f));
     h = (h ^ (h >> u32(16))) * u32(0x7feb352d);
     h = (h ^ (h >> u32(15))) * u32(0x846ca68b);

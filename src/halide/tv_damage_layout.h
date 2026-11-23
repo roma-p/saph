@@ -51,7 +51,7 @@ enum {
     // dropouts
     TV_DROP_AMP,    // the streaks' brightness (0: none)
     TV_DROP_CHANCE, // the share of frames with streaks
-    TV_DROP_LEN,  // a streak's and a gap's length, in pixels
+    TV_DROP_LEN,    // a streak's and a gap's length, in pixels
     TV_DROP_GAP,
     TV_DROP_FREQ, // rows: noise cycles over the height
     TV_DROP_THRESHOLD,

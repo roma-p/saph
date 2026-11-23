@@ -13,8 +13,10 @@ import sys
 
 import numpy as np
 
+sys.dont_write_bytecode = True  # (no __pycache__ in the repo)
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import exr  # noqa: E402
+import jobfile  # noqa: E402
 
 
 def difference(a, b):
@@ -47,20 +49,14 @@ def compare(path_a, path_b, chans, diff_dir):
 
 
 def main():
-    args = sys.argv[1:]
-    diff_dir, chans = None, 4
-    if "--diff" in args:
-        i = args.index("--diff")
-        diff_dir = args[i + 1]
-        del args[i:i + 2]
-    if "--channels" in args:
-        i = args.index("--channels")
-        chans = len(args[i + 1])
-        del args[i:i + 2]
-    if len(args) != 2:
-        print("usage: compare.py A B [--diff folder] [--channels RGB]")
-        sys.exit(2)
-    a, b = args
+    p = jobfile.parser(__file__)
+    p.add_argument("a")
+    p.add_argument("b")
+    p.add_argument("--diff", dest="diff_dir")
+    p.add_argument("--channels", default="RGBA")
+    args = p.parse_args()
+    diff_dir, chans = args.diff_dir, len(args.channels)
+    a, b = args.a, args.b
     if os.path.isdir(a):
         names = sorted(n for n in os.listdir(a) if n.endswith(".exr"))
         pairs = [(n, os.path.join(a, n), os.path.join(b, n)) for n in names]

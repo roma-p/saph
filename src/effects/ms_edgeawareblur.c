@@ -1,7 +1,8 @@
 // MS_EdgeAwareBlur: blurs regions of similar color while keeping the edges between
 // them. It is a Domain Transform filter (Gastal & Oliveira, SIGGRAPH 2011), in Halide
-// (src/halide/dt_generator.cpp), with its preparation (Edge Smooth, distances) on the GPU
-// when the filter is (Sharp and Softer when possible, Soft where the profile says so):
+// (src/halide/dt_generator.cpp), with its preparation (largest mask value, Edge Smooth,
+// distances) on the GPU when the filter is (Sharp and Softer when possible, Soft where the
+// profile says so):
 //   - Blur Type: Sharp = normalised convolution, Soft = recursive, Softer = interpolated
 //   - Filter: number of passes, Box 1, Triangle 2, Gauss 3, Smooth 5
 //   - edge contrast = sum of the RGB differences (with Use Alpha Edges: 0.75 x the
@@ -14,12 +15,12 @@
 // use it without rendering).
 
 #include <math.h>
-#include <stdio.h>
 #include <stdlib.h>
 
 #include "common/defines.h"
 #include "common/effect.h"
 #include "common/mask.h"
+#include "effects/input.h"
 #include "effects/profile.h"
 #include "engine/engine.h"
 
@@ -48,30 +49,9 @@ enum {
     SHOW_BLUR_AMOUNT,
 };
 static const MsParam params[] = {
-    [BLUR_AMOUNT] = {.type = MS_PARAM_WIDTH,
-                     .name = "blur_amount",
-                     .label = "Blur Amount",
-                     .hint = "Scales the width of the blur.",
-                     .def = 0.05,
-                     .min = 0.0,
-                     .max = MS_UNBOUNDED,
-                     .display_max = 0.5},
-    [REL_X] = {.type = MS_PARAM_DOUBLE,
-               .name = "blur_rel_x",
-               .label = "Blur Rel X",
-               .hint = "Relative horizontal blur width.",
-               .def = 1.0,
-               .min = 0.0,
-               .max = MS_UNBOUNDED,
-               .display_max = 5.0},
-    [REL_Y] = {.type = MS_PARAM_DOUBLE,
-               .name = "blur_rel_y",
-               .label = "Blur Rel Y",
-               .hint = "Relative vertical blur width.",
-               .def = 1.0,
-               .min = 0.0,
-               .max = MS_UNBOUNDED,
-               .display_max = 5.0},
+    MS_WIDTH(BLUR_AMOUNT, "blur_amount", "Blur Amount", "Scales the width of the blur.", 0.05, 0.5),
+    MS_RELATIVE(REL_X, "blur_rel_x", "Blur Rel X", "Relative horizontal blur width.", 1.0),
+    MS_RELATIVE(REL_Y, "blur_rel_y", "Blur Rel Y", "Relative vertical blur width.", 1.0),
     [EDGE_THRESHOLD] =
         {.type = MS_PARAM_DOUBLE,
          .name = "edge_threshold",
@@ -82,14 +62,8 @@ static const MsParam params[] = {
          .min = 0.0,
          .max = MS_UNBOUNDED,
          .display_max = 1.0},
-    [EDGE_SMOOTH] = {.type = MS_PARAM_WIDTH,
-                     .name = "edge_smooth",
-                     .label = "Edge Smooth",
-                     .hint =
-                         "Blur the Edge Source by this amount before calculating edge strength.",
-                     .min = 0.0,
-                     .max = MS_UNBOUNDED,
-                     .display_max = 0.0125},
+    MS_WIDTH(EDGE_SMOOTH, "edge_smooth", "Edge Smooth",
+             "Blur the Edge Source by this amount before calculating edge strength.", 0.0, 0.0125),
     [USE_ALPHA] = {.type = MS_PARAM_BOOL,
                    .name = "use_alpha_edges",
                    .label = "Use Alpha Edges",
@@ -131,26 +105,21 @@ typedef struct {
     double blur_x, blur_y; // width in pixels per direction (0: no blur that way)
 } MsDtSettings;
 
-typedef struct {
-    MsDtSettings dt;
-    double scale_x, scale_y; // distance per unit of contrast, per direction
-    int use_alpha;
-    double edge_smooth; // pixels
-    int has_edge, has_mask, mask_alpha, invert_mask;
-} Settings;
-
 // ---------------------------------------------------------------- kernels
 
 // The filter: its preparation, its passes and what their kernels need
 // (src/halide/dt_generator.cpp).
 typedef struct {
-    const Settings *s;
-    const MsDtSettings *dt;
+    MsDtSettings dt;
+    double scale_x, scale_y; // distance per unit of contrast, per direction
+    int use_alpha, has_edge, has_mask, mask_alpha, invert_mask;
+    double edge_smooth;                 // pixels
     MsImage *edge, *mask, *smooth;      // preparation: the edge image, maybe smoothed, the Mask
     int smooth_radius;                  // Edge Smooth in pixels, rounded (0: none)
     MsImage *source, *output, *scratch; // images
     MsImage *dx, *dy, *wx, *wy;         // distances, and Soft's weights
     MsImage *dy_turned, *turned;        // GPU: dy and an image, transposed (GPU memory only)
+    MsImage *largest;                   // the largest mask value (one float)
     double radius_x, radius_y;          // Sharp and Softer: (blur + N) / N
     int span_x, span_y, span_wide, reach_x, reach_y;
     int margin; // GPU: the samples a window can reach beyond its pixel, per side
@@ -167,7 +136,7 @@ typedef struct {
 // The image pass `pass` writes: the output for the last pass, else alternately the scratch
 // image and the output, so that a pass never reads the image it writes.
 static MsImage *target(const Passes *p, int pass) {
-    return (p->dt->passes - 1 - pass) % 2 == 0 ? p->output : p->scratch;
+    return (p->dt.passes - 1 - pass) % 2 == 0 ? p->output : p->scratch;
 }
 
 // One direction of a GPU pass: filters the rows of `in` (`columns`: the columns, as rows of
@@ -178,7 +147,7 @@ static int gpu_rows(MsApi api, const Passes *p, int columns, MsImage *in, MsImag
     const int span = columns ? p->span_y : p->span_x;
     const int reach = columns ? p->reach_y : p->reach_x;
     const int rows = p->margin >= ms_profile(api)->rows_margin || p->margin > BLOCK_MARGIN_LIMIT;
-    if (p->dt->type == MS_DT_SOFTER)
+    if (p->dt.type == MS_DT_SOFTER)
         return MS_KERNEL(rows ? MS_K_DT_SOFTER_ROWS_GPU : MS_K_DT_SOFTER_GPU, api,
                          MS_IMAGE("input", in), MS_IMAGE("dist", dist), MS_FLOAT("half", radius),
                          MS_INT("span", reach), MS_IMAGE("output", out));
@@ -194,11 +163,11 @@ static int gpu_rows(MsApi api, const Passes *p, int columns, MsImage *in, MsImag
 // One pass on `api`. GPU Sharp and Softer: the rows, then the columns as rows of the
 // transposed image; GPU Soft: rows then columns, in place. CPU: in double, exact (Soft: float).
 static int pass(MsApi api, const Passes *p, MsImage *in, MsImage *out) {
-    if (api != MS_API_CPU && p->dt->type != MS_DT_SOFT) {
+    if (api != MS_API_CPU && p->dt.type != MS_DT_SOFT) {
         const int status = gpu_rows(api, p, 0, in, p->turned);
         return status != 0 ? status : gpu_rows(api, p, 1, p->turned, out);
     }
-    switch (p->dt->type) {
+    switch (p->dt.type) {
     case MS_DT_SHARP:
         return MS_KERNEL(MS_K_DT_SHARP, api, MS_IMAGE("input", in), MS_IMAGE("dx", p->dx),
                          MS_IMAGE("dy", p->dy), MS_DOUBLE("radius_x", p->radius_x),
@@ -218,8 +187,7 @@ static int pass(MsApi api, const Passes *p, MsImage *in, MsImage *out) {
 
 // The preparation on `api`: Edge Smooth, the distances and (CPU) Soft's weights.
 static int prepare(MsApi api, const Passes *p) {
-    const Settings *s = p->s;
-    const MsDtSettings *dt = p->dt;
+    const MsDtSettings *dt = &p->dt;
     MsImage *edges = p->edge;
     int status = 0;
     if (p->smooth_radius > 0) {
@@ -233,9 +201,9 @@ static int prepare(MsApi api, const Passes *p) {
     if (status == 0)
         status =
             MS_KERNEL(MS_K_DT_DISTANCES, api, MS_IMAGE("edge", edges), MS_IMAGE("mask", p->mask),
-                      MS_INT("has_mask", s->has_mask), MS_INT("mask_alpha", s->mask_alpha),
-                      MS_INT("invert_mask", s->invert_mask), MS_INT("use_alpha", s->use_alpha),
-                      MS_FLOAT("scale_x", s->scale_x), MS_FLOAT("scale_y", s->scale_y),
+                      MS_INT("has_mask", p->has_mask), MS_INT("mask_alpha", p->mask_alpha),
+                      MS_INT("invert_mask", p->invert_mask), MS_INT("use_alpha", p->use_alpha),
+                      MS_FLOAT("scale_x", p->scale_x), MS_FLOAT("scale_y", p->scale_y),
                       MS_FLOAT("floor_x", 0.372 / (dt->blur_x + n)),
                       MS_FLOAT("floor_y", 0.372 / (dt->blur_y + n)), MS_IMAGE("dx", p->dx),
                       MS_IMAGE("dy", p->dy));
@@ -251,25 +219,58 @@ static int prepare(MsApi api, const Passes *p) {
     return status;
 }
 
-// The preparation, then all the passes, on `api`; on the GPU the images stay there in
-// between. The GPU takes Sharp, and Soft and Softer where the profile says so.
+// The spans, reaches and margin of the passes. Sharp and Softer: width (blur + N) / N per
+// pass; a window holds at most width / min_distance samples per side, min_distance =
+// 1 / (largest mask value), and the segment holding ct +- h (Softer) can be one sample
+// further.
+static void set_spans(Passes *p, float largest) {
+    const double n = p->dt.passes;
+    const double min_distance = 1.0 / largest;
+    p->radius_x = p->dt.blur_x > 0 ? (p->dt.blur_x + n) / n : 0.0;
+    p->radius_y = p->dt.blur_y > 0 ? (p->dt.blur_y + n) / n : 0.0;
+    p->span_x = (int)floor(p->radius_x / min_distance + 1e-6) + 1;
+    p->span_y = (int)floor(p->radius_y / min_distance + 1e-6) + 1;
+    p->span_wide = (int)ceil(1.0 / min_distance) + 1; // one more unit of distance
+    p->reach_x = (int)ceil(p->radius_x / min_distance) + 1;
+    p->reach_y = (int)ceil(p->radius_y / min_distance) + 1;
+    const int span = p->span_x > p->span_y ? p->span_x : p->span_y;
+    const int reach = p->reach_x > p->reach_y ? p->reach_x : p->reach_y;
+    p->margin = p->dt.type == MS_DT_SHARP ? span + p->span_wide + 2 : reach + 3;
+}
+
+// The largest mask value (read back: one float) and the spans, the preparation, then all
+// the passes, on `api`; on the GPU the images stay there in between. The GPU takes Sharp,
+// and Soft and Softer where the profile says so.
 static int run_passes(MsApi api, void *user) {
-    const Passes *p = user;
-    const MsDtType type = p->dt->type;
+    Passes *p = user;
+    const MsDtType type = p->dt.type;
     if (api != MS_API_CPU) {
         const MsProfile *profile = ms_profile(api);
         if ((type == MS_DT_SOFT && !profile->soft_gpu) ||
             (type == MS_DT_SOFTER && !profile->softer_gpu))
             return MS_RUN_DECLINE;
     }
-    int status = prepare(api, p);
+    float largest = 1.0f;
+    int status = 0;
+    if (p->has_mask) {
+        status = MS_KERNEL(MS_K_DT_LARGEST, api, MS_IMAGE("mask", p->mask),
+                           MS_INT("mask_alpha", p->mask_alpha),
+                           MS_INT("invert_mask", p->invert_mask), MS_IMAGE("largest", p->largest));
+        if (status == 0)
+            status = halide_copy_to_host(NULL, &p->largest->b);
+        if (status == 0)
+            largest = *(const float *)p->largest->b.host;
+    }
+    set_spans(p, largest);
+    if (status == 0)
+        status = prepare(api, p);
     // GPU Sharp and Softer: the columns' distances, transposed like the image between the two
     // directions.
     if (status == 0 && api != MS_API_CPU && type != MS_DT_SOFT)
         status = MS_KERNEL(MS_K_DT_TRANSPOSE, api, MS_IMAGE("input", p->dy),
                            MS_IMAGE("output", p->dy_turned));
     MsImage *from = p->source;
-    for (int i = 0; status == 0 && i < p->dt->passes; ++i) {
+    for (int i = 0; status == 0 && i < p->dt.passes; ++i) {
         MsImage *to = target(p, i);
         status = pass(api, p, from, to);
         from = to;
@@ -277,14 +278,15 @@ static int run_passes(MsApi api, void *user) {
     return status;
 }
 
-// The largest mask value on the CPU, then the preparation and the filter (run_passes) on the
-// first API that takes them. Returns 1 on success, or 0 with the reason in err.
-static int process(const MsRender *r, const Settings *s) {
+// With the settings of `p` (render), the largest mask value, the preparation and the filter
+// (run_passes) on the first API that takes them. Returns 1 on success, or 0 with the reason
+// in err.
+static int process(const MsRender *r, Passes *p) {
     const int width = r->width, height = r->height;
     const size_t pixels = (size_t)width * height;
-    const MsDtSettings *dt = &s->dt;
+    const MsDtSettings *dt = &p->dt;
     const int soft = dt->type == MS_DT_SOFT;
-    const int smooth_radius = (int)floor(s->edge_smooth + 0.5); // as the blur rounds it
+    const int smooth_radius = (int)floor(p->edge_smooth + 0.5); // as the blur rounds it
     // The images between the kernels, in one allocation (each part on 64 bytes): the
     // distances dx, dy; Edge Smooth's image; a scratch image between passes; Soft's weights
     // a^d, the same for every pass.
@@ -294,29 +296,19 @@ static int process(const MsRender *r, const Settings *s) {
                               dt->passes > 1 ? pixels * 4 : 0,
                               soft ? pixels : 0,
                               soft ? pixels : 0};
-    size_t total = 0;
-    for (int i = 0; i < 6; ++i)
-        total += (floats[i] + 15) / 16 * 16;
-    float *block = malloc(total * sizeof(float));
-    if (!block) {
-        snprintf(r->err, r->err_size, "not enough memory");
-        return 0;
-    }
-    float *part[6];
-    size_t at = 0;
-    for (int i = 0; i < 6; ++i) {
-        part[i] = floats[i] ? block + at : NULL;
-        at += (floats[i] + 15) / 16 * 16;
-    }
+    float *block = malloc(ms_parts_size(floats, ARRAY_SIZE(floats))), *part[ARRAY_SIZE(floats)];
+    if (!block)
+        return ms_out_of_memory(r);
+    ms_parts(block, floats, ARRAY_SIZE(floats), part);
     float *dx = part[0], *dy = part[1], *smooth = part[2], *scratch = part[3], *wx = part[4],
           *wy = part[5];
     const MsInput *source_in = &r->inputs[SOURCE];
     MsImage source, edge, mask, output, ismooth, iscratch, idx, idy, iwx, iwy, ilargest;
     MsImage dy_turned, turned;
     ms_image_rgba(&source, source_in->pixels, source_in->row, r->half, width, height);
-    ms_image_rgba(&edge, r->inputs[EDGE].pixels, r->inputs[EDGE].row, r->half, width, height);
-    ms_image_rgba(&mask, r->inputs[MASK].pixels, r->inputs[MASK].row, r->half, width, height);
-    ms_image_rgba(&output, r->output, r->output_row, r->half, width, height);
+    ms_input_image(&edge, r, EDGE);
+    ms_input_image(&mask, r, MASK);
+    ms_output_image(&output, r);
     ms_image(&ismooth, smooth, (ptrdiff_t)width * 4, width, height, 4);
     ms_image(&iscratch, scratch, (ptrdiff_t)width * 4, width, height, 4);
     ms_image(&idx, dx, width, width, height, 1);
@@ -332,79 +324,39 @@ static int process(const MsRender *r, const Settings *s) {
     // not read it: the edge image stands in. An input that is the same image as an earlier
     // one in the host: that one stands in (uploaded once).
     const MsInput *in = r->inputs;
-    MsImage *edges = s->has_edge && !ms_same_input(&in[EDGE], &in[SOURCE]) ? &edge : &source;
-    MsImage *masks = !s->has_mask                              ? edges
+    MsImage *edges = p->has_edge && !ms_same_input(&in[EDGE], &in[SOURCE]) ? &edge : &source;
+    MsImage *masks = !p->has_mask                            ? edges
                      : ms_same_input(&in[MASK], &in[SOURCE]) ? &source
                      : ms_same_input(&in[MASK], &in[EDGE])   ? edges
                                                              : &mask;
-
-    int status = 0;
-    // The largest mask value, on the CPU: a Mask in 16-bit floats converted first.
-    float *mask_floats = s->has_mask && r->half ? malloc(pixels * 4 * sizeof(float)) : NULL;
-    MsImage mask_half, mask_float;
-    if (s->has_mask && r->half && !mask_floats)
-        status = halide_error_code_out_of_memory;
-    if (mask_floats) {
-        ms_image_half(&mask_half, r->inputs[MASK].pixels, r->inputs[MASK].row, width, height);
-        ms_image(&mask_float, mask_floats, (ptrdiff_t)width * 4, width, height, 4);
-        status = MS_KERNEL(MS_K_TO_FLOAT, MS_API_CPU, MS_IMAGE("input", &mask_half),
-                           MS_IMAGE("output", &mask_float));
-    }
-    if (s->has_mask && status == 0)
-        status = MS_KERNEL(MS_K_DT_LARGEST, MS_API_CPU,
-                           MS_IMAGE("mask", mask_floats ? &mask_float : &mask),
-                           MS_INT("mask_alpha", s->mask_alpha),
-                           MS_INT("invert_mask", s->invert_mask), MS_IMAGE("largest", &ilargest));
-    free(mask_floats);
-    int ok = status == 0;
-    if (!ok)
-        snprintf(r->err, r->err_size, "Halide error %d", status);
-
-    if (ok) {
-        // Sharp and Softer: width (blur + N) / N per pass; a window holds at most
-        // width / min_distance samples per side, min_distance = 1 / (largest mask value),
-        // and the segment holding ct +- h (Softer) can be one sample further.
-        const double n = dt->passes;
-        const double min_distance = 1.0 / largest;
-        Passes p = {.s = s,
-                    .dt = dt,
-                    .edge = edges,
-                    .mask = masks,
-                    .smooth = &ismooth,
-                    .smooth_radius = smooth_radius,
-                    .source = &source,
-                    .output = &output,
-                    .scratch = &iscratch,
-                    .dx = &idx,
-                    .dy = &idy,
-                    .wx = &iwx,
-                    .wy = &iwy,
-                    .dy_turned = &dy_turned,
-                    .turned = &turned};
-        p.radius_x = dt->blur_x > 0 ? (dt->blur_x + n) / n : 0.0;
-        p.radius_y = dt->blur_y > 0 ? (dt->blur_y + n) / n : 0.0;
-        p.span_x = (int)floor(p.radius_x / min_distance + 1e-6) + 1;
-        p.span_y = (int)floor(p.radius_y / min_distance + 1e-6) + 1;
-        p.span_wide = (int)ceil(1.0 / min_distance) + 1; // one more unit of distance
-        p.reach_x = (int)ceil(p.radius_x / min_distance) + 1;
-        p.reach_y = (int)ceil(p.radius_y / min_distance) + 1;
-        const int span = p.span_x > p.span_y ? p.span_x : p.span_y;
-        const int reach = p.reach_x > p.reach_y ? p.reach_x : p.reach_y;
-        p.margin = dt->type == MS_DT_SHARP ? span + p.span_wide + 2 : reach + 3;
-        // Uploaded: the Source, the Edge Source and the Mask when connected (ms_run uploads an
-        // image standing in for another once).
-        MsImage *const inputs[] = {&source, edges, masks};
-        // Between the kernels: those of the preparation, of the passes, and of the GPU's
-        // directions (Sharp, Softer) or Soft's weights.
-        MsImage *between[8] = {&idx, &idy, &iscratch};
-        int between_count = 3;
-        if (smooth_radius > 0)
-            between[between_count++] = &ismooth;
-        between[between_count++] = soft ? &iwx : &dy_turned;
-        between[between_count++] = soft ? &iwy : &turned;
-        ok = ms_run(run_passes, &p, inputs, ARRAY_SIZE(inputs), between, between_count, &output,
-                    r->info, r->err, r->err_size);
-    }
+    p->edge = edges;
+    p->mask = masks;
+    p->smooth = &ismooth;
+    p->smooth_radius = smooth_radius;
+    p->source = &source;
+    p->output = &output;
+    p->scratch = &iscratch;
+    p->dx = &idx;
+    p->dy = &idy;
+    p->wx = &iwx;
+    p->wy = &iwy;
+    p->dy_turned = &dy_turned;
+    p->turned = &turned;
+    p->largest = &ilargest;
+    // Uploaded: the Source, the Edge Source and the Mask when connected (ms_run uploads an
+    // image standing in for another once).
+    MsImage *const inputs[] = {&source, edges, masks};
+    // Between the kernels: those of the preparation, of the passes, and of the GPU's
+    // directions (Sharp, Softer) or Soft's weights; the largest mask value (read back).
+    MsImage *const between[] = {&idx,
+                                &idy,
+                                &iscratch,
+                                smooth_radius > 0 ? &ismooth : NULL,
+                                soft ? &iwx : &dy_turned,
+                                soft ? &iwy : &turned,
+                                p->has_mask ? &ilargest : NULL};
+    const int ok = ms_run(run_passes, p, inputs, ARRAY_SIZE(inputs), between, ARRAY_SIZE(between),
+                          &output, r->info, r->err, r->err_size);
     free(block);
     return ok;
 }
@@ -429,21 +381,20 @@ static void blur_widths(const double *v, double *x, double *y) {
 
 static int render(const MsRender *r) {
     const double *v = r->values;
-    Settings s;
+    Passes p = {.use_alpha = (int)v[USE_ALPHA],
+                .has_edge = r->connected[EDGE],
+                .has_mask = r->connected[MASK],
+                .mask_alpha = (int)v[MASK_USE],
+                .invert_mask = (int)v[INVERT_MASK],
+                .edge_smooth = v[EDGE_SMOOTH]};
     const double threshold = v[EDGE_THRESHOLD];
     const int filter = (int)v[FILTER];
-    s.dt.type = blur_type(v);
-    s.dt.passes = filter_passes[filter >= 0 && filter < 4 ? filter : 2];
-    blur_widths(v, &s.dt.blur_x, &s.dt.blur_y);
-    s.scale_x = threshold > 0 ? s.dt.blur_x / (3.0 * threshold) : 1e12;
-    s.scale_y = threshold > 0 ? s.dt.blur_y / (3.0 * threshold) : 1e12;
-    s.use_alpha = (int)v[USE_ALPHA];
-    s.edge_smooth = v[EDGE_SMOOTH];
-    s.has_edge = r->connected[EDGE];
-    s.has_mask = r->connected[MASK];
-    s.mask_alpha = (int)v[MASK_USE];
-    s.invert_mask = (int)v[INVERT_MASK];
-    return process(r, &s);
+    p.dt.type = blur_type(v);
+    p.dt.passes = filter_passes[filter >= 0 && filter < 4 ? filter : 2];
+    blur_widths(v, &p.dt.blur_x, &p.dt.blur_y);
+    p.scale_x = threshold > 0 ? p.dt.blur_x / (3.0 * threshold) : 1e12;
+    p.scale_y = threshold > 0 ? p.dt.blur_y / (3.0 * threshold) : 1e12;
+    return process(r, &p);
 }
 
 // No blur either way, or an Edge Threshold of 0 (every pixel an edge, except between equal
@@ -457,40 +408,21 @@ static int identity(const double *v, const int *connected) {
 
 // The viewer: the Blur Amount, Blur Rel X and Y (the arrows).
 static const MsOverlay overlay[] = {
-    {.kind = MS_OVERLAY_ELLIPSE,
-     .colour = MS_OVERLAY_ORANGE,
-     .show = "ShowBlurAmount",
-     .size = "blur_amount",
-     .rel_x = "blur_rel_x",
-     .rel_y = "blur_rel_y"},
-    {.kind = MS_OVERLAY_ARROW_X,
-     .colour = MS_OVERLAY_ORANGE,
-     .show = "ShowBlurAmount",
-     .size = "blur_amount",
-     .rel_x = "blur_rel_x",
-     .rel_y = "blur_rel_y"},
-    {.kind = MS_OVERLAY_ARROW_Y,
-     .colour = MS_OVERLAY_ORANGE,
-     .show = "ShowBlurAmount",
-     .size = "blur_amount",
-     .rel_x = "blur_rel_x",
-     .rel_y = "blur_rel_y"},
+    MS_OVERLAY_SIZED(MS_OVERLAY_ELLIPSE, "ShowBlurAmount", "blur_amount", NULL, "blur_rel_x",
+                     "blur_rel_y", 0.0, MS_OVERLAY_ORANGE),
+    MS_OVERLAY_ARROWS("ShowBlurAmount", "blur_amount", "blur_rel_x", "blur_rel_y", 0.0,
+                      MS_OVERLAY_ORANGE),
 };
 
 const MsEffect ms_edgeawareblur_effect = {
-    MS_ID("EdgeAwareBlur"),
-    "MS_EdgeAwareBlur",
-    "Blurs regions of similar color while preserving edges between regions of different colors.",
-    clips,
-    ARRAY_SIZE(clips),
-    params,
-    ARRAY_SIZE(params),
-    render,
-    identity,
-    0,
-    NULL,
-    overlay,
-    ARRAY_SIZE(overlay),
-    "edgeawareblur", // presets (common/preset.h)
-    NULL, // not varying with its settings
+    .id = MS_ID("EdgeAwareBlur"),
+    .label = "MS_EdgeAwareBlur",
+    .description = "Blurs regions of similar color while preserving edges between regions of "
+                   "different colors.",
+    MS_CLIPS(clips),
+    MS_PARAMS(params),
+    .render = render,
+    .identity = identity,
+    MS_OVERLAYS(overlay),
+    .presets = "edgeawareblur",
 };

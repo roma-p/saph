@@ -1,0 +1,146 @@
+# The cases of build/millsaph_bench (tools/perf/bench.c), in order: label | effect | settings.
+# Settings: name=value (widths as fractions of the frame width, as the hosts give them), and
+# the words half (16-bit images), same (the Source in every input), lens, matte, pageable
+# (host memory not page-locked), profile=<name> (a variant of the effects' profile: bench.c's
+# profiles[]). A new effect gets cases here (and a line in nuke_time.py).
+BandPass | MS_BandPass |
+BandPass plain | MS_BandPass | profile=plain
+BandPass large | MS_BandPass | blur_amount1=0.05 blur_amount2=0.1
+BandPass large staged | MS_BandPass | blur_amount1=0.05 blur_amount2=0.1 profile=no_prefix
+BandPass 960 | MS_BandPass | blur_amount2=0.25
+BandPass 960 staged | MS_BandPass | blur_amount2=0.25 profile=no_prefix
+EAB Sharp | MS_EdgeAwareBlur | blur_type=0
+EAB Sharp tile256 | MS_EdgeAwareBlur | blur_type=0 profile=never_short
+EAB Sharp 0.01 | MS_EdgeAwareBlur | blur_type=0 blur_amount=0.01
+EAB Sharp 0.1 | MS_EdgeAwareBlur | blur_type=0 blur_amount=0.1
+EAB Sharp 0.1 tile64 | MS_EdgeAwareBlur | blur_type=0 blur_amount=0.1 profile=always_short
+EAB Sharp 0.2 | MS_EdgeAwareBlur | blur_type=0 blur_amount=0.2
+EAB Sharp 0.5 | MS_EdgeAwareBlur | blur_type=0 blur_amount=0.5
+EAB Sharp rows | MS_EdgeAwareBlur | blur_type=0 profile=rows
+EAB Sharp blocks | MS_EdgeAwareBlur | blur_type=0 profile=blocks
+EAB Sharp 0.01 rows | MS_EdgeAwareBlur | blur_type=0 blur_amount=0.01 profile=rows
+EAB Sharp 0.1 rows | MS_EdgeAwareBlur | blur_type=0 blur_amount=0.1 profile=rows
+EAB Sharp 0.2 rows | MS_EdgeAwareBlur | blur_type=0 blur_amount=0.2 profile=rows
+EAB Sharp thresh 1 | MS_EdgeAwareBlur | blur_type=0 edge_threshold=1
+EAB Sharp thresh 0.01 | MS_EdgeAwareBlur | blur_type=0 edge_threshold=0.01
+EAB Sharp smooth | MS_EdgeAwareBlur | blur_type=0 edge_smooth=0.0125
+EAB Sharp box | MS_EdgeAwareBlur | blur_type=0 filter=0
+EAB Sharp filter smooth | MS_EdgeAwareBlur | blur_type=0 filter=3
+EAB Soft | MS_EdgeAwareBlur | blur_type=1
+EAB Soft gpu | MS_EdgeAwareBlur | blur_type=1 profile=soft_gpu
+EAB Soft cpu | MS_EdgeAwareBlur | blur_type=1 profile=soft_cpu
+EAB Soft 0.5 | MS_EdgeAwareBlur | blur_type=1 blur_amount=0.5
+EAB Soft smooth | MS_EdgeAwareBlur | blur_type=1 edge_smooth=0.0125
+EAB Softer | MS_EdgeAwareBlur | blur_type=2
+EAB Softer cpu | MS_EdgeAwareBlur | blur_type=2 profile=softer_cpu
+EAB Softer 0.2 | MS_EdgeAwareBlur | blur_type=2 blur_amount=0.2
+EAB Softer 0.2 cpu | MS_EdgeAwareBlur | blur_type=2 blur_amount=0.2 profile=softer_cpu
+EAB Softer 0.5 | MS_EdgeAwareBlur | blur_type=2 blur_amount=0.5
+EAB Softer rows | MS_EdgeAwareBlur | blur_type=2 profile=rows
+EAB Softer blocks | MS_EdgeAwareBlur | blur_type=2 profile=blocks
+EAB Softer 0.2 rows | MS_EdgeAwareBlur | blur_type=2 blur_amount=0.2 profile=rows
+EAB Softer thresh 1 | MS_EdgeAwareBlur | blur_type=2 edge_threshold=1
+BandPass same | MS_BandPass | same
+EAB Sharp same | MS_EdgeAwareBlur | blur_type=0 same
+EAB Soft same | MS_EdgeAwareBlur | blur_type=1 same
+BandPass half | MS_BandPass | half
+EAB Sharp half | MS_EdgeAwareBlur | blur_type=0 half
+EAB Soft half | MS_EdgeAwareBlur | blur_type=1 half
+EAB Softer half | MS_EdgeAwareBlur | blur_type=2 half
+EAB Sharp mask half | MS_EdgeAwareBlur | blur_type=0 same half
+Distort half | MS_Distort | half
+Distort lens half | MS_Distort | lens half
+Distort | MS_Distort |
+Distort same | MS_Distort | same
+Distort lens | MS_Distort | lens
+Distort lens pageable | MS_Distort | lens pageable
+EAB Sharp pageable | MS_EdgeAwareBlur | blur_type=0 pageable
+Distort enable_gpu=0 | MS_Distort | enable_gpu=0
+Mosaic | MS_Mosaic |
+Mosaic 200 | MS_Mosaic | pixel_frequency=200
+Mosaic 53 | MS_Mosaic | pixel_frequency=53
+Mosaic mask | MS_Mosaic | same blur_mask=0.005
+Mosaic smooth | MS_Mosaic | smooth_colors=0.005
+Mosaic smooth prefix | MS_Mosaic | smooth_colors=0.005 profile=blur_prefix
+Mosaic smooth large | MS_Mosaic | smooth_colors=0.05
+Mosaic smooth large win | MS_Mosaic | smooth_colors=0.05 profile=blur_windows
+Mosaic half | MS_Mosaic | half
+Mosaic smooth half | MS_Mosaic | smooth_colors=0.005 half
+Glow | MS_Glow |
+Glow small | MS_Glow | glow_width=0.005
+Glow wide | MS_Glow | glow_width=0.25
+Glow atmosphere | MS_Glow | atmosphere_amp=1
+Glow whole | MS_Glow | subpixel=0
+Glow transparent | MS_Glow | edge_mode=0
+Glow mask | MS_Glow | same
+Glow threshold | MS_Glow | show=1
+Glow half | MS_Glow | half
+Glow t1 | MS_Glow | threshold=1
+Glow t0.99 | MS_Glow | threshold=0.99
+Glow t1.5 | MS_Glow | threshold=1.5
+EdgeBlur | MS_EdgeBlur |
+EdgeBlur wide | MS_EdgeBlur | blur_width=0.1 edge_width=0.1
+EdgeBlur whole | MS_EdgeBlur | subpixel=0
+EdgeBlur edges | MS_EdgeBlur | show=1
+EdgeBlur matte | MS_EdgeBlur | matte matte_use=1
+EdgeBlur same | MS_EdgeBlur | same
+EdgeBlur half | MS_EdgeBlur | half
+RackDefocus | MS_RackDefocus |
+RackDefocus wide | MS_RackDefocus | defocus_width=0.05
+RackDefocus huge | MS_RackDefocus | defocus_width=0.25
+RackDefocus hexagon | MS_RackDefocus | shape=5 roundness=0.3 bokeh=0.5
+RackDefocus noise | MS_RackDefocus | lens_noise=2 noise_freq=10 rotate=30
+RackDefocus fringing | MS_RackDefocus | color_fringing=0.2 gauss_blur=0.002
+RackDefocus mono | MS_RackDefocus | mode=1 use_gamma=2
+RackDefocus boost | MS_RackDefocus | boost_highlights=1 hilight_threshold=0.5
+RackDefocus mask | MS_RackDefocus | same
+RackDefocus half | MS_RackDefocus | half
+Glint | MS_Glint |
+Glint long | MS_Glint | size=0.5
+Glint short | MS_Glint | size=0.02 threshold_blur=0
+Glint x only | MS_Glint | brightness_y=0 brightness_diag1=0 brightness_diag2=0
+Glint hue | MS_Glint | hue_shift=0.3 blur_glint=0.005
+Glint low | MS_Glint | threshold=0.2
+Glint mask | MS_Glint | same
+Glint half | MS_Glint | half
+Glare | MS_Glare |
+Glare big | MS_Glare | size=0.3
+Glare low | MS_Glare | threshold=0.3
+Glare res half | MS_Glare | glare_res=1
+Glare hue blur | MS_Glare | hue_shift=0.3 saturation=0.5 blur_glare=0.005
+Glare mask | MS_Glare | same
+Glare half | MS_Glare | half
+LensFlare | MS_LensFlare |
+LensFlare big | MS_LensFlare | scale_widths=0.6
+LensFlare centre | MS_LensFlare | hotspot=0.45 hotspot_y=0.55
+LensFlare hue blur | MS_LensFlare | hue_shift=0.3 saturation=0.5 blur_flare=0.005
+LensFlare add tint | MS_LensFlare | combine=1 tint_bg_whites=1 affect_alpha=0.5
+LensFlare occluded | MS_LensFlare | same
+LensFlare atmosphere | MS_LensFlare | atmosphere_amp=1 atmosphere_detail=1
+LensFlare glow | MS_LensFlare | same diffraction_glow=1 glow_width=0.2
+LensFlare half | MS_LensFlare | half
+JpegDamage | MS_JpegDamage |
+JpegDamage q0.5 freq | MS_JpegDamage | quality=0.5 x_freq_scale=3 high_freq_scale=0
+JpegDamage mask | MS_JpegDamage | same blur_mask=0.005
+JpegDamage half | MS_JpegDamage | half
+PixelSort | MS_PixelSort |
+PixelSort 30deg | MS_PixelSort | sort_angle=30
+PixelSort full | MS_PixelSort | threshold=0 soften_threshold_mask=0
+PixelSort radial | MS_PixelSort | Mode=1
+PixelSort circular | MS_PixelSort | Mode=2
+PixelSort down | MS_PixelSort | downsample=1
+PixelSort mask | MS_PixelSort | same
+PixelSort half | MS_PixelSort | half
+FlickerMatch | MS_FlickerMatch | same
+FlickerMatch full | MS_FlickerMatch | same rect_corner1=0 rect_corner1_y=0 rect_corner2=1 rect_corner2_y=1
+FlickerMatchColor | MS_FlickerMatchColor | same match_color=0.3
+FlickerMatch half | MS_FlickerMatch | same half
+Flicker | MS_Flicker |
+Flicker color wave | MS_Flicker | rand_color_amp=1 wave_amp=1 wave_g_phase=0.3
+Flicker half | MS_Flicker | half
+TVDamage | MS_TVDamage |
+TVDamage ghost blur | MS_TVDamage | blur_=0.06
+TVDamage orthicon | MS_TVDamage | orthicon=1 fast_forward_amount=1
+TVDamage fish off | MS_TVDamage | fish_eye=1 turn_off=0.2 downsample=0
+TVDamage mask | MS_TVDamage | same
+TVDamage half | MS_TVDamage | half

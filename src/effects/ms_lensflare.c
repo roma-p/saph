@@ -28,6 +28,8 @@
 #include "common/process.h"
 #include "effects/atmosphere.h"
 #include "effects/glare_style.h"
+#include "effects/input.h"
+#include "effects/pixels.h"
 #include "engine/engine.h"
 #include "lensflare_presets.h" // (generated from presets/lensflare)
 
@@ -52,13 +54,15 @@ static const char default_lens[] =
     " \"colors\": [1, 0.97, 0.92]},\n"
     " {\"type\": \"rays\", \"name\": \"Star\", \"center\": 1, \"size\": 0.9, \"brightness\": 0.2,"
     " \"ray_number\": 12, \"ray_width\": 0.015, \"color\": [1, 0.92, 0.85]},\n"
-    " {\"type\": \"rays\", \"name\": \"Streak\", \"center\": 1, \"size\": 2.5, \"brightness\": 0.12,"
+    " {\"type\": \"rays\", \"name\": \"Streak\", \"center\": 1, \"size\": 2.5, \"brightness\": "
+    "0.12,"
     " \"ray_number\": 2, \"ray_width\": 0.006, \"color\": [0.75, 0.85, 1]},\n"
     " {\"type\": \"spot\", \"name\": \"Ghost 1\", \"center\": 0.55, \"size\": 0.12,"
     " \"brightness\": 0.1, \"radii\": [0, 0.8, 1],"
     " \"colors\": [0.6, 0.8, 1, 0.7, 0.9, 1, 0.4, 0.6, 1]},\n"
     " {\"type\": \"ring\", \"name\": \"Ghost Ring\", \"center\": 0.25, \"size\": 0.3,"
-    " \"brightness\": 0.06, \"radii\": [0.8, 0.95, 1], \"colors\": [0, 0, 0, 1, 0.8, 0.5, 0, 0, 0]},\n"
+    " \"brightness\": 0.06, \"radii\": [0.8, 0.95, 1], \"colors\": [0, 0, 0, 1, 0.8, 0.5, 0, 0, "
+    "0]},\n"
     " {\"type\": \"blob\", \"name\": \"Ghost 2\", \"center\": -0.3, \"size\": 0.35,"
     " \"brightness\": 0.06, \"colors\": [0.6, 1, 0.7]},\n"
     " {\"type\": \"fancy_spot\", \"name\": \"Hexagon\", \"center\": -0.7, \"size\": 0.22,"
@@ -66,7 +70,8 @@ static const char default_lens[] =
     " \"radii\": [0, 1], \"colors\": [0.5, 0.6, 1, 0.8, 0.7, 1]},\n"
     " {\"type\": \"blob\", \"name\": \"Ghost 3\", \"center\": -1.1, \"size\": 0.18,"
     " \"brightness\": 0.07, \"colors\": [1, 0.6, 0.4], \"scale_brightness_by_dist\": 0.5},\n"
-    " {\"type\": \"ring\", \"name\": \"Halo\", \"center\": -1.5, \"size\": 0.7, \"brightness\": 0.03,"
+    " {\"type\": \"ring\", \"name\": \"Halo\", \"center\": -1.5, \"size\": 0.7, \"brightness\": "
+    "0.03,"
     " \"radii\": [0.85, 0.95, 1], \"colors\": [0, 0, 0, 0.8, 0.9, 1, 0, 0, 0],"
     " \"offset_stretch_by_dist\": 0.3},\n"
     " {\"type\": \"blob\", \"name\": \"Lens Dirt\", \"center\": 1, \"size\": 1.0,"
@@ -175,14 +180,8 @@ static const MsParam params[] = {
                       "spot, ring, rays, polar_flare or fancy_spot at `center` along the axis "
                       "(1: the hotspot, 0: the pivot).",
               .def_text = default_lens},
-    [SCALE_WIDTHS] = {.type = MS_PARAM_WIDTH,
-                      .name = "scale_widths",
-                      .label = "Scale Widths",
-                      .hint = "The size of the flare's elements.",
-                      .def = 0.21,
-                      .min = 0.0,
-                      .max = MS_UNBOUNDED,
-                      .display_max = 1.0},
+    MS_WIDTH(SCALE_WIDTHS, "scale_widths", "Scale Widths", "The size of the flare's elements.",
+             0.21, 1.0),
     [REL_HEIGHTS] = {.type = MS_PARAM_DOUBLE,
                      .name = "rel_heights",
                      .label = "Rel Heights",
@@ -192,13 +191,7 @@ static const MsParam params[] = {
                      .max = 10.0,
                      .display_min = 0.1,
                      .display_max = 10.0},
-    [BLUR_FLARE] = {.type = MS_PARAM_WIDTH,
-                    .name = "blur_flare",
-                    .label = "Blur Flare",
-                    .hint = "Blurs the flare.",
-                    .min = 0.0,
-                    .max = MS_UNBOUNDED,
-                    .display_max = 0.1},
+    MS_WIDTH(BLUR_FLARE, "blur_flare", "Blur Flare", "Blurs the flare.", 0.0, 0.1),
     [HOTSPOT] = {.type = MS_PARAM_POINT,
                  .name = "hotspot",
                  .label = "Hotspot",
@@ -240,7 +233,7 @@ static const MsParam params[] = {
                    .display_min = -1.0,
                    .display_max = 1.0},
     MS_RELATIVE(RAYS_BRIGHTNESS, "rays_brightness", "Rays Brightness",
-             "Scales the brightness of the rays.", 1.0),
+                "Scales the brightness of the rays.", 1.0),
     [RAYS_ROTATE] = {.type = MS_PARAM_ANGLE,
                      .name = "rays_rotate",
                      .label = "Rays Rotate",
@@ -249,22 +242,23 @@ static const MsParam params[] = {
                      .max = MS_UNBOUNDED,
                      .display_min = -360.0,
                      .display_max = 360.0},
-    MS_RELATIVE(RAYS_NUM_SCALE, "rays_num_scale", "Rays Num Scale", "Scales the number of rays.", 1.0),
+    MS_RELATIVE(RAYS_NUM_SCALE, "rays_num_scale", "Rays Num Scale", "Scales the number of rays.",
+                1.0),
     MS_RELATIVE(RAYS_LENGTH, "rays_length", "Rays Length", "Scales the length of the rays.", 1.0),
     MS_RELATIVE(RAYS_THICKNESS, "rays_thickness", "Rays Thickness", "Scales the width of the rays.",
-             1.0),
+                1.0),
     MS_RELATIVE(HOTSPOT_BRIGHT, "hotspot_bright", "Hotspot Bright",
-             "Scales the brightness of the elements at the hotspot.", 1.0),
+                "Scales the brightness of the elements at the hotspot.", 1.0),
     MS_COLOUR(HOTSPOT_COLOR, "hotspot_color", "Hotspot Color",
-           "Scales the color of the elements at the hotspot."),
+              "Scales the color of the elements at the hotspot."),
     MS_RELATIVE(OTHER_BRIGHTNESS, "other_brightness", "Other Brightness",
-             "Scales the brightness of the elements away from the hotspot.", 1.0),
+                "Scales the brightness of the elements away from the hotspot.", 1.0),
     MS_COLOUR(OTHER_COLOR, "other_color", "Other Color",
-           "Scales the color of the elements away from the hotspot."),
+              "Scales the color of the elements away from the hotspot."),
     MS_RELATIVE(OTHER_WIDTH, "other_width", "Other Width",
-             "Scales the size of the elements away from the hotspot.", 1.0),
-    MS_FRACTION(BG_BRIGHTNESS, "bg_brightness", "Bg Brightness", "Scales the Source under the flare.",
-             1.0),
+                "Scales the size of the elements away from the hotspot.", 1.0),
+    MS_FRACTION(BG_BRIGHTNESS, "bg_brightness", "Bg Brightness",
+                "Scales the Source under the flare.", 1.0),
     [COMBINE] = {.type = MS_PARAM_CHOICE,
                  .name = "combine",
                  .label = "Combine",
@@ -278,8 +272,8 @@ static const MsParam params[] = {
                         .hint = "Tints the Source by the flare's color where the flare is."},
     MS_FRACTION(AFFECT_ALPHA, "affect_alpha", "Affect Alpha", "Adds the flare to the alpha.", 0.0),
     MS_DISTANCE(EDGE_WIDTH, "edge_width", "Edge Width",
-             "The Edge Triggers act when the hotspot is closer than this to the frame's edges.",
-             0.15),
+                "The Edge Triggers act when the hotspot is closer than this to the frame's edges.",
+                0.15),
     [EDGE_FALLOFF] = {.type = MS_PARAM_DOUBLE,
                       .name = "edge_falloff",
                       .label = "Edge Falloff",
@@ -290,26 +284,21 @@ static const MsParam params[] = {
                       .display_min = 0.01,
                       .display_max = 5.0},
     MS_RELATIVE(EDGE_SCALE_BRIGHTNESS, "edge_scale_brightness", "Edge Scale Brightness",
-             "Scales the flare's brightness at the frame's edges.", 1.5),
+                "Scales the flare's brightness at the frame's edges.", 1.5),
     MS_RELATIVE(EDGE_SCALE_WIDTHS, "edge_scale_widths", "Edge Scale Widths",
-             "Scales the flare's size at the frame's edges.", 1.2),
+                "Scales the flare's size at the frame's edges.", 1.2),
     MS_DISTANCE(CENTER_RADIUS, "center_radius", "Center Radius",
-             "The Center Triggers act when the hotspot is closer than this to the pivot.", 0.15),
+                "The Center Triggers act when the hotspot is closer than this to the pivot.", 0.15),
     FALLOFF(CENTER_FALLOFF, "center_falloff", "Center Falloff",
             "How fast the Center Triggers fade away from the pivot."),
     MS_RELATIVE(CENTER_SCALE_BRIGHTNESS, "center_scale_brightness", "Center Scale Brightness",
-             "Scales the flare's brightness near the pivot.", 1.5),
+                "Scales the flare's brightness near the pivot.", 1.5),
     MS_RELATIVE(CENTER_SCALE_WIDTHS, "center_scale_widths", "Center Scale Widths",
-             "Scales the flare's size near the pivot.", 1.2),
-    [OCCLUSION_SOFTNESS] = {.type = MS_PARAM_WIDTH,
-                            .name = "occlusion_softness",
-                            .label = "Occlusion Softness",
-                            .hint = "The size of the area around the hotspot the Occlusion "
-                                    "input covers to hide the flare.",
-                            .def = 0.0028,
-                            .min = 0.0,
-                            .max = MS_UNBOUNDED,
-                            .display_max = 0.25},
+                "Scales the flare's size near the pivot.", 1.2),
+    MS_WIDTH(OCCLUSION_SOFTNESS, "occlusion_softness", "Occlusion Softness",
+             "The size of the area around the hotspot the Occlusion "
+             "input covers to hide the flare.",
+             0.0028, 0.25),
     [OCCLUSION_FROM] = {.type = MS_PARAM_CHOICE,
                         .name = "occlusion_from",
                         .label = "Occlusion From",
@@ -323,53 +312,20 @@ static const MsParam params[] = {
                           .label = "Invert Occlusion",
                           .hint = "The black areas of the Occlusion input hide the flare."},
     MS_RELATIVE(OCCLUSION_SCALE_BRIGHTNESS, "occlusion_scale_brightness",
-             "Occlusion Scale Brightness",
-             "Scales the flare's brightness as the Occlusion input hides it.", 1.0),
+                "Occlusion Scale Brightness",
+                "Scales the flare's brightness as the Occlusion input hides it.", 1.0),
     MS_RELATIVE(OCCLUSION_SCALE_WIDTHS, "occlusion_scale_widths", "Occlusion Scale Widths",
-             "Scales the flare's size as the Occlusion input hides it.", 1.0),
+                "Scales the flare's size as the Occlusion input hides it.", 1.0),
     MS_RELATIVE(DIFFRACTION_GLOW, "diffraction_glow", "Diffraction Glow",
-             "The glow of the Occlusion input's edges near the hotspot.", 0.0),
+                "The glow of the Occlusion input's edges near the hotspot.", 0.0),
     MS_DISTANCE(GLOW_WIDTH, "glow_width", "Glow Width", "How far the Diffraction Glow spreads.",
-             0.05),
+                0.05),
     MS_DISTANCE(GLOW_RADIUS, "glow_radius", "Glow Radius",
-             "How far from the hotspot the Occlusion input's edges glow.", 0.025),
+                "How far from the hotspot the Occlusion input's edges glow.", 0.025),
     MS_COLOUR(GLOW_COLOR, "glow_color", "Glow Color", "The color of the Diffraction Glow."),
-    [ATMOSPHERE_AMP] = {.type = MS_PARAM_DOUBLE,
-                        .name = "atmosphere_amp",
-                        .label = "Atmosphere Amp",
-                        .hint = "How much a cloudy noise over the frame varies the flare's "
-                                "brightness (0: none).",
-                        .min = 0.0,
-                        .max = MS_UNBOUNDED,
-                        .display_max = 5.0},
-    [ATMOSPHERE_FREQ] = {.type = MS_PARAM_DOUBLE,
-                         .name = "atmosphere_freq",
-                         .label = "Atmosphere Freq",
-                         .hint = "The size of the Atmosphere's clouds (higher: smaller).",
-                         .def = 1.0,
-                         .min = 0.01,
-                         .max = MS_UNBOUNDED,
-                         .display_min = 0.1,
-                         .display_max = 20.0},
-    MS_FRACTION(ATMOSPHERE_DETAIL, "atmosphere_detail", "Atmosphere Detail",
-             "How much fine detail the Atmosphere has.", 0.6),
-    [ATMOSPHERE_SEED] = {.type = MS_PARAM_DOUBLE,
-                         .name = "atmosphere_seed",
-                         .label = "Atmosphere Seed",
-                         .hint = "Another Atmosphere for each value.",
-                         .def = 0.123,
-                         .min = -MS_UNBOUNDED,
-                         .max = MS_UNBOUNDED,
-                         .display_max = 5.0},
-    [ATMOSPHERE_SPEED] = {.type = MS_PARAM_DOUBLE,
-                          .name = "atmosphere_speed",
-                          .label = "Atmosphere Speed",
-                          .hint = "How fast the Atmosphere changes over time.",
-                          .def = 1.0,
-                          .min = -MS_UNBOUNDED,
-                          .max = MS_UNBOUNDED,
-                          .display_min = -5.0,
-                          .display_max = 5.0},
+    MS_ATMOSPHERE_PARAMS(ATMOSPHERE_AMP,
+                         "How much a cloudy noise over the frame varies the flare's "
+                         "brightness (0: none)."),
     [FLICKER_AMP] = {.type = MS_PARAM_DOUBLE,
                      .name = "flicker_amp",
                      .label = "Flicker Amp",
@@ -377,18 +333,12 @@ static const MsParam params[] = {
                      .min = 0.0,
                      .max = MS_UNBOUNDED,
                      .display_max = 2.0},
-    [FLICKER_SPEED] = {.type = MS_PARAM_DOUBLE,
-                       .name = "flicker_speed",
-                       .label = "Flicker Speed",
-                       .hint = "How fast it flickers (0: still).",
-                       .def = 1.0,
-                       .min = 0.0,
-                       .max = MS_UNBOUNDED,
-                       .display_max = 5.0},
+    MS_RELATIVE(FLICKER_SPEED, "flicker_speed", "Flicker Speed", "How fast it flickers (0: still).",
+                1.0),
     MS_FRACTION(FLICKER_RANDOMNESS, "flicker_randomness", "Flicker Randomness",
-             "How rarely it flickers: 0 all the time, 1 never; between, only the strongest "
-             "flickers.",
-             0.6),
+                "How rarely it flickers: 0 all the time, 1 never; between, only the strongest "
+                "flickers.",
+                0.6),
     [ENABLE_MOTION_BLUR] = {.type = MS_PARAM_BOOL,
                             .name = "enable_motion_blur",
                             .label = "Enable Motion Blur",
@@ -417,13 +367,12 @@ typedef struct {
     MsImage *source, *occluder, *rows, *noise_rows, *texels, *visible, *flare, *glowed, *output;
     int from, invert, count, blur, combine, tint;
     int sizes[GLARE_DRAW_LISTS]; // the rows drawn, by how (GLARE_DRAW_*): list k's size
-    int spot[2], square; // the occlusion's square: its centre pixel, its half side
+    int spot[2], square;         // the occlusion's square: its centre pixel, its half side
     float gain[3], hue, saturation, blur_frac, bg, affect_alpha;
     float occluded_bright, occluded_width; // Occlusion Scale Brightness, Widths, minus 1
     float flicker_amp, flicker_z, flicker_dead, flicker_scale; // (ms_lensflare_finish)
     // the Atmosphere (draw)
-    float amp, freq, persistence, z;
-    int octaves;
+    MsAtmosphere atmosphere;
     // the Diffraction Glow (glowed: NULL without)
     float glow_at[2], reach, edge_frac, glow_frac, glow_gain[3];
     int edge, glow_blur;
@@ -443,54 +392,42 @@ static int run(MsApi api, void *user) {
     int status = MS_KERNEL(MS_K_LENSFLARE_OCCLUSION, api, MS_IMAGE("occluder", j->occluder),
                            MS_INT("from", j->from), MS_INT("invert", j->invert),
                            MS_INT("hotspot_x", j->spot[0]), MS_INT("hotspot_y", j->spot[1]),
-                           MS_INT("reach", j->square),
-                           MS_IMAGE("visible", j->visible));
+                           MS_INT("reach", j->square), MS_IMAGE("visible", j->visible));
     if (status == 0)
-        status = MS_KERNEL(MS_K_LENSFLARE_DRAW, api, MS_IMAGE("rows", j->rows),
-                           MS_IMAGE("noise_rows", j->noise_rows), MS_INT("plain", j->sizes[0]),
-                           MS_INT("shadowed", j->sizes[1]), MS_INT("special", j->sizes[2]),
-                           MS_INT("special_shadowed", j->sizes[3]),
-                           MS_IMAGE("texels", j->texels),
-                           MS_IMAGE("visible", j->visible),
-                           MS_INT("count", j->count > 0 ? j->count : 1),
-                           MS_INT("samples", profile_samples(j->count)),
-                           MS_FLOAT("amp", j->amp), MS_FLOAT("freq", j->freq),
-                           MS_FLOAT("persistence", j->persistence), MS_FLOAT("z", j->z),
-                           MS_INT("octaves", j->octaves),
-                           MS_FLOAT("occluded_bright", j->occluded_bright),
-                           MS_FLOAT("occluded_width", j->occluded_width),
-                           MS_IMAGE("flare", j->flare));
+        status =
+            MS_KERNEL(MS_K_LENSFLARE_DRAW, api, MS_IMAGE("rows", j->rows),
+                      MS_IMAGE("noise_rows", j->noise_rows), MS_INT("plain", j->sizes[0]),
+                      MS_INT("shadowed", j->sizes[1]), MS_INT("special", j->sizes[2]),
+                      MS_INT("special_shadowed", j->sizes[3]), MS_IMAGE("texels", j->texels),
+                      MS_IMAGE("visible", j->visible), MS_INT("count", j->count > 0 ? j->count : 1),
+                      MS_INT("samples", profile_samples(j->count)),
+                      MS_FLOAT("amp", j->atmosphere.amp), MS_FLOAT("freq", j->atmosphere.freq),
+                      MS_FLOAT("persistence", j->atmosphere.persistence),
+                      MS_FLOAT("z", j->atmosphere.z), MS_INT("octaves", j->atmosphere.octaves),
+                      MS_FLOAT("occluded_bright", j->occluded_bright),
+                      MS_FLOAT("occluded_width", j->occluded_width), MS_IMAGE("flare", j->flare));
     if (status == 0 && j->glowed)
-        status = MS_KERNEL(
-            MS_K_LENSFLARE_GLOW, api, MS_IMAGE("flare", j->flare),
-            MS_IMAGE("occluder", j->occluder), MS_INT("from", j->from),
-            MS_INT("invert", j->invert), MS_IMAGE("visible", j->visible),
-            MS_FLOAT("hotspot_x", j->glow_at[0]), MS_FLOAT("hotspot_y", j->glow_at[1]),
-            MS_INT("edge", j->edge), MS_FLOAT("edge_frac", j->edge_frac),
-            MS_FLOAT("reach", j->reach), MS_INT("blur", j->glow_blur),
-            MS_FLOAT("blur_frac", j->glow_frac), MS_FLOAT("gain_r", j->glow_gain[0]),
-            MS_FLOAT("gain_g", j->glow_gain[1]), MS_FLOAT("gain_b", j->glow_gain[2]),
-            MS_IMAGE("output", j->glowed));
+        status = MS_KERNEL(MS_K_LENSFLARE_GLOW, api, MS_IMAGE("flare", j->flare),
+                           MS_IMAGE("occluder", j->occluder), MS_INT("from", j->from),
+                           MS_INT("invert", j->invert), MS_IMAGE("visible", j->visible),
+                           MS_FLOAT("hotspot_x", j->glow_at[0]),
+                           MS_FLOAT("hotspot_y", j->glow_at[1]), MS_INT("edge", j->edge),
+                           MS_FLOAT("edge_frac", j->edge_frac), MS_FLOAT("reach", j->reach),
+                           MS_INT("blur", j->glow_blur), MS_FLOAT("blur_frac", j->glow_frac),
+                           MS_FLOAT("gain_r", j->glow_gain[0]), MS_FLOAT("gain_g", j->glow_gain[1]),
+                           MS_FLOAT("gain_b", j->glow_gain[2]), MS_IMAGE("output", j->glowed));
     if (status != 0)
         return status;
-    return MS_KERNEL(MS_K_LENSFLARE_FINISH, api,
-                     MS_IMAGE("flare", j->glowed ? j->glowed : j->flare),
-                     MS_IMAGE("source", j->source), MS_FLOAT("gain_r", j->gain[0]),
-                     MS_FLOAT("gain_g", j->gain[1]), MS_FLOAT("gain_b", j->gain[2]),
-                     MS_FLOAT("hue", j->hue), MS_FLOAT("saturation", j->saturation),
-                     MS_INT("blur", j->blur), MS_FLOAT("blur_frac", j->blur_frac),
-                     MS_FLOAT("bg", j->bg), MS_INT("combine", j->combine), MS_INT("tint", j->tint),
-                     MS_FLOAT("affect_alpha", j->affect_alpha),
-                     MS_FLOAT("flicker_amp", j->flicker_amp), MS_FLOAT("flicker_z", j->flicker_z),
-                     MS_FLOAT("flicker_dead", j->flicker_dead),
-                     MS_FLOAT("flicker_scale", j->flicker_scale), MS_IMAGE("output", j->output));
-}
-
-// A width in pixels: whole pixels and the fraction past them.
-static void split(double v, int *whole, float *frac) {
-    v = v > 0 ? (v < 1e7 ? v : 1e7) : 0;
-    *whole = (int)floor(v);
-    *frac = (float)(v - *whole);
+    return MS_KERNEL(
+        MS_K_LENSFLARE_FINISH, api, MS_IMAGE("flare", j->glowed ? j->glowed : j->flare),
+        MS_IMAGE("source", j->source), MS_FLOAT("gain_r", j->gain[0]),
+        MS_FLOAT("gain_g", j->gain[1]), MS_FLOAT("gain_b", j->gain[2]), MS_FLOAT("hue", j->hue),
+        MS_FLOAT("saturation", j->saturation), MS_INT("blur", j->blur),
+        MS_FLOAT("blur_frac", j->blur_frac), MS_FLOAT("bg", j->bg), MS_INT("combine", j->combine),
+        MS_INT("tint", j->tint), MS_FLOAT("affect_alpha", j->affect_alpha),
+        MS_FLOAT("flicker_amp", j->flicker_amp), MS_FLOAT("flicker_z", j->flicker_z),
+        MS_FLOAT("flicker_dead", j->flicker_dead), MS_FLOAT("flicker_scale", j->flicker_scale),
+        MS_IMAGE("output", j->output));
 }
 
 // The 3-box blur's total radius for a gaussian of sigma s (each box of radius r has the
@@ -632,8 +569,9 @@ static int edit_lens(MsHost *host, char *err, size_t err_size) {
     remove(in);
     remove(out);
     if (!ok || code < 0)
-        snprintf(err, err_size, code < 0 ? "cannot run the lens editor (%s)"
-                                         : "cannot set the edited lens", editor);
+        snprintf(err, err_size,
+                 code < 0 ? "cannot run the lens editor (%s)" : "cannot set the edited lens",
+                 editor);
     return ok && code >= 0;
 }
 
@@ -695,7 +633,7 @@ static void frame_settings(const MsRender *r, Job *j) {
     j->combine = (int)v[COMBINE];
     j->tint = (int)v[TINT_BG_WHITES];
     j->affect_alpha = (float)v[AFFECT_ALPHA];
-    split(v[BLUR_FLARE], &j->blur, &j->blur_frac);
+    j->blur = ms_whole_pixels(v[BLUR_FLARE], 1, &j->blur_frac);
     // The occlusion: 1 - f^2, f the Occlusion input's mean over the square of half side
     // floor(0.7 Occlusion Softness) pixels (1 at its default, 0.0028 x the frame's width at
     // 512) around the hotspot's pixel (exact in ninths at the default softness on half
@@ -717,16 +655,6 @@ static void frame_settings(const MsRender *r, Job *j) {
     j->occluded_width = (float)(v[OCCLUSION_SCALE_WIDTHS] - 1.0);
     for (int c = 0; c < 3; ++c)
         j->gain[c] = (float)(v[BRIGHTNESS] * v[COLOR + c]);
-}
-
-// The Atmosphere (effects/atmosphere.h).
-static void atmosphere_settings(const MsRender *r, Job *j) {
-    const double *v = r->values;
-    const MsAtmosphere a =
-        ms_atmosphere(v[ATMOSPHERE_AMP], v[ATMOSPHERE_FREQ], v[ATMOSPHERE_DETAIL],
-                      v[ATMOSPHERE_SEED], v[ATMOSPHERE_SPEED], r->frame_width, r->time);
-    j->amp = a.amp, j->freq = a.freq, j->persistence = a.persistence, j->z = a.z;
-    j->octaves = a.octaves;
 }
 
 // The Motion Blur: the elements at `samples` times spread evenly over the shutter (Shutter
@@ -824,7 +752,7 @@ static float *lens_texels(const MsRender *r, const MsJson *nodes, MsLensTextures
     *rows = (int)((count + GLARE_TEXEL_ROW - 1) / GLARE_TEXEL_ROW);
     float *texels = calloc((size_t)(*rows > 0 ? *rows : 1) * GLARE_TEXEL_ROW, sizeof(float));
     if (!texels) {
-        snprintf(r->err, r->err_size, "not enough memory");
+        ms_out_of_memory(r);
         return NULL;
     }
     if (count > 0)
@@ -846,7 +774,7 @@ static float *lens_texels(const MsRender *r, const MsJson *nodes, MsLensTextures
 // their sizes), one after the other, then the shadows' rows (their references renumbered).
 // Returns 0 without the memory.
 static int sort_rows(float (*rows)[GLARE_FIELDS], int count, int sizes[GLARE_DRAW_LISTS]) {
-    float(*sorted)[GLARE_FIELDS] = calloc(GLARE_MAX_ROWS, sizeof *sorted);
+    float (*sorted)[GLARE_FIELDS] = calloc(GLARE_MAX_ROWS, sizeof *sorted);
     int *at = malloc(GLARE_MAX_ROWS * sizeof(int)), n = 0;
     if (!sorted || !at) {
         free(sorted);
@@ -885,8 +813,8 @@ static int sort_rows(float (*rows)[GLARE_FIELDS], int count, int sizes[GLARE_DRA
 // Hotspot Bright and Color x how much of the flare shows. Glow Radius 0: the whole edges.
 // Returns 1 when there is one.
 static int glow_settings(const double *v, Job *j) {
-    split(box_total(0.218 * v[OCCLUSION_SOFTNESS]), &j->edge, &j->edge_frac);
-    split(box_total(0.365 * v[GLOW_WIDTH]), &j->glow_blur, &j->glow_frac);
+    j->edge = ms_whole_pixels(box_total(0.218 * v[OCCLUSION_SOFTNESS]), 1, &j->edge_frac);
+    j->glow_blur = ms_whole_pixels(box_total(0.365 * v[GLOW_WIDTH]), 1, &j->glow_frac);
     j->glow_at[0] = (float)v[HOTSPOT];
     j->glow_at[1] = (float)(v[HOTSPOT_Y] + 1.0);
     j->reach = (float)(1.937 * v[GLOW_RADIUS]);
@@ -901,49 +829,43 @@ static int glow_settings(const double *v, Job *j) {
 static int draw(const MsRender *r, Job *j, float (*rows)[GLARE_FIELDS],
                 float (*noise_rows)[GLARE_FIELDS], float *texels, int texel_rows, int glow) {
     const int w = r->width, h = r->height;
-    float *flare = malloc((size_t)w * h * 4 * sizeof(float));
-    float *glowed = glow ? malloc((size_t)w * h * 4 * sizeof(float)) : NULL;
+    // The flare and the glowed flare, between the kernels.
+    const size_t floats[] = {(size_t)w * h * 4, glow ? (size_t)w * h * 4 : 0};
+    float *block = malloc(ms_parts_size(floats, ARRAY_SIZE(floats))), *part[ARRAY_SIZE(floats)];
+    if (!block)
+        return ms_out_of_memory(r);
+    ms_parts(block, floats, ARRAY_SIZE(floats), part);
     float visible[4] = {1, 1, 1, 1};
-    int ok = flare != NULL && (!glow || glowed != NULL);
-    if (ok) {
-        MsImage source, occluder, rows_image, noise_image, texels_image, visible_image,
-            flare_image, glowed_image, output;
-        ms_image_rgba(&source, r->inputs[SOURCE].pixels, r->inputs[SOURCE].row, r->half, w, h);
-        ms_image_rgba(&occluder, r->inputs[OCCLUSION].pixels, r->inputs[OCCLUSION].row, r->half,
-                      w, h);
-        ms_image(&rows_image, &rows[0][0], GLARE_FIELDS, GLARE_FIELDS, GLARE_MAX_ROWS, 1);
-        ms_image(&noise_image, &noise_rows[0][0], GLARE_FIELDS, GLARE_FIELDS, GLARE_MAX_ELEMENTS,
-                 1);
-        ms_image(&texels_image, texels, GLARE_TEXEL_ROW, GLARE_TEXEL_ROW,
-                 texel_rows > 0 ? texel_rows : 1, 1);
-        ms_image(&visible_image, visible, 4, 1, 1, 4);
-        ms_image(&flare_image, flare, (ptrdiff_t)w * 4, w, h, 4);
-        if (glow)
-            ms_image(&glowed_image, glowed, (ptrdiff_t)w * 4, w, h, 4);
-        ms_image_rgba(&output, r->output, r->output_row, r->half, w, h);
-        // Without an Occlusion input, or one that is the Source's image in the host: the
-        // Source stands in (not read without one).
-        const int same = j->from && ms_same_input(&r->inputs[OCCLUSION], &r->inputs[SOURCE]);
-        j->source = &source;
-        j->occluder = j->from && !same ? &occluder : &source;
-        j->rows = &rows_image;
-        j->noise_rows = &noise_image;
-        j->texels = &texels_image;
-        j->visible = &visible_image;
-        j->flare = &flare_image;
-        j->glowed = glow ? &glowed_image : NULL;
-        j->output = &output;
-        // Inputs uploaded to the GPU: the Source, the style's rows and noise rows, the lens's
-        // texels, the Occlusion input.
-        MsImage *inputs[] = {&source, &rows_image, &noise_image, &texels_image, j->occluder};
-        MsImage *between[] = {&visible_image, &flare_image, &glowed_image};
-        ok = ms_run(run, j, inputs, j->occluder == &source ? 4 : 5, between, glow ? 3 : 2,
-                    &output, r->info, r->err, r->err_size);
-    } else {
-        snprintf(r->err, r->err_size, "not enough memory");
-    }
-    free(glowed);
-    free(flare);
+    MsImage source, occluder, rows_image, noise_image, texels_image, visible_image, flare_image,
+        glowed_image, output;
+    ms_input_image(&source, r, SOURCE);
+    ms_image(&rows_image, &rows[0][0], GLARE_FIELDS, GLARE_FIELDS, GLARE_MAX_ROWS, 1);
+    ms_image(&noise_image, &noise_rows[0][0], GLARE_FIELDS, GLARE_FIELDS, GLARE_MAX_ELEMENTS, 1);
+    ms_image(&texels_image, texels, GLARE_TEXEL_ROW, GLARE_TEXEL_ROW,
+             texel_rows > 0 ? texel_rows : 1, 1);
+    ms_image(&visible_image, visible, 4, 1, 1, 4);
+    ms_image(&flare_image, part[0], (ptrdiff_t)w * 4, w, h, 4);
+    if (glow)
+        ms_image(&glowed_image, part[1], (ptrdiff_t)w * 4, w, h, 4);
+    ms_output_image(&output, r);
+    // Without an Occlusion input, or one that is the Source's image in the host: the Source
+    // stands in (not read without one).
+    j->source = &source;
+    j->occluder = ms_input_or(&occluder, r, OCCLUSION, j->from, &source, SOURCE);
+    j->rows = &rows_image;
+    j->noise_rows = &noise_image;
+    j->texels = &texels_image;
+    j->visible = &visible_image;
+    j->flare = &flare_image;
+    j->glowed = glow ? &glowed_image : NULL;
+    j->output = &output;
+    // Inputs uploaded to the GPU: the Source, the style's rows and noise rows, the lens's
+    // texels, the Occlusion input.
+    MsImage *const inputs[] = {&source, &rows_image, &noise_image, &texels_image, j->occluder};
+    MsImage *const between[] = {&visible_image, &flare_image, j->glowed};
+    const int ok = ms_run(run, j, inputs, ARRAY_SIZE(inputs), between, ARRAY_SIZE(between), &output,
+                          r->info, r->err, r->err_size);
+    free(block);
     return ok;
 }
 
@@ -957,25 +879,26 @@ static int render(const MsRender *r) {
                                                     : params[LENS].def_text;
     Job j = {.count = 0};
     frame_settings(r, &j);
-    atmosphere_settings(r, &j);
+    j.atmosphere = ms_atmosphere(v[ATMOSPHERE_AMP], v[ATMOSPHERE_FREQ], v[ATMOSPHERE_DETAIL],
+                                 v[ATMOSPHERE_SEED], v[ATMOSPHERE_SPEED], r->frame_width, r->time);
     const int glow = glow_settings(v, &j);
 
     const size_t text_length = strlen(lens);
     MsJson *nodes = malloc((text_length + 1) * sizeof(MsJson));
-    float(*rows)[GLARE_FIELDS] = calloc(GLARE_MAX_ROWS, sizeof *rows);
-    float(*noise_rows)[GLARE_FIELDS] = calloc(GLARE_MAX_ELEMENTS, sizeof *noise_rows);
+    float (*rows)[GLARE_FIELDS] = calloc(GLARE_MAX_ROWS, sizeof *rows);
+    float (*noise_rows)[GLARE_FIELDS] = calloc(GLARE_MAX_ELEMENTS, sizeof *noise_rows);
     float *texels = NULL;
     MsLensTextures textures = {.count = 0};
     int texel_rows = 0, ok = 0;
     if (!nodes || !rows || !noise_rows) {
-        snprintf(r->err, r->err_size, "not enough memory");
+        ms_out_of_memory(r);
     } else if ((j.count = build_rows(r, lens, nodes, (int)text_length + 1, rows, &textures)) < 0) {
         snprintf(r->err, r->err_size, "the Lens is not a lens (JSON)");
     } else {
         share_noises(rows, j.count, noise_rows);
         texels = lens_texels(r, nodes, &textures, &texel_rows);
         if (texels && !sort_rows(rows, j.count, j.sizes))
-            snprintf(r->err, r->err_size, "not enough memory");
+            ms_out_of_memory(r);
         else if (texels)
             ok = draw(r, &j, rows, noise_rows, texels, texel_rows, glow);
     }
@@ -1022,21 +945,27 @@ static const MsOverlay overlay[] = {
      .point = "pivot"},
 };
 
+// What changes over time with the same settings: the Atmosphere (with a Speed), the Flicker
+// (with a Speed), and the Motion Blur (the settings around the frame: varying whenever it is
+// on).
+static int varying(const double *v) {
+    return (v[ATMOSPHERE_AMP] > 0 && v[ATMOSPHERE_SPEED] != 0) ||
+           (v[FLICKER_AMP] != 0 && v[FLICKER_SPEED] != 0) ||
+           (v[ENABLE_MOTION_BLUR] != 0 && v[SHUTTER_ANGLE] > 0);
+}
+
 const MsEffect ms_lensflare_effect = {
-    MS_ID("LensFlare"),
-    "MS_LensFlare",
-    "A lens flare: glows, rays, rings and ghosts along the line from the pivot through the "
-    "hotspot.",
-    clips,
-    ARRAY_SIZE(clips),
-    params,
-    ARRAY_SIZE(params),
-    render,
-    identity,
-    1, // the Atmosphere changes over time
-    release,
-    overlay,
-    ARRAY_SIZE(overlay),
-    "lensflare", // presets (common/preset.h)
-    NULL, // not varying with its settings
+    .id = MS_ID("LensFlare"),
+    .label = "MS_LensFlare",
+    .description =
+        "A lens flare: glows, rays, rings and ghosts along the line from the pivot through the "
+        "hotspot.",
+    MS_CLIPS(clips),
+    MS_PARAMS(params),
+    .render = render,
+    .identity = identity,
+    .varying = varying,
+    .release = release,
+    MS_OVERLAYS(overlay),
+    .presets = "lensflare",
 };

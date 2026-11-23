@@ -37,8 +37,8 @@ static const char *runs_on(void) {
     MsImage *const inputs[] = {&source};
     char err[256] = "";
     MsRunInfo info;
-    const int ok = ms_run(run, &j, inputs, 1, NULL, 0, &output, &info, err, sizeof err) &&
-                   result[0] == 1.0f;
+    const int ok =
+        ms_run(run, &j, inputs, 1, NULL, 0, &output, &info, err, sizeof err) && result[0] == 1.0f;
     ms_mutex_lock(&lock);
     if (ok)
         snprintf(line, sizeof line, "%s", ms_api_name(info.api));
@@ -72,19 +72,10 @@ static int render(const MsRender *r) {
 }
 
 const MsEffect ms_test_effect = {
-    MS_ID("Test"),
-    "MS_Test",
-    "MillSaph diagnostic: multiplies the Source by Gain.",
-    clips,
-    ARRAY_SIZE(clips),
-    params,
-    ARRAY_SIZE(params),
-    render,
-    NULL,
-    0,
-    NULL,
-    NULL,
-    0,
-    NULL, // no presets
-    NULL, // not varying with its settings
+    .id = MS_ID("Test"),
+    .label = "MS_Test",
+    .description = "MillSaph diagnostic: multiplies the Source by Gain.",
+    MS_CLIPS(clips),
+    MS_PARAMS(params),
+    .render = render,
 };

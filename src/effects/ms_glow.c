@@ -22,6 +22,8 @@
 #include "common/effect.h"
 #include "common/mask.h"
 #include "effects/atmosphere.h"
+#include "effects/input.h"
+#include "effects/pixels.h"
 #include "engine/engine.h"
 
 // Inputs: clip, label in the host, value where there is no image, optional, mask.
@@ -71,21 +73,9 @@ enum {
     SHOW_GLOW_WIDTH,
 };
 static const MsParam params[] = {
-    [BRIGHTNESS] = {.type = MS_PARAM_DOUBLE,
-                    .name = "brightness",
-                    .label = "Brightness",
-                    .hint = "Scales the brightness of all the glows.",
-                    .def = 2.0,
-                    .min = 0.0,
-                    .max = MS_UNBOUNDED,
-                    .display_max = 5.0},
-    [COLOR] = {.type = MS_PARAM_RGB,
-               .name = "color",
-               .label = "Color",
-               .hint = "Scales the color of the glows.",
-               .def = 1.0},
-    [COLOR_G] = {.type = MS_PARAM_RGB_PART, .name = "color_green", .def = 1.0},
-    [COLOR_B] = {.type = MS_PARAM_RGB_PART, .name = "color_blue", .def = 1.0},
+    MS_RELATIVE(BRIGHTNESS, "brightness", "Brightness", "Scales the brightness of all the glows.",
+                2.0),
+    MS_COLOUR(COLOR, "color", "Color", "Scales the color of the glows."),
     [THRESHOLD] = {.type = MS_PARAM_DOUBLE,
                    .name = "threshold",
                    .label = "Threshold",
@@ -94,20 +84,9 @@ static const MsParam params[] = {
                    .min = 0.0,
                    .max = MS_UNBOUNDED,
                    .display_max = 1.0},
-    [ADD_COLOR] = {.type = MS_PARAM_RGB,
-                   .name = "threshold_add_color",
-                   .label = "Threshold Add Color",
-                   .hint = "Raises the threshold of each color channel by this."},
-    [ADD_COLOR_G] = {.type = MS_PARAM_RGB_PART, .name = "threshold_add_color_green"},
-    [ADD_COLOR_B] = {.type = MS_PARAM_RGB_PART, .name = "threshold_add_color_blue"},
-    [WIDTH] = {.type = MS_PARAM_WIDTH,
-               .name = "glow_width",
-               .label = "Glow Width",
-               .hint = "The size of the glows.",
-               .def = 0.05,
-               .min = 0.0,
-               .max = MS_UNBOUNDED,
-               .display_max = 0.5},
+    MS_COLOUR_OF(ADD_COLOR, "threshold_add_color", "Threshold Add Color",
+                 "Raises the threshold of each color channel by this.", 0.0),
+    MS_WIDTH(WIDTH, "glow_width", "Glow Width", "The size of the glows.", 0.05, 0.5),
     MS_RELATIVE(WIDTH_X, "width_x", "Width X", "Scales the horizontal glow width.", 1.0),
     MS_RELATIVE(WIDTH_Y, "width_y", "Width Y", "Scales the vertical glow width.", 1.0),
     MS_RELATIVE(WIDTH_RED, "width_red", "Width Red", "Scales the red glow width.", 1.0),
@@ -131,35 +110,14 @@ static const MsParam params[] = {
                       .min = 0.0,
                       .max = MS_UNBOUNDED,
                       .display_max = 1.0},
-    [FROM_ALPHA] = {.type = MS_PARAM_DOUBLE,
-                    .name = "glow_from_alpha",
-                    .label = "Glow From Alpha",
-                    .hint = "1: the glows come from the alpha instead of the colors.",
-                    .min = 0.0,
-                    .max = 1.0,
-                    .display_max = 1.0},
-    [UNDER_SOURCE] = {.type = MS_PARAM_DOUBLE,
-                      .name = "glow_under_source",
-                      .label = "Glow Under Source",
-                      .hint = "1: the Source over the glows.",
-                      .min = 0.0,
-                      .max = 1.0,
-                      .display_max = 1.0},
-    [LIGHT_BACKGROUND] = {.type = MS_PARAM_DOUBLE,
-                          .name = "light_background",
-                          .label = "Light Background",
-                          .hint = "Turns the glows down over light areas, for a light background.",
-                          .min = 0.0,
-                          .max = 1.0,
-                          .display_max = 1.0},
-    [SOURCE_OPACITY] = {.type = MS_PARAM_DOUBLE,
-                        .name = "source_opacity",
-                        .label = "Source Opacity",
-                        .hint = "Scales the Source combined with the glows.",
-                        .def = 1.0,
-                        .min = 0.0,
-                        .max = 1.0,
-                        .display_max = 1.0},
+    MS_FRACTION(FROM_ALPHA, "glow_from_alpha", "Glow From Alpha",
+                "1: the glows come from the alpha instead of the colors.", 0.0),
+    MS_FRACTION(UNDER_SOURCE, "glow_under_source", "Glow Under Source",
+                "1: the Source over the glows.", 0.0),
+    MS_FRACTION(LIGHT_BACKGROUND, "light_background", "Light Background",
+                "Turns the glows down over light areas, for a light background.", 0.0),
+    MS_FRACTION(SOURCE_OPACITY, "source_opacity", "Source Opacity",
+                "Scales the Source combined with the glows.", 1.0),
     [COMBINE] = {.type = MS_PARAM_CHOICE,
                  .name = "combine",
                  .label = "Combine",
@@ -174,39 +132,10 @@ static const MsParam params[] = {
                    .def = 1,
                    .entries = edge_entries,
                    .entry_count = ARRAY_SIZE(edge_entries)},
-    MS_FRACTION(BG_BRIGHTNESS, "bg_brightness", "Bg Brightness", "Scales the Back under the Source.",
-                1.0),
-    [ATMOSPHERE_AMP] = {.type = MS_PARAM_DOUBLE,
-                        .name = "atmosphere_amp",
-                        .label = "Atmosphere Amp",
-                        .hint = "How much a cloudy noise over the frame varies the glow (0: none).",
-                        .min = 0.0,
-                        .max = MS_UNBOUNDED,
-                        .display_max = 5.0},
-    [ATMOSPHERE_FREQ] = {.type = MS_PARAM_DOUBLE,
-                         .name = "atmosphere_freq",
-                         .label = "Atmosphere Freq",
-                         .hint = "The size of the Atmosphere's clouds (higher: smaller).",
-                         .def = 1.0,
-                         .min = 0.01,
-                         .max = MS_UNBOUNDED,
-                         .display_min = 0.1,
-                         .display_max = 20.0},
-    MS_FRACTION(ATMOSPHERE_DETAIL, "atmosphere_detail", "Atmosphere Detail",
-                "How much fine detail the Atmosphere has.", 0.6),
-    [ATMOSPHERE_SEED] = {.type = MS_PARAM_DOUBLE,
-                         .name = "atmosphere_seed",
-                         .label = "Atmosphere Seed",
-                         .hint = "Another Atmosphere for each value.",
-                         .def = 0.123,
-                         .display_max = 5.0},
-    [ATMOSPHERE_SPEED] = {.type = MS_PARAM_DOUBLE,
-                          .name = "atmosphere_speed",
-                          .label = "Atmosphere Speed",
-                          .hint = "How fast the Atmosphere changes over time.",
-                          .def = 1.0,
-                          .display_min = -5.0,
-                          .display_max = 5.0},
+    MS_FRACTION(BG_BRIGHTNESS, "bg_brightness", "Bg Brightness",
+                "Scales the Back under the Source.", 1.0),
+    MS_ATMOSPHERE_PARAMS(ATMOSPHERE_AMP,
+                         "How much a cloudy noise over the frame varies the glow (0: none)."),
     [INVERT_MASK] = MS_PARAM_INVERT_MASK("Use the black areas of the Mask."),
     MS_SHOW(SHOW_GLOW_WIDTH, "ShowGlowWidth", "Show Glow Width"),
 };
@@ -251,11 +180,10 @@ static int run(MsApi api, void *user) {
         MS_FLOAT("gain_g", j->gain[1]), MS_FLOAT("gain_b", j->gain[2]),
         MS_INT("combine", j->combine), MS_FLOAT("source_opacity", j->source_opacity),
         MS_FLOAT("under", j->under), MS_FLOAT("light", j->light),
-        MS_FLOAT("affect_alpha", j->affect_alpha),
-        MS_INT("show_threshold", j->show_threshold), MS_FLOAT("amp", j->atmosphere.amp),
-        MS_FLOAT("freq", j->atmosphere.freq), MS_FLOAT("persistence", j->atmosphere.persistence),
-        MS_FLOAT("z", j->atmosphere.z), MS_INT("octaves", j->atmosphere.octaves),
-        MS_IMAGE("output", j->output));
+        MS_FLOAT("affect_alpha", j->affect_alpha), MS_INT("show_threshold", j->show_threshold),
+        MS_FLOAT("amp", j->atmosphere.amp), MS_FLOAT("freq", j->atmosphere.freq),
+        MS_FLOAT("persistence", j->atmosphere.persistence), MS_FLOAT("z", j->atmosphere.z),
+        MS_INT("octaves", j->atmosphere.octaves), MS_IMAGE("output", j->output));
 }
 
 static int render(const MsRender *r) {
@@ -264,24 +192,18 @@ static int render(const MsRender *r) {
     const int show_threshold = (int)v[SHOW] == 1;
     // The glow, between the two kernels.
     float *glow = show_threshold ? NULL : malloc((size_t)w * h * 4 * sizeof(float));
-    if (!show_threshold && !glow) {
-        snprintf(r->err, r->err_size, "not enough memory");
-        return 0;
-    }
+    if (!show_threshold && !glow)
+        return ms_out_of_memory(r);
     MsImage source, mask, back, glow_image, output;
-    ms_image_rgba(&source, r->inputs[SOURCE].pixels, r->inputs[SOURCE].row, r->half, w, h);
-    ms_image_rgba(&back, r->inputs[BACK].pixels, r->inputs[BACK].row, r->half, w, h);
-    ms_image_rgba(&mask, r->inputs[MASK].pixels, r->inputs[MASK].row, r->half, w, h);
+    ms_input_image(&source, r, SOURCE);
     ms_image(&glow_image, glow, (ptrdiff_t)w * 4, w, h, 4);
-    ms_image_rgba(&output, r->output, r->output_row, r->half, w, h);
-    // Without a Mask, or one that is the Source's image in the host: the Source stands in
-    // (uploaded once).
-    const int mask_is_source = has_mask && ms_same_input(&r->inputs[MASK], &r->inputs[SOURCE]);
+    ms_output_image(&output, r);
+    // Without a Mask or a Back, or one that is the Source's image in the host: the Source
+    // stands in (uploaded once).
     const int has_back = r->connected[BACK];
-    const int back_is_source = has_back && ms_same_input(&r->inputs[BACK], &r->inputs[SOURCE]);
     Job j = {.source = &source,
-             .mask = has_mask && !mask_is_source ? &mask : &source,
-             .back = has_back && !back_is_source ? &back : &source,
+             .mask = ms_input_or(&mask, r, MASK, has_mask, &source, SOURCE),
+             .back = ms_input_or(&back, r, BACK, has_back, &source, SOURCE),
              .has_back = has_back,
              .bg = (float)v[BG_BRIGHTNESS],
              .glow = &glow_image,
@@ -305,26 +227,18 @@ static int render(const MsRender *r) {
     const double channel[3] = {v[WIDTH_RED], v[WIDTH_GREEN], v[WIDTH_BLUE]};
     for (int a = 0; a < 2; ++a)
         for (int c = 0; c < 3; ++c) {
-            double t = v[WIDTH] * axis[a] * channel[c];
-            t = t > 0 ? (t < 1e7 ? t : 1e7) : 0;
-            const double whole = v[SUBPIXEL] != 0 ? floor(t) : floor(t + 0.5);
-            j.r[a][c] = (int)whole;
-            j.f[a][c] = (float)(v[SUBPIXEL] != 0 ? t - whole : 0.0);
+            j.r[a][c] =
+                ms_whole_pixels(v[WIDTH] * axis[a] * channel[c], v[SUBPIXEL] != 0, &j.f[a][c]);
         }
     for (int c = 0; c < 3; ++c) {
         j.add[c] = (float)v[ADD_COLOR + c];
         j.gain[c] = (float)(v[BRIGHTNESS] * v[COLOR + c]);
     }
     // Inputs uploaded to the GPU: the Source, the Mask and the Back (each once).
-    MsImage *inputs[3] = {&source, j.mask, j.back};
-    int count = 1;
-    if (j.mask != &source)
-        inputs[count++] = j.mask;
-    if (j.back != &source)
-        inputs[count++] = j.back;
-    MsImage *const between[] = {&glow_image};
-    const int ok = ms_run(run, &j, inputs, count, between, show_threshold ? 0 : 1, &output, r->info,
-                          r->err, r->err_size);
+    MsImage *const inputs[] = {&source, j.mask, j.back};
+    MsImage *const between[] = {show_threshold ? NULL : &glow_image};
+    const int ok = ms_run(run, &j, inputs, ARRAY_SIZE(inputs), between, ARRAY_SIZE(between),
+                          &output, r->info, r->err, r->err_size);
     free(glow);
     return ok;
 }
@@ -345,64 +259,26 @@ static int varying(const double *v) { return v[ATMOSPHERE_AMP] > 0 && v[ATMOSPHE
 // The viewer: the Glow Width (white, 0.9 x Glow Width), the colours' widths, Width X and Y
 // (the arrows).
 static const MsOverlay overlay[] = {
-    {.kind = MS_OVERLAY_ELLIPSE,
-     .colour = MS_OVERLAY_WHITE,
-     .show = "ShowGlowWidth",
-     .size = "glow_width",
-     .rel_x = "width_x",
-     .rel_y = "width_y",
-     .factor = 0.9},
-    {.kind = MS_OVERLAY_ELLIPSE,
-     .colour = MS_OVERLAY_RED,
-     .show = "ShowGlowWidth",
-     .size = "glow_width",
-     .scale = "width_red",
-     .rel_x = "width_x",
-     .rel_y = "width_y"},
-    {.kind = MS_OVERLAY_ELLIPSE,
-     .colour = MS_OVERLAY_GREEN,
-     .show = "ShowGlowWidth",
-     .size = "glow_width",
-     .scale = "width_green",
-     .rel_x = "width_x",
-     .rel_y = "width_y"},
-    {.kind = MS_OVERLAY_ELLIPSE,
-     .colour = MS_OVERLAY_BLUE,
-     .show = "ShowGlowWidth",
-     .size = "glow_width",
-     .scale = "width_blue",
-     .rel_x = "width_x",
-     .rel_y = "width_y"},
-    {.kind = MS_OVERLAY_ARROW_X,
-     .colour = MS_OVERLAY_ORANGE,
-     .show = "ShowGlowWidth",
-     .size = "glow_width",
-     .rel_x = "width_x",
-     .rel_y = "width_y",
-     .factor = 0.9},
-    {.kind = MS_OVERLAY_ARROW_Y,
-     .colour = MS_OVERLAY_ORANGE,
-     .show = "ShowGlowWidth",
-     .size = "glow_width",
-     .rel_x = "width_x",
-     .rel_y = "width_y",
-     .factor = 0.9},
+    MS_OVERLAY_SIZED(MS_OVERLAY_ELLIPSE, "ShowGlowWidth", "glow_width", NULL, "width_x", "width_y",
+                     0.9, MS_OVERLAY_WHITE),
+    MS_OVERLAY_SIZED(MS_OVERLAY_ELLIPSE, "ShowGlowWidth", "glow_width", "width_red", "width_x",
+                     "width_y", 0.0, MS_OVERLAY_RED),
+    MS_OVERLAY_SIZED(MS_OVERLAY_ELLIPSE, "ShowGlowWidth", "glow_width", "width_green", "width_x",
+                     "width_y", 0.0, MS_OVERLAY_GREEN),
+    MS_OVERLAY_SIZED(MS_OVERLAY_ELLIPSE, "ShowGlowWidth", "glow_width", "width_blue", "width_x",
+                     "width_y", 0.0, MS_OVERLAY_BLUE),
+    MS_OVERLAY_ARROWS("ShowGlowWidth", "glow_width", "width_x", "width_y", 0.9, MS_OVERLAY_ORANGE),
 };
 
 const MsEffect ms_glow_effect = {
-    MS_ID("Glow"),
-    "MS_Glow",
-    "Glows from the parts of the image brighter than a threshold.",
-    clips,
-    ARRAY_SIZE(clips),
-    params,
-    ARRAY_SIZE(params),
-    render,
-    identity,
-    0,
-    NULL,
-    overlay,
-    ARRAY_SIZE(overlay),
-    "glow", // presets (common/preset.h)
-    varying,
+    .id = MS_ID("Glow"),
+    .label = "MS_Glow",
+    .description = "Glows from the parts of the image brighter than a threshold.",
+    MS_CLIPS(clips),
+    MS_PARAMS(params),
+    .render = render,
+    .identity = identity,
+    MS_OVERLAYS(overlay),
+    .presets = "glow",
+    .varying = varying,
 };

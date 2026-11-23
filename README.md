@@ -45,7 +45,7 @@ it in its "Runs on" line.
 
 GPU versions: BandPass (large blurs at the same cost as small ones); EdgeAwareBlur Sharp,
 Softer and Soft, with their Edge Smooth (Soft where the profile says so: on an M1 Pro its
-CPU is faster); Distort (its Enable GPU off forces the CPU); Mosaic, with its Smooth Colors; Glow; EdgeBlur; RackDefocus (a convolution by FFT); Glint; Glare (its style's elements, then a convolution by FFT); LensFlare (its lens's elements drawn along the flare's axis, textured by the lens's own images or by MillSaph's generated ones (an element's "image": {"generate": "dirt", "glint", "ramp" or "iris", "seed", "amount", "scale", "detail", "sides", "texels"}: generated on the CPU before the rest), its Preset menu (MillSaph's own lenses, presets/lensflare, written by tools/presets/make_lensflare_presets.py and compiled in), its Edit Lens button (MillSaph's lens editor, src/editor: millsaph_lens_editor, built into the bundle next to the plugin with Dear ImGui and GLFW (MILLSAPH_EDITOR), run and waited for; what it applies becomes the Lens text; OFX hosts for now), its viewer overlay (Scale Widths and Rel Heights round the hotspot, the hotspot and the pivot, dragged), its Atmosphere and Diffraction Glow; its Atmosphere changes over time, so the hosts render every frame). EdgeAwareBlur without blur, or
+CPU is faster); Distort (its Enable GPU off forces the CPU); Mosaic, with its Smooth Colors; Glow; EdgeBlur; RackDefocus (a convolution by FFT); Glint; Glare (its style's elements, then a convolution by FFT); LensFlare (its lens's elements drawn along the flare's axis, textured by the lens's own images or by MillSaph's generated ones (an element's "image": {"generate": "dirt", "glint", "ramp" or "iris", "seed", "amount", "scale", "detail", "sides", "texels"}: generated on the CPU before the rest), its Preset menu (MillSaph's own lenses, presets/lensflare, written by tools/presets/make_lensflare_presets.py and compiled in), its Edit Lens button (MillSaph's lens editor, src/editor: millsaph_lens_editor, built into the bundle next to the plugin with Dear ImGui and GLFW (MILLSAPH_EDITOR), run and waited for; what it applies becomes the Lens text; OFX hosts for now), its viewer overlay (Scale Widths and Rel Heights round the hotspot, the hotspot and the pivot, dragged), its Atmosphere and Diffraction Glow; with an Atmosphere or a Flicker that moves, or the Motion Blur, it changes over time and the hosts render every frame, else they keep it). JpegDamage changes over time with Jitter Frames only. EdgeAwareBlur without blur, or
 with an Edge Threshold of 0, tells the host that it leaves the Source as it is: the host
 skips it, and so does Mosaic with a Mix With Source of 1, and Glow without glow (Brightness
 or Color 0) in Add, Screen or Difference, and EdgeBlur without blur (Blur Width under a pixel,
@@ -96,7 +96,8 @@ defaults below unless they are already set (in production they come from rez).
 
 ## Install
 
-Copy the whole `MillSaph.ofx.bundle` folder to the OFX plugin folder, then restart the host:
+Copy the whole `MillSaph.ofx.bundle` folder to the OFX plugin folder (`./install.sh` does it on
+macOS and Linux), then restart the host:
 
 | System | Folder |
 |---|---|
@@ -131,7 +132,7 @@ CPU (8, 16 or 32 bits), without the OFX plugin's in-place reads and 16-bit trans
 |---|---|
 | `src/ofx/` | The OFX adapter: it turns each effect into an OFX plugin (`plugin.c`, `image.c`, `host.c`). It reads and writes the host's images in place where it can. |
 | `src/ae/` | The After Effects adapter (macOS, Windows): `plugin.c`, and `pipl.r`, which lists the effects for After Effects. |
-| `src/effects/` | The effects (`ms_*.c`): parameters and inputs, then the kernels each render runs, in order, and on which API (`profile.c`). The list of effects: `effects.c`. |
+| `src/effects/` | The effects (`ms_*.c`): parameters and inputs, then the kernels each render runs, in order, and on which API (`profile.c`). The list of effects: `list.def` (one line each, read by `effects.c`, the OFX and After Effects adapters and the PiPL). |
 | `src/engine/` | What the effects run on (`engine.h`): kernels called by name, images, and `ms_run`, which runs an effect's kernels on the first API that works and keeps their GPU memory between renders. |
 | `src/halide/` | The kernels, in Halide (C++): compiled at build time for the CPU and each GPU API (Metal on macOS, CUDA on Linux, CUDA / Direct3D 12 on Windows). `CMakeLists.txt` lists them (`ms_kernel`) and generates their table. |
 | `src/common/` | Shared by every layer, without any host or GPU API: the effect description (`effect.h`), the Mask parameters, a mutex. |

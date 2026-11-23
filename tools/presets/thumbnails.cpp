@@ -159,9 +159,21 @@ bool render(const MsEffect *e, const std::string &text, const std::vector<float>
         }
     std::vector<float> output((size_t)W * H * 4, 0.0f);
     MsRunInfo info;
-    const MsRender r = {values.data(), connected, inputs, W, H, (double)W, (double)H,
-                        output.data(), (ptrdiff_t)W * 4, message, sizeof message, 0, &info,
-                        texts.data(), 1.0, nullptr, nullptr};
+    MsRender r{}; // (by field: C++17 has no designated initialisers)
+    r.values = values.data();
+    r.connected = connected;
+    r.inputs = inputs;
+    r.width = W;
+    r.height = H;
+    r.frame_width = W;
+    r.frame_height = H;
+    r.output = output.data();
+    r.output_row = (ptrdiff_t)W * 4;
+    r.err = message;
+    r.err_size = sizeof message;
+    r.info = &info;
+    r.texts = texts.data();
+    r.time = 1.0;
     if (!e->render(&r)) {
         err = message;
         return false;

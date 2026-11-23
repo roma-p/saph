@@ -23,6 +23,9 @@
 #include "common/mask.h"
 #include "effects/fft.h"
 #include "effects/glare_style.h"
+#include "effects/glint_source.h"
+#include "effects/input.h"
+#include "effects/pixels.h"
 #include "engine/engine.h"
 
 // Inputs: clip, label in the host, value where there is no image, optional, mask.
@@ -86,14 +89,9 @@ static const MsParam params[] = {
                .hint = "The glare's elements, as JSON text: {\"elements\": [...]}, each a blob, "
                        "spot, ring, rays, polar_flare or fancy_spot (containers group them).",
                .def_text = default_style},
-    MS_RELATIVE(BRIGHTNESS, "brightness", "Brightness", "Scales the brightness of the glares.", 1.0),
-    [SCALE_COLORS] = {.type = MS_PARAM_RGB,
-                      .name = "scale_colors",
-                      .label = "Scale Colors",
-                      .hint = "Scales the color of the glares.",
-                      .def = 1.0},
-    [SCALE_COLORS_G] = {.type = MS_PARAM_RGB_PART, .name = "scale_colors_green", .def = 1.0},
-    [SCALE_COLORS_B] = {.type = MS_PARAM_RGB_PART, .name = "scale_colors_blue", .def = 1.0},
+    MS_RELATIVE(BRIGHTNESS, "brightness", "Brightness", "Scales the brightness of the glares.",
+                1.0),
+    MS_COLOUR(SCALE_COLORS, "scale_colors", "Scale Colors", "Scales the color of the glares."),
     MS_RELATIVE(SATURATION, "saturation", "Saturation", "The glares' saturation (0: grey).", 1.0),
     [THRESHOLD] = {.type = MS_PARAM_DOUBLE,
                    .name = "threshold",
@@ -103,31 +101,15 @@ static const MsParam params[] = {
                    .min = 0.0,
                    .max = MS_UNBOUNDED,
                    .display_max = 1.0},
-    [ADD_COLOR] = {.type = MS_PARAM_RGB,
-                   .name = "threshold_add_color",
-                   .label = "Threshold Add Color",
-                   .hint = "Raises the threshold of each color channel by this."},
-    [ADD_COLOR_G] = {.type = MS_PARAM_RGB_PART, .name = "threshold_add_color_green"},
-    [ADD_COLOR_B] = {.type = MS_PARAM_RGB_PART, .name = "threshold_add_color_blue"},
-    [THRESHOLD_BLUR] = {.type = MS_PARAM_WIDTH,
-                        .name = "threshold_blur",
-                        .label = "Threshold Blur",
-                        .hint = "Blurs the image before the threshold: fewer spots from fine "
-                                "details.",
-                        .def = 0.0028,
-                        .min = 0.0,
-                        .max = MS_UNBOUNDED,
-                        .display_max = 0.1},
-    [SIZE] = {.type = MS_PARAM_WIDTH,
-              .name = "size",
-              .label = "Size",
-              .hint = "The size of the glares.",
-              .def = 0.1,
-              .min = 0.0,
-              .max = MS_UNBOUNDED,
-              .display_max = 0.5},
-    MS_RELATIVE(REL_HEIGHT, "rel_height", "Rel Height", "The glares' height relative to their width.",
-             1.0),
+    MS_COLOUR_OF(ADD_COLOR, "threshold_add_color", "Threshold Add Color",
+                 "Raises the threshold of each color channel by this.", 0.0),
+    MS_WIDTH(THRESHOLD_BLUR, "threshold_blur", "Threshold Blur",
+             "Blurs the image before the threshold: fewer spots from fine "
+             "details.",
+             0.0028, 0.1),
+    MS_WIDTH(SIZE, "size", "Size", "The size of the glares.", 0.1, 0.5),
+    MS_RELATIVE(REL_HEIGHT, "rel_height", "Rel Height",
+                "The glares' height relative to their width.", 1.0),
     [ROTATE] = {.type = MS_PARAM_ANGLE,
                 .name = "rotate",
                 .label = "Rotate",
@@ -136,17 +118,12 @@ static const MsParam params[] = {
                 .max = MS_UNBOUNDED,
                 .display_min = -180.0,
                 .display_max = 180.0},
-    MS_RELATIVE(RAYS_NUM_SCALE, "rays_num_scale", "Rays Num Scale", "Scales the number of rays.", 1.0),
+    MS_RELATIVE(RAYS_NUM_SCALE, "rays_num_scale", "Rays Num Scale", "Scales the number of rays.",
+                1.0),
     MS_RELATIVE(RAYS_LENGTH, "rays_length", "Rays Length", "Scales the length of the rays.", 1.0),
     MS_RELATIVE(RAYS_THICKNESS, "rays_thickness", "Rays Thickness", "Scales the width of the rays.",
-             1.0),
-    [BLUR_GLARE] = {.type = MS_PARAM_WIDTH,
-                    .name = "blur_glare",
-                    .label = "Blur Glare",
-                    .hint = "Blurs the glares.",
-                    .min = 0.0,
-                    .max = MS_UNBOUNDED,
-                    .display_max = 0.1},
+                1.0),
+    MS_WIDTH(BLUR_GLARE, "blur_glare", "Blur Glare", "Blurs the glares.", 0.0, 0.1),
     [HUE_SHIFT] = {.type = MS_PARAM_DOUBLE,
                    .name = "hue_shift",
                    .label = "Hue Shift",
@@ -163,11 +140,11 @@ static const MsParam params[] = {
                    .entry_count = ARRAY_SIZE(res_entries)},
     MS_FRACTION(AFFECT_ALPHA, "affect_alpha", "Affect Alpha", "Adds the glares to the alpha.", 0.0),
     MS_FRACTION(FROM_ALPHA, "glare_from_alpha", "Glare From Alpha",
-             "Takes the glares from the alpha instead of the colors.", 0.0),
+                "Takes the glares from the alpha instead of the colors.", 0.0),
     MS_FRACTION(UNDER_SOURCE, "glare_under_source", "Glare Under Source",
-             "Puts the glares behind the Source, by its alpha.", 0.0),
+                "Puts the glares behind the Source, by its alpha.", 0.0),
     MS_FRACTION(SOURCE_OPACITY, "source_opacity", "Source Opacity",
-             "Scales the Source under the glares.", 1.0),
+                "Scales the Source under the glares.", 1.0),
     [INVERT_MASK] = MS_PARAM_INVERT_MASK("Use the black areas of the Mask."),
     [MASK_TYPE] = {.type = MS_PARAM_CHOICE,
                    .name = "mask_type",
@@ -182,8 +159,9 @@ static const MsParam params[] = {
 // One render: images and settings of the kernels.
 typedef struct {
     MsImage *source, *mask, *small[2], *glints, *labels[2], *rows, *buffers[3], *output;
-    int has_mask, invert_mask, mask_type, blur, glare_blur, rounds, count, pad, res;
-    float blur_frac, glare_blur_frac, threshold, add[3], from_alpha, cap, norm, bc[3];
+    MsGlintSource glint_source; // the spots' source
+    int glare_blur, rounds, count, res;
+    float glare_blur_frac, cap, norm, bc[3];
     float scale, hue, saturation, source_opacity, under, affect_alpha;
 } Job;
 
@@ -203,14 +181,7 @@ static int run(MsApi api, void *user) {
                                MS_IMAGE("half", j->small[1]));
     }
     if (status == 0)
-        status = MS_KERNEL(
-            MS_K_GLINT_SOURCE, api, MS_IMAGE("source", source), MS_IMAGE("mask", mask),
-            MS_INT("has_mask", j->has_mask), MS_INT("invert_mask", j->invert_mask),
-            MS_INT("mask_type", j->mask_type), MS_FLOAT("from_alpha", j->from_alpha),
-            MS_INT("blur", j->blur), MS_FLOAT("blur_frac", j->blur_frac),
-            MS_FLOAT("threshold", j->threshold), MS_FLOAT("add_r", j->add[0]),
-            MS_FLOAT("add_g", j->add[1]), MS_FLOAT("add_b", j->add[2]),
-            MS_IMAGE("glints", j->glints));
+        status = ms_glint_source(api, &j->glint_source, source, mask, j->glints);
     if (status == 0)
         status = MS_KERNEL(MS_K_GLARE_LABEL_INIT, api, MS_IMAGE("glints", j->glints),
                            MS_IMAGE("labels", j->labels[0]));
@@ -229,7 +200,7 @@ static int run(MsApi api, void *user) {
                            MS_IMAGE("labels", j->labels[j->rounds % 2]), MS_FLOAT("cap", j->cap),
                            MS_FLOAT("norm", j->norm), MS_FLOAT("bc_r", j->bc[0]),
                            MS_FLOAT("bc_g", j->bc[1]), MS_FLOAT("bc_b", j->bc[2]),
-                           MS_INT("pad_x", j->pad), MS_INT("pad_y", j->pad),
+                           MS_INT("pad_x", 0), MS_INT("pad_y", 0), // (the image at (0, 0))
                            MS_IMAGE("impulses", image));
     if (status == 0)
         status = ms_fft(api, &image, &free_image, 0);
@@ -241,46 +212,29 @@ static int run(MsApi api, void *user) {
     if (status != 0)
         return status;
     return MS_KERNEL(MS_K_GLARE_FINISH, api, MS_IMAGE("data", free_image),
-                     MS_IMAGE("source", j->source), MS_INT("pad_x", j->pad),
-                     MS_INT("pad_y", j->pad), MS_INT("res", j->res), MS_FLOAT("scale", j->scale),
-                     MS_FLOAT("hue", j->hue),
+                     MS_IMAGE("source", j->source), MS_INT("pad_x", 0), MS_INT("pad_y", 0),
+                     MS_INT("res", j->res), MS_FLOAT("scale", j->scale), MS_FLOAT("hue", j->hue),
                      MS_FLOAT("saturation", j->saturation), MS_INT("blur", j->glare_blur),
                      MS_FLOAT("blur_frac", j->glare_blur_frac),
                      MS_FLOAT("source_opacity", j->source_opacity), MS_FLOAT("under", j->under),
                      MS_FLOAT("affect_alpha", j->affect_alpha), MS_IMAGE("output", j->output));
 }
 
-// A width in pixels: whole pixels and the fraction past them.
-static void split(double v, int *whole, float *frac) {
-    v = v > 0 ? (v < 1e7 ? v : 1e7) : 0;
-    *whole = (int)floor(v);
-    *frac = (float)(v - *whole);
-}
-
-static int render(const MsRender *r) {
+// The settings of the kernels at Glare Res `res` (1, or 2: half size, w2 x h2).
+static Job settings(const MsRender *r, int res, int w2, int h2) {
     const double *v = r->values;
-    const int w = r->width, h = r->height, has_mask = r->connected[MASK];
-    // Glare Res Half: the spots and the glare at half size (w2 x h2), the widths halved.
-    const int res = (int)v[GLARE_RES] == 1 ? 2 : 1;
-    const int w2 = (w + res - 1) / res, h2 = (h + res - 1) / res;
-    const char *style = r->texts && r->texts[STYLE] ? r->texts[STYLE] : params[STYLE].def_text;
-    Job j = {.has_mask = has_mask,
-             .invert_mask = (int)v[INVERT_MASK],
-             .mask_type = (int)v[MASK_TYPE],
-             .threshold = (float)v[THRESHOLD],
-             .from_alpha = (float)v[FROM_ALPHA],
+    Job j = {.glint_source = ms_glint_source_of(v[THRESHOLD], &v[ADD_COLOR],
+                                                v[THRESHOLD_BLUR] / res, v[FROM_ALPHA],
+                                                v[MASK_TYPE], v[INVERT_MASK], r->connected[MASK]),
              .hue = (float)(v[HUE_SHIFT] - floor(v[HUE_SHIFT])),
              .saturation = (float)v[SATURATION],
              .source_opacity = (float)v[SOURCE_OPACITY],
              .under = (float)v[UNDER_SOURCE],
              .affect_alpha = (float)v[AFFECT_ALPHA],
              .res = res};
-    split(v[THRESHOLD_BLUR] / res, &j.blur, &j.blur_frac);
-    split(v[BLUR_GLARE], &j.glare_blur, &j.glare_blur_frac);
-    for (int c = 0; c < 3; ++c) {
-        j.add[c] = (float)v[ADD_COLOR + c];
+    j.glare_blur = ms_whole_pixels(v[BLUR_GLARE], 1, &j.glare_blur_frac);
+    for (int c = 0; c < 3; ++c)
         j.bc[c] = (float)(v[BRIGHTNESS] * v[SCALE_COLORS + c]);
-    }
     // A spot's strength: at most Size^2 / 100; strength (frame width / 10)^2 / 100 draws the
     // elements at their brightness.
     const double size = fmax(v[SIZE], 0.0) / res, frame = r->frame_width / res;
@@ -290,95 +244,123 @@ static int render(const MsRender *r) {
     j.rounds = 4;
     for (int n = w2 > h2 ? w2 : h2; n > 1; n /= 2)
         j.rounds += 2;
+    return j;
+}
 
-    // The style's rows; the drawing's reach gives the transforms' margin (nothing wraps around).
+// The Style's rows (GLARE_MAX_ELEMENTS of them) at Glare Res `res`, and the drawing's reach in
+// pixels. Returns how many, or -1 with the reason in r->err.
+static int style_rows(const MsRender *r, int res, float (*rows)[GLARE_FIELDS], double *reach) {
+    const double *v = r->values;
+    const char *style = r->texts && r->texts[STYLE] ? r->texts[STYLE] : params[STYLE].def_text;
     const size_t text_length = strlen(style);
     MsJson *nodes = malloc((text_length + 1) * sizeof(MsJson));
-    float(*rows)[GLARE_FIELDS] = calloc(GLARE_MAX_ELEMENTS, sizeof *rows);
-    const MsGlareGlobals globals = {.size = size,
+    const MsGlareGlobals globals = {.size = fmax(v[SIZE], 0.0) / res,
                                     .rel_height = v[REL_HEIGHT],
                                     .rotate = v[ROTATE],
                                     .rays_num_scale = v[RAYS_NUM_SCALE],
                                     .rays_length = v[RAYS_LENGTH],
                                     .rays_thickness = v[RAYS_THICKNESS]};
-    j.count = nodes && rows ? ms_glare_style(style, nodes, (int)text_length + 1, &globals, rows,
-                                             GLARE_MAX_ELEMENTS, NULL)
-                            : -1;
+    if (!nodes) {
+        ms_out_of_memory(r);
+        return -1;
+    }
+    const int count = ms_glare_style(style, nodes, (int)text_length + 1, &globals, rows,
+                                     GLARE_MAX_ELEMENTS, NULL);
     free(nodes);
+    if (count < 0) {
+        snprintf(r->err, r->err_size, "the Style is not a glare style (JSON)");
+        return -1;
+    }
+    *reach = 0;
+    for (int i = 0; i < count; ++i) {
+        const double s = fmax(rows[i][GLARE_SCALE_X], rows[i][GLARE_SCALE_Y]);
+        *reach = fmax(*reach, rows[i][GLARE_R] * 1.6 * s + 4 * rows[i][GLARE_SIGMA] + 4);
+    }
+    return count;
+}
+
+// The images of `j` (the spots at w2 x h2, the transforms nx x ny, the style's `rows`), then
+// the kernels. Returns 1 on success, or 0 with the reason in r->err.
+static int draw(const MsRender *r, Job *j, float (*rows)[GLARE_FIELDS], int w2, int h2, int nx,
+                int ny) {
+    const int has_mask = r->connected[MASK];
+    // Between the kernels: the half-size Source and Mask, the glints, the regions' labels
+    // (integers), the transforms.
+    const size_t pixels = (size_t)w2 * h2, transform = (size_t)nx * ny * 4;
+    const size_t floats[] = {j->res == 2 ? pixels * 4 : 0,
+                             j->res == 2 && has_mask ? pixels * 4 : 0,
+                             pixels * 4,
+                             pixels,
+                             pixels,
+                             transform,
+                             transform,
+                             transform};
+    float *block = malloc(ms_parts_size(floats, ARRAY_SIZE(floats))), *part[ARRAY_SIZE(floats)];
+    if (!block)
+        return ms_out_of_memory(r);
+    ms_parts(block, floats, ARRAY_SIZE(floats), part);
+    MsImage source, mask, small_images[2], glints_image, label_images[2], rows_image, images[3],
+        output;
+    ms_input_image(&source, r, SOURCE);
+    for (int i = 0; i < 2; ++i) {
+        ms_image(&small_images[i], part[i], (ptrdiff_t)w2 * 4, w2, h2, 4);
+        j->small[i] = &small_images[i];
+    }
+    ms_image(&glints_image, part[2], (ptrdiff_t)w2 * 4, w2, h2, 4);
+    for (int i = 0; i < 2; ++i) {
+        ms_image_uint(&label_images[i], part[3 + i], w2, w2, h2);
+        j->labels[i] = &label_images[i];
+    }
+    ms_image(&rows_image, &rows[0][0], GLARE_FIELDS, GLARE_FIELDS, GLARE_MAX_ELEMENTS, 1);
+    for (int i = 0; i < 3; ++i) {
+        ms_image(&images[i], part[5 + i], (ptrdiff_t)nx * 4, nx, ny, 4);
+        j->buffers[i] = &images[i];
+    }
+    ms_output_image(&output, r);
+    // Without a Mask, or one that is the Source's image in the host: the Source stands in.
+    j->source = &source;
+    j->mask = ms_input_or(&mask, r, MASK, has_mask, &source, SOURCE);
+    j->glints = &glints_image;
+    j->rows = &rows_image;
+    j->output = &output;
+    // Inputs uploaded to the GPU: the Source, the Mask, the style's rows.
+    MsImage *const inputs[] = {&source, j->mask, &rows_image};
+    MsImage *const between[] = {&glints_image,
+                                &label_images[0],
+                                &label_images[1],
+                                &images[0],
+                                &images[1],
+                                &images[2],
+                                part[0] ? &small_images[0] : NULL,
+                                part[1] ? &small_images[1] : NULL};
+    const int ok = ms_run(run, j, inputs, ARRAY_SIZE(inputs), between, ARRAY_SIZE(between), &output,
+                          r->info, r->err, r->err_size);
+    free(block);
+    return ok;
+}
+
+static int render(const MsRender *r) {
+    // Glare Res Half: the spots and the glare at half size (w2 x h2), the widths halved.
+    const int res = (int)r->values[GLARE_RES] == 1 ? 2 : 1;
+    const int w2 = (r->width + res - 1) / res, h2 = (r->height + res - 1) / res;
+    Job j = settings(r, res, w2, h2);
+    // The style's rows; the drawing's reach gives the transforms' margin (nothing wraps around).
+    float (*rows)[GLARE_FIELDS] = calloc(GLARE_MAX_ELEMENTS, sizeof *rows);
+    if (!rows)
+        return ms_out_of_memory(r);
+    double reach = 0;
+    j.count = style_rows(r, res, rows, &reach);
     if (j.count < 0) {
         free(rows);
-        snprintf(r->err, r->err_size, "the Style is not a glare style (JSON)");
         return 0;
-    }
-    double reach = 0;
-    for (int i = 0; i < j.count; ++i) {
-        const double s = fmax(rows[i][GLARE_SCALE_X], rows[i][GLARE_SCALE_Y]);
-        reach = fmax(reach, rows[i][GLARE_R] * 1.6 * s + 4 * rows[i][GLARE_SIGMA] + 4);
     }
     // The image at (0, 0) of the transforms: the circular convolution does not wrap into it
     // while their size is at least the image's plus the drawing's reach (one side).
     const int longest = w2 > h2 ? w2 : h2;
     const int margin = (int)ceil(fmin(reach, (double)longest));
-    j.pad = 0;
     const int nx = ms_fft_length(w2 + margin), ny = ms_fft_length(h2 + margin);
     j.scale = (float)(1.0 / ((double)nx * ny));
-
-    const size_t pixels = (size_t)w2 * h2, floats = (size_t)nx * ny * 4;
-    float *small[2] = {res == 2 ? malloc(pixels * 4 * sizeof(float)) : NULL,
-                       res == 2 && has_mask ? malloc(pixels * 4 * sizeof(float)) : NULL};
-    float *glints = malloc(pixels * 4 * sizeof(float));
-    uint32_t *labels[2] = {malloc(pixels * sizeof(uint32_t)), malloc(pixels * sizeof(uint32_t))};
-    float *buffers[3] = {malloc(floats * sizeof(float)), malloc(floats * sizeof(float)),
-                         malloc(floats * sizeof(float))};
-    int ok = glints && labels[0] && labels[1] && buffers[0] && buffers[1] && buffers[2] &&
-             (res == 1 || (small[0] && (small[1] || !has_mask)));
-    if (ok) {
-        MsImage source, mask, small_images[2], glints_image, label_images[2], rows_image,
-            images[3], output;
-        ms_image_rgba(&source, r->inputs[SOURCE].pixels, r->inputs[SOURCE].row, r->half, w, h);
-        ms_image_rgba(&mask, r->inputs[MASK].pixels, r->inputs[MASK].row, r->half, w, h);
-        for (int i = 0; i < 2; ++i) {
-            ms_image(&small_images[i], small[i], (ptrdiff_t)w2 * 4, w2, h2, 4);
-            j.small[i] = &small_images[i];
-        }
-        ms_image(&glints_image, glints, (ptrdiff_t)w2 * 4, w2, h2, 4);
-        for (int i = 0; i < 2; ++i) {
-            ms_image_uint(&label_images[i], labels[i], w2, w2, h2);
-            j.labels[i] = &label_images[i];
-        }
-        ms_image(&rows_image, &rows[0][0], GLARE_FIELDS, GLARE_FIELDS, GLARE_MAX_ELEMENTS, 1);
-        for (int i = 0; i < 3; ++i) {
-            ms_image(&images[i], buffers[i], (ptrdiff_t)nx * 4, nx, ny, 4);
-            j.buffers[i] = &images[i];
-        }
-        ms_image_rgba(&output, r->output, r->output_row, r->half, w, h);
-        // Without a Mask, or one that is the Source's image in the host: the Source stands in.
-        const int mask_is_source = has_mask && ms_same_input(&r->inputs[MASK], &r->inputs[SOURCE]);
-        j.source = &source;
-        j.mask = has_mask && !mask_is_source ? &mask : &source;
-        j.glints = &glints_image;
-        j.rows = &rows_image;
-        j.output = &output;
-        // Inputs uploaded to the GPU: the Source, the Mask, the style's rows.
-        MsImage *const inputs[] = {&source, j.mask, &rows_image};
-        MsImage *between[8] = {&glints_image, &label_images[0], &label_images[1],
-                               &images[0],    &images[1],       &images[2]};
-        int between_count = 6;
-        for (int i = 0; i < 2; ++i)
-            if (small[i])
-                between[between_count++] = &small_images[i];
-        ok = ms_run(run, &j, inputs, 3, between, between_count, &output, r->info, r->err,
-                    r->err_size);
-    } else {
-        snprintf(r->err, r->err_size, "not enough memory");
-    }
-    free(small[0]);
-    free(small[1]);
-    free(glints);
-    free(labels[0]);
-    free(labels[1]);
-    for (int i = 0; i < 3; ++i)
-        free(buffers[i]);
+    const int ok = draw(r, &j, rows, w2, h2, nx, ny);
     free(rows);
     return ok;
 }
@@ -387,40 +369,28 @@ static int render(const MsRender *r) {
 // Source as it is.
 static int identity(const double *v, const int *connected) {
     (void)connected;
-    const int no_glare = v[SIZE] <= 0.0 || v[BRIGHTNESS] == 0.0 ||
-                         (v[SCALE_COLORS] == 0.0 && v[SCALE_COLORS_G] == 0.0 &&
-                          v[SCALE_COLORS_B] == 0.0);
+    const int no_glare =
+        v[SIZE] <= 0.0 || v[BRIGHTNESS] == 0.0 ||
+        (v[SCALE_COLORS] == 0.0 && v[SCALE_COLORS_G] == 0.0 && v[SCALE_COLORS_B] == 0.0);
     return no_glare && v[SOURCE_OPACITY] == 1.0;
 }
 
 // The viewer: the Size and the Rel Height (the arrow).
 static const MsOverlay overlay[] = {
-    {.kind = MS_OVERLAY_ELLIPSE,
-     .colour = MS_OVERLAY_ORANGE,
-     .show = "ShowSize",
-     .size = "size",
-     .rel_y = "rel_height"},
-    {.kind = MS_OVERLAY_ARROW_Y,
-     .colour = MS_OVERLAY_ORANGE,
-     .show = "ShowSize",
-     .size = "size",
-     .rel_y = "rel_height"},
+    MS_OVERLAY_SIZED(MS_OVERLAY_ELLIPSE, "ShowSize", "size", NULL, NULL, "rel_height", 0.0,
+                     MS_OVERLAY_ORANGE),
+    MS_OVERLAY_SIZED(MS_OVERLAY_ARROW_Y, "ShowSize", "size", NULL, NULL, "rel_height", 0.0,
+                     MS_OVERLAY_ORANGE),
 };
 
 const MsEffect ms_glare_effect = {
-    MS_ID("Glare"),
-    "MS_Glare",
-    "A glare (glows, rays, sectors, rings) on each bright spot of the image.",
-    clips,
-    ARRAY_SIZE(clips),
-    params,
-    ARRAY_SIZE(params),
-    render,
-    identity,
-    0,
-    NULL,
-    overlay,
-    ARRAY_SIZE(overlay),
-    "glare", // presets (common/preset.h)
-    NULL, // not varying with its settings
+    .id = MS_ID("Glare"),
+    .label = "MS_Glare",
+    .description = "A glare (glows, rays, sectors, rings) on each bright spot of the image.",
+    MS_CLIPS(clips),
+    MS_PARAMS(params),
+    .render = render,
+    .identity = identity,
+    MS_OVERLAYS(overlay),
+    .presets = "glare",
 };

@@ -37,13 +37,8 @@ class Blur : public Generator<Blur> {
 
         ms::interleaved(input);
         ms::interleaved(output);
-        Var xo("xo"), yo("yo"), xi("xi"), yi("yi");
         ms_blur::schedule(rgba, gpu, 4);
-        if (gpu)
-            output.bound(c, 0, 4).reorder(c, x, y).vectorize(c).gpu_tile(x, y, xo, yo, xi, yi, 16,
-                                                                         16);
-        else
-            output.bound(c, 0, 4).reorder(c, x, y).unroll(c).vectorize(x, 8).parallel(y);
+        ms::schedule_float4(output, gpu);
     }
 };
 

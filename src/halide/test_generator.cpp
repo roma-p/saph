@@ -13,15 +13,11 @@ class Gain : public Generator<Gain> {
     Output<Buffer<float, 3>> output{"output"};
 
     void generate() {
-        Var x("x"), y("y"), c("c"), xo("xo"), yo("yo"), xi("xi"), yi("yi");
+        Var x("x"), y("y"), c("c");
         output(x, y, c) = select(c == 3, source(x, y, c), source(x, y, c) * gain);
         ms::interleaved(source);
         ms::interleaved(output);
-        output.bound(c, 0, 4).reorder(c, x, y).unroll(c);
-        if (get_target().has_gpu_feature())
-            output.gpu_tile(x, y, xo, yo, xi, yi, 16, 16);
-        else
-            output.vectorize(x, 8).parallel(y);
+        ms::schedule_rgba(output, get_target().has_gpu_feature());
     }
 };
 

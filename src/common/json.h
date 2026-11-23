@@ -17,13 +17,13 @@ typedef enum {
 
 typedef struct {
     MsJsonType type;
-    double number;       // NUMBER; BOOL: 0 or 1
-    const char *text;    // STRING: its characters (without the quotes)
-    int length;          // of `text`
-    const char *key;     // the member's name in its object (NULL in an array)
+    double number;    // NUMBER; BOOL: 0 or 1
+    const char *text; // STRING: its characters (without the quotes)
+    int length;       // of `text`
+    const char *key;  // the member's name in its object (NULL in an array)
     int key_length;
-    int first, next;     // ARRAY / OBJECT: first child; the next sibling (-1: none)
-    int count;           // ARRAY / OBJECT: number of children
+    int first, next; // ARRAY / OBJECT: first child; the next sibling (-1: none)
+    int count;       // ARRAY / OBJECT: number of children
 } MsJson;
 
 // Reads `text` (its first `length` bytes) into `nodes` (at most `max`). Returns the number of

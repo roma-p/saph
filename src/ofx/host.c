@@ -21,8 +21,8 @@ OfxStatus ms_load(void) {
     ms_prop = ofx_host->fetchSuite(ofx_host->host, kOfxPropertySuite, 1);
     ms_effect = ofx_host->fetchSuite(ofx_host->host, kOfxImageEffectSuite, 1);
     ms_param = ofx_host->fetchSuite(ofx_host->host, kOfxParameterSuite, 1);
-    ms_message = ofx_host->fetchSuite(ofx_host->host, kOfxMessageSuite, 1); // optional
-    ms_draw = ofx_host->fetchSuite(ofx_host->host, kOfxDrawSuite, 1);       // optional
+    ms_message = ofx_host->fetchSuite(ofx_host->host, kOfxMessageSuite, 1);   // optional
+    ms_draw = ofx_host->fetchSuite(ofx_host->host, kOfxDrawSuite, 1);         // optional
     ms_interact = ofx_host->fetchSuite(ofx_host->host, kOfxInteractSuite, 1); // optional
     if (!ms_prop || !ms_effect || !ms_param)
         return kOfxStatErrMissingHostFeature;
