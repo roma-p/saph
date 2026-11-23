@@ -417,6 +417,17 @@ if(NOT WIN32)
 endif()
 millsaph_warnings(millsaph_bench)
 
+# With the sanitizers, the programs that run the effects set AddressSanitizer's options
+# themselves (tools/asan_options.c: CUDA needs the shadow gap unprotected).
+if(MILLSAPH_SANITIZE)
+  foreach(program millsaph_thumbnails test_host millsaph_bench millsaph_lens_editor
+                  millsaph_preset_browser)
+    if(TARGET ${program})
+      target_sources(${program} PRIVATE tools/asan_options.c)
+    endif()
+  endforeach()
+endif()
+
 # ---------------------------------------------------------------- After Effects plugin
 
 # Windows (MSVC) and macOS. Needs the After Effects SDK, which Adobe distributes to Adobe
