@@ -16,7 +16,12 @@ Windows.
 build.bat         # Windows
 ```
 
-The result is `build/MillSaph.ofx.bundle`, for the machine you built on.
+The result is in `build/mac/`, `build/lin/` or `build/win/`, for the machine you built on:
+
+- `release/`: what is shipped, `ofx/MillSaph.ofx.bundle`, and `ae/` (below) when the After
+  Effects SDK is there;
+- `bin/`: the programs to run here (`test_host`, `millsaph_bench`);
+- `cmake/`: CMake's work.
 
 The first build downloads into `third_party/` (see `cmake/deps.cmake`): the OFX
 headers, and Halide 21 prebuilt for the build machine (about 170 MB, LLVM
@@ -113,9 +118,9 @@ Adobe's After Effects SDK: its zips for macOS and Windows
 unzips the one for its system. A newer SDK: put its zip there, named as Adobe names it
 (`AfterEffectsSDK_<version>_mac.zip` / `_win.zip`); the newest is used.
 
-- macOS: `build/ae/MillSaph.plugin` (arm64 + x86_64), to copy to
+- macOS: `build/mac/release/ae/MillSaph.plugin` (arm64 + x86_64), to copy to
   `/Library/Application Support/Adobe/Common/Plug-ins/7.0/MediaCore/`.
-- Windows: `build/ae/MillSaph.aex`, to copy to
+- Windows: `build/win/release/ae/MillSaph.aex`, to copy to
   `C:\Program Files\Adobe\Common\Plug-ins\7.0\MediaCore\`.
 
 The effects are in the MillSaph category; widths are shown as a percentage of the layer

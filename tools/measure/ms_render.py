@@ -1,6 +1,6 @@
 # MillSaph's renders without Nuke: the jobs of a jobs file (nuke_measure.py's format) rendered
-# by build/test_host, the same pixels as nuke_measure.py's MillSaph renders (the installed
-# plugin there; here build/'s, nothing to install).
+# by build/<mac|lin>/bin/test_host, the same pixels as nuke_measure.py's MillSaph renders (the installed
+# plugin there; here this build's, nothing to install).
 #
 #   python3 tools/measure/ms_render.py <jobs.json> [job ...] [--out folder] [--cpu]
 #
@@ -32,8 +32,9 @@ import exr  # noqa: E402
 import jobfile  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(HERE))
-HOST = os.path.join(ROOT, "build", "test_host")
-PLUGIN = os.path.join(ROOT, "build", "MillSaph.ofx.bundle", "Contents",
+BUILD = os.path.join(ROOT, "build", "mac" if sys.platform == "darwin" else "lin")
+HOST = os.path.join(BUILD, "bin", "test_host")
+PLUGIN = os.path.join(BUILD, "release", "ofx", "MillSaph.ofx.bundle", "Contents",
                       "MacOS" if sys.platform == "darwin" else "Linux-x86-64", "MillSaph.ofx")
 ID = "com.xiaoluo.millsaph."
 # The reference's inputs that MillSaph's effects order differently (nuke_measure.py's INPUTS):

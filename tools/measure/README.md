@@ -21,7 +21,7 @@ This folder has the tools; `HANDOFF.md` has the working rules of the project.
 | `compare.py` | Compares two EXR files or folders: largest and mean difference, where. |
 | `exr.py` | Reads and writes uncompressed EXR with numpy (no OpenEXR module). |
 | `jobfile.py` | What the tools share: a jobs file read (`load`), a job's frames and their two renders (`frame_names`, `frame_pairs`), the tools' help (their header). |
-| `ms_render.py` | MillSaph's renders of a jobs file without Nuke (`build/test_host`, `build/`'s plugin: nothing to install), the same pixels as `nuke_measure.py`'s; as a module, `render()` and `sweep()` to fit a setting by rendering over a range of it. |
+| `ms_render.py` | MillSaph's renders of a jobs file without Nuke (`build/<mac|lin>/bin/test_host`, `build/<mac|lin>/release/`'s plugin: nothing to install), the same pixels as `nuke_measure.py`'s; as a module, `render()` and `sweep()` to fit a setting by rendering over a range of it. |
 | `scores.py` | How close a batch is, job by job: p99.9 of the difference / the reference's peak, L1, energy; the worst first, a summary; `--save`, `--diff` to see what a change did. |
 | `sheet.py` | Contact sheets (PNG): reference beside MillSaph, sequences frame by frame. |
 | `bitexact.sh` | Whether a change renders exactly as before: `build/` against a commit built in a worktree, every case of `tools/test_cases.txt` on the CPU and the GPU, byte for byte. |

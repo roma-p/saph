@@ -139,7 +139,7 @@ Speed in Flame and Nuke:
   Mac (Metal), and soon on Windows with After Effects. They run what you give them and paste
   the results back: give exact commands, and say what to look at.
 - For another machine, they want a fresh archive of the source tree each time (not file by
-  file): `millsaph_perf.zip` without `build/`, `build-sanitize/`, `third_party/` (except the
+  file): `millsaph_perf.zip` without `build/`, `third_party/` (except the
   After Effects SDK zips), `glsl/`, `.git/`; check it against the tree after making it.
 - They decide on GPU work from real numbers against the reference: give times side by side.
 

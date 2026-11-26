@@ -1,4 +1,4 @@
-# The cases of build/millsaph_bench (tools/perf/bench.c), in order: label | effect | settings.
+# The cases of build/<mac|lin>/bin/millsaph_bench (tools/perf/bench.c), in order: label | effect | settings.
 # Settings: name=value (widths as fractions of the frame width, as the hosts give them), and
 # the words half (16-bit images), same (the Source in every input), lens, matte, pageable
 # (host memory not page-locked), profile=<name> (a variant of the effects' profile: bench.c's

@@ -1,7 +1,7 @@
 // Times every effect on every API built for this machine (the CPU, and Metal or CUDA, ...),
 // checks each GPU result against the CPU one, and times the choices the effects
 // make that were tuned on another machine (effects/profile.h). Run by tools/perf/collect.sh;
-// built with the plugin (build/millsaph_bench).
+// built with the plugin (build/<mac|lin>/bin/millsaph_bench).
 //
 //   millsaph_bench [width height] [renders] [case]   (default 3840 2160, 5; case: a name, or
 //                                                    part of the names to run)

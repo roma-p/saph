@@ -1,10 +1,11 @@
 #!/bin/sh
-# Installs build/MillSaph.ofx.bundle into the OFX plugin folder: /Library/OFX/Plugins on
-# macOS, /usr/OFX/Plugins on Linux.
+# Installs build/<mac|lin>/release/ofx/MillSaph.ofx.bundle into the OFX plugin folder:
+# /Library/OFX/Plugins on macOS, /usr/OFX/Plugins on Linux.
 set -e
 cd "$(dirname "$0")"
 
-bundle=build/MillSaph.ofx.bundle
+. tools/plugin_path.sh
+bundle=$build_dir/$bundle_path
 case "$(uname)" in
 Darwin) dest=/Library/OFX/Plugins ;;
 *)      dest=/usr/OFX/Plugins ;;

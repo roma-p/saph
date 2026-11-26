@@ -8,7 +8,7 @@ Builds, then writes one report file, `millsaph_report_<host>_<date>.txt`, to sen
 is:
 
 - the machine (OS, CPU, memory, GPU, drivers, CUDA libraries) and the build log;
-- `build/millsaph_bench` (`bench.c`): every effect at 4K and HD on every API built here (the
+- `build/<mac|lin>/bin/millsaph_bench` (`bench.c`): every effect at 4K and HD on every API built here (the
   CPU, then Metal or CUDA), each GPU result compared with the CPU's, and the
   choices tuned on another machine (`src/effects/profile.c`) tried both ways; its cases are in
   `bench_cases.txt` (read when it runs);
@@ -33,7 +33,7 @@ MillSaph's.
 
     ./build.sh
     mkdir -p ~/millsaph_perf && cd ~/millsaph_perf
-    <path to MillSaph>/build/millsaph_bench --sweep 3840 2160 3       # [effect], e.g. MS_Distort
+    <path to MillSaph>/build/<mac|lin>/bin/millsaph_bench --sweep 3840 2160 3       # [effect], e.g. MS_Distort
 
 Each parameter of each effect over a series of values taken from its description (its
 slider's ends, quarter, middle and default; every entry of a menu; both states of a
@@ -79,7 +79,7 @@ time in Nuke (each one renders 4 times on each node). Only some: `MILLSAPH_SWEEP
 
 ## CUDA copy speeds: `millsaph_bench --transfer`
 
-    build/millsaph_bench --transfer [width height]     # default 1920 1080
+    build/<mac|lin>/bin/millsaph_bench --transfer [width height]     # default 1920 1080
 
 How fast an RGBA float image goes to the GPU and back, three ways: from the host's memory as
 it is (what the engine does today), with that memory page-locked for the copy, and through
@@ -106,7 +106,7 @@ cases compare the two.
 1. Install the plugin where Nuke finds OFX plugins (Linux: `/usr/OFX/Plugins`, macOS:
    `/Library/OFX/Plugins`), replacing an older copy, then restart Nuke:
 
-       sudo cp -R build/MillSaph.ofx.bundle /usr/OFX/Plugins/
+       sudo cp -R build/<mac|lin>/release/ofx/MillSaph.ofx.bundle /usr/OFX/Plugins/
 
 2. Start Nuke, and in its Script Editor run:
 

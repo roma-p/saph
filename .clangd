@@ -1,4 +1,5 @@
-# clangd (editor): reads build/compile_commands.json, written by ./build.sh.
+# clangd (editor): reads build/compile_commands.json, this system's (a link written by
+# ./build.sh to build/<mac|lin>/cmake/compile_commands.json).
 CompileFlags:
   CompilationDatabase: build
   # The macOS build compiles for two processors: check for this one only.

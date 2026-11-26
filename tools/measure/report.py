@@ -4,7 +4,7 @@
 #
 #   python3 tools/measure/report.py [--render] [--cpu] [--save report.json] [effect ...]
 #
-# --render renders MillSaph's images again first (build/'s plugin; --cpu: on the CPU, faster to
+# --render renders MillSaph's images again first (this build's plugin; --cpu: on the CPU, faster to
 # start for many small renders); else the images already there are scored. Per effect: the
 # jobs scored, the median of their p99.9 and L1 (scores.py), the share within 1% and 5%
 # (p99.9). A batch is the jobs file whose "out" it is; when a <batch>_ms.json renders MillSaph's

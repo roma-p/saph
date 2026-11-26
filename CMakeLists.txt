@@ -323,7 +323,13 @@ find_package(OpenGL REQUIRED)
 target_link_libraries(MillSaph PRIVATE OpenGL::GL)
 millsaph_warnings(MillSaph)
 
-set(bundle ${CMAKE_BINARY_DIR}/MillSaph.ofx.bundle)
+# CMake works in build/<mac|lin|win>/cmake/ (build.sh, build.bat); next to it, what is shipped
+# goes to release/ (ofx/, ae/) and the programs to run here (test_host, millsaph_bench,
+# millsaph_thumbnails) to bin/: the binary folder's parent's release/ and bin/.
+get_filename_component(out ${CMAKE_BINARY_DIR} DIRECTORY)
+set(release ${out}/release)
+set(bin ${out}/bin)
+set(bundle ${release}/ofx/MillSaph.ofx.bundle)
 set_target_properties(MillSaph PROPERTIES
   PREFIX ""
   SUFFIX ".ofx"
@@ -383,7 +389,7 @@ endif()
 # (stb_image_write from GLFW's sources). Rendered again when a preset or the effects change.
 add_executable(millsaph_thumbnails tools/presets/thumbnails.cpp)
 set_target_properties(millsaph_thumbnails PROPERTIES CXX_STANDARD 17
-  RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
+  RUNTIME_OUTPUT_DIRECTORY ${bin} RUNTIME_OUTPUT_DIRECTORY_RELEASE ${bin})
 target_include_directories(millsaph_thumbnails PRIVATE ${third_party}/glfw/deps)
 target_link_libraries(millsaph_thumbnails PRIVATE millsaph_core)
 file(GLOB_RECURSE preset_files CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/presets/*.json)
@@ -396,13 +402,13 @@ add_custom_command(OUTPUT ${CMAKE_BINARY_DIR}/presets.stamp
 add_custom_target(millsaph_presets ALL DEPENDS ${CMAKE_BINARY_DIR}/presets.stamp)
 add_dependencies(MillSaph millsaph_presets)
 
-# build/test_host: a minimal OFX host running the plugin outside a DCC (tools/test_host.c;
+# build/<mac|lin>/bin/test_host: a minimal OFX host running the plugin outside a DCC (tools/test_host.c;
 # tools/measure/ms_render.py, bitexact.sh). (dlopen: not on Windows.)
 if(NOT WIN32)
   add_executable(test_host tools/test_host.c src/common/half.c)
   target_include_directories(test_host PRIVATE src ${third_party}/openfx/include)
   target_link_libraries(test_host PRIVATE ${CMAKE_DL_LIBS})
-  set_target_properties(test_host PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
+  set_target_properties(test_host PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${bin})
 endif()
 
 # ---------------------------------------------------------------- benchmark
@@ -410,6 +416,8 @@ endif()
 # Every effect on every API of this machine (tools/perf/bench.c, run by tools/perf/collect.sh).
 add_executable(millsaph_bench tools/perf/bench.c tools/perf/images.c tools/perf/transfer.c)
 target_link_libraries(millsaph_bench PRIVATE millsaph_core)
+set_target_properties(millsaph_bench PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY ${bin} RUNTIME_OUTPUT_DIRECTORY_RELEASE ${bin})
 target_compile_definitions(millsaph_bench PRIVATE
   MILLSAPH_BENCH_CASES="${CMAKE_SOURCE_DIR}/tools/perf/bench_cases.txt")
 if(NOT WIN32)
@@ -435,18 +443,18 @@ endif()
 # exists. Without it, only the OFX plugin is built.
 set(ae_sdk ${third_party}/AfterEffectsSDK/Examples)
 if(APPLE AND EXISTS ${ae_sdk}/Headers/AE_Effect.h)
-  # build/ae/MillSaph.plugin: the module in Contents/MacOS, the PiPL resource (src/ae/pipl.r)
+  # build/mac/release/ae/MillSaph.plugin: the module in Contents/MacOS, the PiPL resource (src/ae/pipl.r)
   # in Contents/Resources. Rez's own preprocessor has no macros with arguments: the C one
   # expands them first.
-  set(ae_bundle ${CMAKE_BINARY_DIR}/ae/MillSaph.plugin)
+  set(ae_bundle ${release}/ae/MillSaph.plugin)
   file(MAKE_DIRECTORY ${ae_bundle}/Contents/Resources)
   add_custom_command(
     OUTPUT ${ae_bundle}/Contents/Resources/MillSaph.rsrc
     COMMAND ${CMAKE_C_COMPILER} -E -P -x c -I${ae_sdk}/Headers -I${ae_sdk}/Resources
-            ${CMAKE_SOURCE_DIR}/src/ae/pipl.r -o ${CMAKE_BINARY_DIR}/ae/pipl.rr
+            ${CMAKE_SOURCE_DIR}/src/ae/pipl.r -o ${CMAKE_BINARY_DIR}/pipl.rr
     COMMAND xcrun Rez -d __MACH__ -useDF -i ${ae_sdk}/Headers -i ${ae_sdk}/Resources
             -o ${ae_bundle}/Contents/Resources/MillSaph.rsrc ${ae_sdk}/Resources/AE_General.r
-            ${CMAKE_BINARY_DIR}/ae/pipl.rr
+            ${CMAKE_BINARY_DIR}/pipl.rr
     DEPENDS src/ae/pipl.r src/effects/list.def
     VERBATIM)
   add_library(MillSaphAE MODULE src/ae/plugin.c ${ae_bundle}/Contents/Resources/MillSaph.rsrc)
@@ -469,7 +477,7 @@ if(APPLE AND EXISTS ${ae_sdk}/Headers/AE_Effect.h)
 elseif(WIN32 AND MSVC AND EXISTS ${ae_sdk}/Headers/AE_Effect.h)
   # The PiPL resource (src/ae/pipl.r) describes each effect to After Effects. Adobe's
   # PiPLtool turns it into a Windows resource, between two passes of the preprocessor.
-  set(pipl ${CMAKE_BINARY_DIR}/ae)
+  set(pipl ${CMAKE_BINARY_DIR}/pipl)
   file(MAKE_DIRECTORY ${pipl})
   add_custom_command(
     OUTPUT ${pipl}/pipl.rc
@@ -490,12 +498,12 @@ elseif(WIN32 AND MSVC AND EXISTS ${ae_sdk}/Headers/AE_Effect.h)
     OUTPUT_NAME MillSaph
     PREFIX ""
     SUFFIX ".aex"
-    LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/ae
-    LIBRARY_OUTPUT_DIRECTORY_RELEASE ${CMAKE_BINARY_DIR}/ae  # Visual Studio
+    LIBRARY_OUTPUT_DIRECTORY ${release}/ae
+    LIBRARY_OUTPUT_DIRECTORY_RELEASE ${release}/ae  # Visual Studio
   )
   if(MILLSAPH_EDITOR) # the Lens Flare editor next to the .aex (Edit Lens)
     add_dependencies(MillSaphAE millsaph_lens_editor)
     add_custom_command(TARGET MillSaphAE POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy
-                       $<TARGET_FILE:millsaph_lens_editor> ${CMAKE_BINARY_DIR}/ae/)
+                       $<TARGET_FILE:millsaph_lens_editor> ${release}/ae/)
   endif()
 endif()

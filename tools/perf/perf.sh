@@ -1,5 +1,5 @@
 #!/bin/sh
-# Times every effect at 4K outside any host, with build/test_host, on the plugin built by
+# Times every effect at 4K outside any host, with build/<mac|lin>/bin/test_host, on the plugin built by
 # ./build.sh. Prints the GPU API the effects really ran on ("[MillSaph] running on CUDA")
 # and, per case, the best render time after the first (the first one loads the GPU).
 # Distort_CPU: Distort with Enable GPU off.
@@ -12,9 +12,9 @@ cd "$(dirname "$0")/../.."
 
 frames="${1:-6}"
 . tools/plugin_path.sh
-plugin=build/MillSaph.ofx.bundle/$plugin_lib
-if [ ! -f "$plugin" ] || [ ! -x build/test_host ]; then
-    echo "no $plugin or build/test_host: run ./build.sh first"
+plugin=$build_dir/$bundle_path/$plugin_lib
+if [ ! -f "$plugin" ] || [ ! -x $build_dir/bin/test_host ]; then
+    echo "no $plugin or $build_dir/bin/test_host: run ./build.sh first"
     exit 1
 fi
 
@@ -24,8 +24,8 @@ command -v nvidia-smi > /dev/null && nvidia-smi --query-gpu=name,driver_version,
 # label, effect, then parameters (name=value) and unconnected inputs (!Clip)
 while read -r label effect args; do
     [ -z "$label" ] && continue
-    log=build/perf_last.log
-    build/test_host "$plugin" "com.xiaoluo.millsaph.$effect" $args --size 3840x2160 \
+    log=$build_dir/perf_last.log
+    $build_dir/bin/test_host "$plugin" "com.xiaoluo.millsaph.$effect" $args --size 3840x2160 \
         --frames "$frames" > "$log" 2>&1 || { echo "FAILED $label"; tail -5 "$log"; continue; }
     grep -o "\[MillSaph\] .*" "$log" || true # stderr: can land inside a printed line
     awk -v label="$label" '/^render [0-9]+ of/ {

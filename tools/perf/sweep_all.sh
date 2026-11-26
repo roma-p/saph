@@ -3,7 +3,7 @@
 # only found in Nuke started as usual, with its interface):
 #
 #   tools/perf/sweep_all.sh [effect]    1. builds, sweeps every parameter of every effect
-#                                          outside any host (build/millsaph_bench --sweep), and
+#                                          outside any host (millsaph_bench --sweep), and
 #                                          says what to run in Nuke
 #   (in Nuke's Script Editor)           2. tools/perf/nuke_sweep.py: the same settings on
 #                                          MillSaph's and the reference plugin's nodes
@@ -15,6 +15,7 @@
 # ~/millsaph_perf/images (about 700 MB; real plates can be added there, see tools/perf/README.md).
 
 cd "$(dirname "$0")/../.." || exit 1
+. tools/plugin_path.sh
 root=$(pwd)
 out="$HOME/millsaph_perf"
 mkdir -p "$out"
@@ -41,14 +42,14 @@ section "build (./build.sh)"
 ./build.sh > build_log.txt 2>&1
 status=$?
 tail -5 build_log.txt
-if [ $status -ne 0 ] || [ ! -x build/millsaph_bench ] || [ ! -d build/MillSaph.ofx.bundle ]; then
+if [ $status -ne 0 ] || [ ! -x $build_dir/bin/millsaph_bench ] || [ ! -d $build_dir/$bundle_path ]; then
     echo "build failed: see build_log.txt"
     exit 1
 fi
 
 section "sweep outside any host, 4K (millsaph_bench --sweep)"
 rm -f "$out/sweep_nuke.txt"
-(cd "$out" && "$root/build/millsaph_bench" --sweep 3840 2160 3 $effect) 2>&1 |
+(cd "$out" && "$root/$build_dir/bin/millsaph_bench" --sweep 3840 2160 3 $effect) 2>&1 |
     grep -v '^\[MillSaph\]' | tee "$out/sweep_bench.txt"
 
 cat << EOF
@@ -57,7 +58,7 @@ cat << EOF
 1. Install this build where Nuke finds OFX plugins, replacing any older copy:
 
      sudo rm -rf /usr/OFX/Plugins/MillSaph.ofx.bundle
-     sudo cp -R "$root/build/MillSaph.ofx.bundle" /usr/OFX/Plugins/
+     sudo cp -R "$root/$build_dir/$bundle_path" /usr/OFX/Plugins/
 
 2. Start Nuke as usual (quit it first if it is open), and in its Script Editor
    (Ctrl+Enter):
